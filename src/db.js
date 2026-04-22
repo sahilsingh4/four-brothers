@@ -115,6 +115,7 @@ const fbFromDB = (row) => ({
   invoiceId: row.invoice_id || null,
   customerPaidAt: row.customer_paid_at || null,
   customerPaidAmount: row.customer_paid_amount !== null && row.customer_paid_amount !== undefined ? Number(row.customer_paid_amount) : null,
+  extras: row.extras || [],
 });
 
 const fbToDB = (fb) => ({
@@ -147,6 +148,7 @@ const fbToDB = (fb) => ({
   invoice_id: fb.invoiceId || null,
   customer_paid_at: fb.customerPaidAt || null,
   customer_paid_amount: fb.customerPaidAmount !== null && fb.customerPaidAmount !== undefined && fb.customerPaidAmount !== "" ? Number(fb.customerPaidAmount) : null,
+  extras: fb.extras || [],
 });
 
 export const fetchFreightBills = async () => {
@@ -198,6 +200,9 @@ const contactFromDB = (row) => ({
   portalEnabled: !!row.portal_enabled,
   brokerageApplies: !!row.brokerage_applies,
   brokeragePercent: row.brokerage_percent !== null && row.brokerage_percent !== undefined ? Number(row.brokerage_percent) : 8,
+  defaultPayRate: row.default_pay_rate !== null && row.default_pay_rate !== undefined ? Number(row.default_pay_rate) : null,
+  defaultPayMethod: row.default_pay_method || "hour",
+  defaultTruckNumber: row.default_truck_number || "",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -221,6 +226,9 @@ const contactToDB = (c) => ({
   portal_enabled: !!c.portalEnabled,
   brokerage_applies: !!c.brokerageApplies,
   brokerage_percent: c.brokeragePercent !== null && c.brokeragePercent !== undefined && c.brokeragePercent !== "" ? Number(c.brokeragePercent) : 8,
+  default_pay_rate: c.defaultPayRate !== null && c.defaultPayRate !== undefined && c.defaultPayRate !== "" ? Number(c.defaultPayRate) : null,
+  default_pay_method: c.defaultPayMethod || null,
+  default_truck_number: c.defaultTruckNumber || null,
 });
 
 export const fetchContacts = async () => {

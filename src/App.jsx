@@ -681,6 +681,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
     material: dispatch?.material || "",
     tonnage: "", loadCount: "1",
     pickupTime: "", dropoffTime: "", notes: "",
+    extras: [],
   });
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -703,7 +704,8 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
 
   const submit = async () => {
     if (!form.freightBillNumber || !form.driverName || !form.truckNumber) { alert("Freight bill #, driver name, and truck # are required."); return; }
-    await onSubmitTruck({ ...form, id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), dispatchId: dispatch.id, photos, submittedAt: new Date().toISOString() });
+    const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
+    await onSubmitTruck({ ...form, extras: cleanExtras, id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), dispatchId: dispatch.id, photos, submittedAt: new Date().toISOString() });
     setLastFB(form.freightBillNumber);
     setSubmitted(true);
   };
@@ -732,7 +734,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
           <p style={{ color: "var(--concrete)", margin: "0 0 24px", fontSize: 15 }}>Thanks — your paperwork is in. If you have another truck to log for this same dispatch, tap below.</p>
           <button className="btn-primary" onClick={() => {
             setSubmitted(false);
-            setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: "", material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "" });
+            setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: "", material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "", extras: [] });
             setPhotos([]);
             window.scrollTo(0, 0);
           }}><Plus size={16} /> LOG ANOTHER TRUCK</button>
@@ -842,6 +844,87 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
               <div><label className="fbt-label">Dropoff Time</label><input className="fbt-input" type="time" value={form.dropoffTime} onChange={(e) => setForm({ ...form, dropoffTime: e.target.value })} /></div>
             </div>
             <div><label className="fbt-label">Notes</label><textarea className="fbt-textarea" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Anything unusual about this load?" /></div>
+
+            {/* Tolls / Dump Fees / Fuel / Other — per-FB extras */}
+            <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700 }}>
+                ▸ TOLLS · DUMP FEES · FUEL · OTHER {form.extras?.length > 0 ? `(${form.extras.length})` : "(OPTIONAL)"}
+              </div>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8, lineHeight: 1.4 }}>
+                Add any out-of-pocket costs you paid for this load. Keep receipts. You'll be reimbursed.
+              </div>
+              {(form.extras || []).length > 0 && (
+                <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                  {form.extras.map((x, idx) => (
+                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "130px 1fr 100px auto", gap: 6, alignItems: "center" }}>
+                      <select
+                        className="fbt-select"
+                        style={{ padding: "6px 8px", fontSize: 11 }}
+                        value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const next = [...form.extras];
+                          next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
+                          setForm({ ...form, extras: next });
+                        }}
+                      >
+                        <option value="Tolls">Tolls</option>
+                        <option value="Dump Fees">Dump Fees</option>
+                        <option value="Fuel Surcharge">Fuel</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      <input
+                        className="fbt-input"
+                        style={{ padding: "6px 10px", fontSize: 12 }}
+                        placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Note (optional)" : "Describe — specify type"}
+                        value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
+                        onChange={(e) => {
+                          const next = [...form.extras];
+                          const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
+                          if (isOther) next[idx] = { ...next[idx], label: e.target.value };
+                          else next[idx] = { ...next[idx], note: e.target.value };
+                          setForm({ ...form, extras: next });
+                        }}
+                      />
+                      <input
+                        className="fbt-input"
+                        type="number" step="0.01" min="0"
+                        placeholder="$0.00"
+                        style={{ padding: "6px 10px", fontSize: 12 }}
+                        value={x.amount || ""}
+                        onChange={(e) => {
+                          const next = [...form.extras];
+                          next[idx] = { ...next[idx], amount: e.target.value };
+                          setForm({ ...form, extras: next });
+                        }}
+                      />
+                      <button
+                        onClick={() => setForm({ ...form, extras: form.extras.filter((_, i) => i !== idx) })}
+                        className="btn-danger"
+                        style={{ padding: "6px 10px", fontSize: 11 }}
+                        type="button"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setForm({ ...form, extras: [...(form.extras || []), { label: "Tolls", amount: "", reimbursable: true }] })}>
+                  <Plus size={11} style={{ marginRight: 3 }} /> TOLLS
+                </button>
+                <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setForm({ ...form, extras: [...(form.extras || []), { label: "Dump Fees", amount: "", reimbursable: true }] })}>
+                  <Plus size={11} style={{ marginRight: 3 }} /> DUMP
+                </button>
+                <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setForm({ ...form, extras: [...(form.extras || []), { label: "Fuel Surcharge", amount: "", reimbursable: true }] })}>
+                  <Plus size={11} style={{ marginRight: 3 }} /> FUEL
+                </button>
+                <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setForm({ ...form, extras: [...(form.extras || []), { label: "", amount: "", reimbursable: true }] })}>
+                  <Plus size={11} style={{ marginRight: 3 }} /> OTHER
+                </button>
+              </div>
+            </div>
             <div>
               <label className="fbt-label">Scale Tickets / Freight Bill Photos</label>
               <div style={{ border: "2px dashed var(--steel)", padding: 20, textAlign: "center", background: "#FFF" }}>
@@ -1345,67 +1428,13 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 )}
               </div>
 
-              {/* Assigned Drivers (optional) — filtered by sub if selected */}
-              {contacts.filter((c) => c.type === "driver").length > 0 && (() => {
-                const availableDrivers = contacts.filter((c) => {
-                  if (c.type !== "driver") return false;
-                  // If a sub is selected, show drivers linked to that sub + unlinked (independent) drivers
-                  if (draft.subContractorId) {
-                    return c.drivesForId === draft.subContractorId || !c.drivesForId;
-                  }
-                  return true;
-                });
-                const assignedIds = draft.assignedDriverIds || [];
-                const toggleDriver = (id) => {
-                  const next = assignedIds.includes(id)
-                    ? assignedIds.filter((x) => x !== id)
-                    : [...assignedIds, id];
-                  setDraft({ ...draft, assignedDriverIds: next });
-                };
-                return (
-                  <div>
-                    <label className="fbt-label">
-                      Assigned Drivers (optional{draft.subContractorId && availableDrivers.length > 0 ? ` · showing ${availableDrivers.length} for this sub` : ""})
-                    </label>
-                    {availableDrivers.length === 0 ? (
-                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "8px 10px", border: "1px dashed var(--concrete)", background: "#F5F5F4" }}>
-                        NO DRIVERS {draft.subContractorId ? "LINKED TO THIS SUB" : "IN CONTACTS"}
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: 8, border: "1px solid var(--steel)", background: "#FFF" }}>
-                        {availableDrivers.map((d) => {
-                          const on = assignedIds.includes(d.id);
-                          return (
-                            <button
-                              key={d.id}
-                              type="button"
-                              onClick={() => toggleDriver(d.id)}
-                              className="btn-ghost"
-                              style={{
-                                padding: "6px 12px", fontSize: 11,
-                                background: on ? "var(--hazard)" : "transparent",
-                                color: on ? "var(--steel)" : "var(--steel)",
-                                borderColor: on ? "var(--hazard-deep)" : "var(--concrete)",
-                              }}
-                            >
-                              {on && <CheckCircle2 size={12} style={{ marginRight: 4 }} />}
-                              {d.companyName || d.contactName}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* ADDITIONAL ASSIGNMENTS — multi-sub/multi-driver with per-sub truck counts */}
+              {/* SUB-CONTRACTORS & DRIVERS (unified) */}
               <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14 }}>
                 <label className="fbt-label">
-                  Additional Assignments (multi-sub / multi-driver){draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
+                  Sub-Contractors & Drivers{draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
                 </label>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
-                  ▸ USE THIS WHEN ONE ORDER HAS MULTIPLE SUBS OR INDIVIDUAL DRIVERS · DRIVER = 1 TRUCK · SUB = NUMBER YOU ENTER
+                  ▸ ADD EACH SUB AND/OR DRIVER WORKING THIS ORDER · DRIVER = 1 TRUCK · SUB = TRUCK COUNT YOU ENTER · DRIVER PAY RATE + TRUCK # AUTO-FILL FROM CONTACT
                 </div>
                 {(draft.assignments || []).length > 0 && (
                   <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -1440,10 +1469,21 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                 const id = e.target.value;
                                 const c = contactsOfKind.find((x) => String(x.id) === id);
                                 const next = [...draft.assignments];
+                                // For drivers: auto-fill pay rate, method, and truck # from contact
+                                // unless already manually set on this assignment row
+                                const autoFill = isDriver && c ? {
+                                  payRate: (next[idx].payRate === "" || next[idx].payRate == null) && c.defaultPayRate != null
+                                    ? String(c.defaultPayRate) : next[idx].payRate,
+                                  payMethod: (!next[idx].payMethod || next[idx].payMethod === "hour") && c.defaultPayMethod
+                                    ? c.defaultPayMethod : (next[idx].payMethod || "hour"),
+                                  truckNumber: (!next[idx].truckNumber) && c.defaultTruckNumber
+                                    ? c.defaultTruckNumber : next[idx].truckNumber,
+                                } : {};
                                 next[idx] = {
                                   ...next[idx],
                                   contactId: c?.id || null,
                                   name: c ? (c.companyName || c.contactName) : "",
+                                  ...autoFill,
                                 };
                                 setDraft({ ...draft, assignments: next });
                               }}
@@ -2314,9 +2354,16 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
     return s + qty * rate;
   }, 0);
+  // FB-level reimbursable extras (tolls, dump, fuel, other paid by driver/sub)
+  const fbExtrasSum = freightBills.reduce((s, fb) => {
+    return s + (fb.extras || [])
+      .filter((x) => x.reimbursable !== false)
+      .reduce((ss, x) => ss + (Number(x.amount) || 0), 0);
+  }, 0);
   const extraFees = Number(invoice.extraFees) || 0;
+  const invoiceExtrasSum = (invoice.extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const discount = Number(invoice.discount) || 0;
-  const total = subtotal + extraFees - discount;
+  const total = subtotal + fbExtrasSum + extraFees + invoiceExtrasSum - discount;
 
   const photos = invoice.includePhotos
     ? freightBills.flatMap((fb) => (fb.photos || []).map((p) => ({ ...p, fbNum: fb.freightBillNumber })))
@@ -2441,6 +2488,7 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
 <table class="totals">
   <tbody>
     <tr><td class="label">SUBTOTAL</td><td class="val">${money(subtotal)}</td></tr>
+    ${fbExtrasSum > 0 ? `<tr><td class="label">FB EXTRAS (TOLLS · DUMP · FUEL · OTHER)</td><td class="val">${money(fbExtrasSum)}</td></tr>` : ""}
     ${(invoice.extras || []).filter((x) => Number(x.amount) !== 0).map((x) => `<tr><td class="label">${esc((x.label || "ADDITIONAL").toUpperCase())}</td><td class="val">${money(Number(x.amount) || 0)}</td></tr>`).join("")}
     ${extraFees !== 0 ? `<tr><td class="label">${esc(invoice.extraFeesLabel || "ADDITIONAL FEES")}</td><td class="val">${money(extraFees)}</td></tr>` : ""}
     ${discount !== 0 ? `<tr><td class="label">DISCOUNT</td><td class="val">-${money(discount)}</td></tr>` : ""}
@@ -2983,22 +3031,26 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const previewTotals = useMemo(() => {
     const r = Number(rate) || 0;
     let subtotal = 0;
+    let fbExtrasSum = 0;
     matchedBills.forEach((fb) => {
       let qty = 0;
       if (pricingMethod === "ton") qty = Number(fb.tonnage) || 0;
       else if (pricingMethod === "load") qty = Number(fb.loadCount) || 1;
       else if (pricingMethod === "hour") {
-        // Use manual override if entered, else fall back to FB's stored/computed hours
         const manual = hoursOverride[fb.id];
         if (manual !== undefined && manual !== "") qty = Number(manual) || 0;
         else qty = effectiveHours(fb);
       }
       subtotal += qty * r;
+      // Sum reimbursable FB-level extras (tolls/dump/fuel/other paid by driver/sub)
+      (fb.extras || []).forEach((x) => {
+        if (x.reimbursable !== false) fbExtrasSum += Number(x.amount) || 0;
+      });
     });
     const ef = Number(extraFees) || 0;
     const extrasSum = (extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
     const d = Number(discount) || 0;
-    return { subtotal, extrasSum, total: subtotal + ef + extrasSum - d };
+    return { subtotal, extrasSum, fbExtrasSum, total: subtotal + ef + extrasSum + fbExtrasSum - d };
   }, [matchedBills, rate, pricingMethod, hoursOverride, extraFees, discount, extras]);
 
   const makeInvoiceNumber = () => {
@@ -3457,6 +3509,12 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
                 <td style={{ fontWeight: 600 }}>SUBTOTAL · {matchedBills.length} FREIGHT BILLS</td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt$(previewTotals.subtotal)}</td>
               </tr>
+              {previewTotals.fbExtrasSum > 0 && (
+                <tr>
+                  <td style={{ fontWeight: 600 }}>FB EXTRAS (TOLLS · DUMP · FUEL · OTHER)</td>
+                  <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt$(previewTotals.fbExtrasSum)}</td>
+                </tr>
+              )}
               {(extras || []).filter((x) => Number(x.amount) !== 0).map((x, idx) => (
                 <tr key={idx}>
                   <td style={{ fontWeight: 600 }}>{(x.label || "ADDITIONAL").toUpperCase()}</td>
@@ -3477,10 +3535,31 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           </table>
         </div>
 
-        <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <button onClick={generate} className="btn-primary" disabled={matchedBills.length === 0 || !rate || !billTo.name}>
-            <FileDown size={16} /> OPEN INVOICE (PRINT / SAVE AS PDF)
-          </button>
+        <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
+          {/* Visible hints if button can't be clicked */}
+          {(matchedBills.length === 0 || !rate || !billTo.name) && (
+            <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
+              <strong>⚠ FIX BEFORE GENERATING:</strong>
+              <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>
+                {matchedBills.length === 0 && <li>No freight bills match your filters (date range / approved / invoice status)</li>}
+                {!rate && <li>Enter a rate in section 02 / PRICING</li>}
+                {!billTo.name && <li>Select a customer or enter bill-to name in section 03 / BILL TO</li>}
+              </ul>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <button
+              onClick={() => {
+                if (matchedBills.length === 0) { onToast("NO FBs MATCH — CHECK FILTERS"); return; }
+                if (!rate || Number(rate) <= 0) { onToast("ENTER A RATE FIRST"); return; }
+                if (!billTo.name) { onToast("SELECT CUSTOMER OR BILL-TO NAME"); return; }
+                generate();
+              }}
+              className="btn-primary"
+            >
+              <FileDown size={16} /> OPEN INVOICE (PRINT / SAVE AS PDF)
+            </button>
+          </div>
         </div>
       </div>
 
@@ -3776,6 +3855,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
     email: "", address: "", typicalTrucks: "", rateNotes: "",
     usdot: "", insurance: "", notes: "", favorite: false, drivesForId: null,
     brokerageApplies: false, brokeragePercent: 8,
+    defaultPayRate: "", defaultPayMethod: "hour", defaultTruckNumber: "",
   });
 
   const save = async () => {
@@ -3891,6 +3971,52 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
               <div>
                 <label className="fbt-label">Rate / Pricing Notes</label>
                 <input className="fbt-input" value={draft.rateNotes} onChange={(e) => setDraft({ ...draft, rateNotes: e.target.value })} placeholder="$135/hr, 8-hr min" />
+              </div>
+            </div>
+          )}
+
+          {/* Driver defaults — auto-fill when assigned to orders */}
+          {draft.type === "driver" && (
+            <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+                ▸ DRIVER DEFAULTS · AUTO-FILL WHEN ASSIGNED TO ORDER
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
+                <div>
+                  <label className="fbt-label">Default Pay Rate $</label>
+                  <input
+                    className="fbt-input"
+                    type="number"
+                    step="0.01"
+                    value={draft.defaultPayRate ?? ""}
+                    onChange={(e) => setDraft({ ...draft, defaultPayRate: e.target.value })}
+                    placeholder="e.g. 35.00"
+                  />
+                </div>
+                <div>
+                  <label className="fbt-label">Pay Method</label>
+                  <select
+                    className="fbt-select"
+                    value={draft.defaultPayMethod || "hour"}
+                    onChange={(e) => setDraft({ ...draft, defaultPayMethod: e.target.value })}
+                  >
+                    <option value="hour">Per Hour</option>
+                    <option value="ton">Per Ton</option>
+                    <option value="load">Per Load</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="fbt-label">Default Truck #</label>
+                  <input
+                    className="fbt-input"
+                    value={draft.defaultTruckNumber || ""}
+                    onChange={(e) => setDraft({ ...draft, defaultTruckNumber: e.target.value })}
+                    placeholder="e.g. 12"
+                  />
+                </div>
+              </div>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+                ▸ THESE AUTO-FILL WHEN YOU ADD THIS DRIVER TO AN ORDER. EDITABLE PER-ORDER IF NEEDED.
               </div>
             </div>
           )}
@@ -4766,6 +4892,7 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
     notes: fb.notes || "",
     adminNotes: fb.adminNotes || "",
     photos: fb.photos || [],
+    extras: fb.extras || [],
   });
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -4938,6 +5065,99 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
           <div>
             <label className="fbt-label">Admin Notes (internal, customer doesn't see)</label>
             <textarea className="fbt-textarea" value={draft.adminNotes} onChange={(e) => setDraft({ ...draft, adminNotes: e.target.value })} placeholder="Why I corrected hours, any flags, etc." style={{ minHeight: 50, background: "#FEF3C7" }} />
+          </div>
+
+          {/* Extras — tolls / dump / fuel / other */}
+          <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700 }}>
+              ▸ EXTRAS (TOLLS · DUMP · FUEL · OTHER) {draft.extras?.length > 0 ? `(${draft.extras.length})` : ""}
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8, lineHeight: 1.4 }}>
+              Reimbursable = customer pays us, we pay the sub back for it.
+            </div>
+            {(draft.extras || []).length > 0 && (
+              <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                {draft.extras.map((x, idx) => (
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 80px auto", gap: 6, alignItems: "center" }}>
+                    <select
+                      className="fbt-select"
+                      style={{ padding: "6px 8px", fontSize: 11 }}
+                      value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const next = [...draft.extras];
+                        next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
+                        setDraft({ ...draft, extras: next });
+                      }}
+                    >
+                      <option value="Tolls">Tolls</option>
+                      <option value="Dump Fees">Dump Fees</option>
+                      <option value="Fuel Surcharge">Fuel</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <input
+                      className="fbt-input"
+                      style={{ padding: "6px 10px", fontSize: 12 }}
+                      placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Note" : "Describe"}
+                      value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
+                      onChange={(e) => {
+                        const next = [...draft.extras];
+                        const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
+                        if (isOther) next[idx] = { ...next[idx], label: e.target.value };
+                        else next[idx] = { ...next[idx], note: e.target.value };
+                        setDraft({ ...draft, extras: next });
+                      }}
+                    />
+                    <input
+                      className="fbt-input"
+                      type="number" step="0.01" min="0"
+                      placeholder="$0.00"
+                      style={{ padding: "6px 10px", fontSize: 12 }}
+                      value={x.amount || ""}
+                      onChange={(e) => {
+                        const next = [...draft.extras];
+                        next[idx] = { ...next[idx], amount: e.target.value };
+                        setDraft({ ...draft, extras: next });
+                      }}
+                    />
+                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={x.reimbursable !== false}
+                        onChange={(e) => {
+                          const next = [...draft.extras];
+                          next[idx] = { ...next[idx], reimbursable: e.target.checked };
+                          setDraft({ ...draft, extras: next });
+                        }}
+                      />
+                      REIMB
+                    </label>
+                    <button
+                      onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, i) => i !== idx) })}
+                      className="btn-danger"
+                      style={{ padding: "6px 10px", fontSize: 11 }}
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Tolls", amount: "", reimbursable: true }] })}>
+                <Plus size={11} style={{ marginRight: 3 }} /> TOLLS
+              </button>
+              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Dump Fees", amount: "", reimbursable: true }] })}>
+                <Plus size={11} style={{ marginRight: 3 }} /> DUMP
+              </button>
+              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Fuel Surcharge", amount: "", reimbursable: true }] })}>
+                <Plus size={11} style={{ marginRight: 3 }} /> FUEL
+              </button>
+              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "", amount: "", reimbursable: true }] })}>
+                <Plus size={11} style={{ marginRight: 3 }} /> OTHER
+              </button>
+            </div>
           </div>
 
           {/* Photos */}
@@ -5436,7 +5656,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
   // Calculate gross for an FB based on its assignment's pay rate + method
   const calcGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
-    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, assignment: null };
+    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, assignment: null, extrasSum: 0, grossBeforeExtras: 0 };
     const rate = Number(assignment.payRate) || 0;
     const method = assignment.payMethod || "hour";
     let qty = 0;
@@ -5452,10 +5672,16 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       }
     } else if (method === "ton") qty = Number(fb.tonnage) || 0;
     else if (method === "load") qty = Number(fb.loadCount) || 1;
-    return { gross: qty * rate, qty, method, rate, assignment };
+    const grossBeforeExtras = qty * rate;
+    // Reimbursable FB extras are added to gross (sub fronted the cost, gets paid back)
+    const extrasSum = (fb.extras || [])
+      .filter((x) => x.reimbursable !== false)
+      .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    return { gross: grossBeforeExtras + extrasSum, qty, method, rate, assignment, extrasSum, grossBeforeExtras };
   };
 
   // Helper: compute what customer WAS billed for this FB on its invoice (estimated)
+  // Includes reimbursable per-FB extras that pass through to the customer
   const fbInvoiceBilled = (fb) => {
     const invoice = invoices.find((inv) => inv.id === fb.invoiceId);
     if (!invoice) return 0;
@@ -5475,7 +5701,11 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
         }
       }
     }
-    return qty * rate;
+    // Reimbursable FB extras also appear on customer invoice
+    const extrasSum = (fb.extras || [])
+      .filter((x) => x.reimbursable !== false)
+      .reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    return qty * rate + extrasSum;
   };
 
   // Customer payment ratio (1.0 = paid in full, 0.85 = 85% paid, 0 = unpaid)
