@@ -2511,25 +2511,66 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const [discount, setDiscount] = useState("");
   const [includePhotos, setIncludePhotos] = useState(true);
   const [hoursOverride, setHoursOverride] = useState({}); // fb.id -> hours for "per hour" pricing
+  const [includeUnapproved, setIncludeUnapproved] = useState(false);
 
   useEffect(() => {
     if (company?.defaultTerms && !terms) setTerms(company.defaultTerms);
   }, [company]);
 
-  // Filter freight bills by date + client (dispatch sub/job)
+  // Helper: compute effective hours for an FB (admin-corrected takes priority)
+  const effectiveHours = (fb) => {
+    if (fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "") return Number(fb.hoursBilled);
+    // Fall back to pickup→dropoff
+    if (fb.pickupTime && fb.dropoffTime) {
+      const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+      const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+      if (!isNaN(h1) && !isNaN(h2)) {
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins > 0) return mins / 60;
+      }
+    }
+    return 0;
+  };
+
+  // Filter freight bills by date + client (dispatch sub/job) + APPROVED status
   const matchedBills = useMemo(() => {
     return freightBills.filter((fb) => {
+      // Only approved FBs unless explicitly opted in
+      const status = fb.status || "pending";
+      if (!includeUnapproved && status !== "approved") return false;
+      // Always hide rejected
+      if (status === "rejected") return false;
+
       const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
       if (fromDate && fbDate < fromDate) return false;
       if (toDate && fbDate > toDate) return false;
       if (clientFilter) {
         const disp = dispatches.find((d) => d.id === fb.dispatchId);
-        const hay = `${disp?.subContractor || ""} ${disp?.jobName || ""}`.toLowerCase();
+        const hay = `${disp?.subContractor || ""} ${disp?.jobName || ""} ${disp?.clientName || ""}`.toLowerCase();
         if (!hay.includes(clientFilter.toLowerCase())) return false;
       }
       return true;
     });
-  }, [freightBills, dispatches, fromDate, toDate, clientFilter]);
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, includeUnapproved]);
+
+  // When matchedBills change, auto-populate hoursOverride from fb.hoursBilled (if empty)
+  useEffect(() => {
+    setHoursOverride((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      matchedBills.forEach((fb) => {
+        // Only auto-fill if user hasn't typed anything yet
+        if (next[fb.id] === undefined || next[fb.id] === "") {
+          const h = effectiveHours(fb);
+          if (h > 0) {
+            next[fb.id] = h.toFixed(2);
+            changed = true;
+          }
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [matchedBills]);
 
   const previewTotals = useMemo(() => {
     const r = Number(rate) || 0;
@@ -2538,7 +2579,12 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       let qty = 0;
       if (pricingMethod === "ton") qty = Number(fb.tonnage) || 0;
       else if (pricingMethod === "load") qty = Number(fb.loadCount) || 1;
-      else if (pricingMethod === "hour") qty = Number(hoursOverride[fb.id] ?? 0);
+      else if (pricingMethod === "hour") {
+        // Use manual override if entered, else fall back to FB's stored/computed hours
+        const manual = hoursOverride[fb.id];
+        if (manual !== undefined && manual !== "") qty = Number(manual) || 0;
+        else qty = effectiveHours(fb);
+      }
       subtotal += qty * r;
     });
     const ef = Number(extraFees) || 0;
@@ -2564,10 +2610,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     const invoiceNumber = makeInvoiceNumber();
     const invoiceDate = todayISO();
 
-    const billsWithHours = matchedBills.map((fb) => ({
-      ...fb,
-      hoursOverride: hoursOverride[fb.id] ?? 0,
-    }));
+    const billsWithHours = matchedBills.map((fb) => {
+      const manual = hoursOverride[fb.id];
+      const qty = (manual !== undefined && manual !== "") ? Number(manual) : effectiveHours(fb);
+      return { ...fb, hoursOverride: qty };
+    });
 
     const invoice = {
       invoiceNumber,
@@ -2664,13 +2711,34 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           <div><label className="fbt-label">Client / Sub / Job Contains</label><input className="fbt-input" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} placeholder="e.g. MCI" /></div>
         </div>
 
+        {/* Approval filter — new */}
+        <div style={{ padding: 10, background: includeUnapproved ? "#FEF2F2" : "#F0FDF4", border: "2px solid " + (includeUnapproved ? "var(--safety)" : "var(--good)"), marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+            <input
+              type="checkbox"
+              checked={!includeUnapproved}
+              onChange={(e) => setIncludeUnapproved(!e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            <ShieldCheck size={14} style={{ color: includeUnapproved ? "var(--concrete)" : "var(--good)" }} />
+            <strong>APPROVED FREIGHT BILLS ONLY</strong>
+          </label>
+          {includeUnapproved && (
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginLeft: "auto" }}>
+              ⚠ INCLUDING PENDING FBs
+            </span>
+          )}
+        </div>
+
         <div style={{ padding: 12, background: matchedBills.length > 0 ? "#FEF3C7" : "#F5F5F4", border: "2px solid var(--steel)", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <div className="fbt-mono" style={{ fontSize: 13 }}>
             {matchedBills.length === 0 ? "NO MATCHES" : `${matchedBills.length} FREIGHT BILL${matchedBills.length !== 1 ? "S" : ""} MATCHED`}
           </div>
           {matchedBills.length > 0 && (
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
-              TOTAL TONS: {matchedBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0).toFixed(1)} · TOTAL LOADS: {matchedBills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0)}
+              TOTAL TONS: {matchedBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0).toFixed(1)}
+              {" · "}TOTAL LOADS: {matchedBills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0)}
+              {" · "}TOTAL HRS: {matchedBills.reduce((s, fb) => s + effectiveHours(fb), 0).toFixed(2)}
             </div>
           )}
         </div>
@@ -2694,22 +2762,36 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
         {pricingMethod === "hour" && matchedBills.length > 0 && (
           <div style={{ marginBottom: 18, padding: 14, background: "#F5F5F4", border: "1px solid var(--steel)" }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ ENTER HOURS PER FREIGHT BILL (8-HR MIN APPLIES IF DESIRED)</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              {matchedBills.map((fb) => (
-                <div key={fb.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, minWidth: 90 }}>FB#{fb.freightBillNumber}</span>
-                  <input
-                    className="fbt-input"
-                    type="number"
-                    step="0.25"
-                    style={{ padding: "6px 10px", fontSize: 13 }}
-                    placeholder="hrs"
-                    value={hoursOverride[fb.id] ?? ""}
-                    onChange={(e) => setHoursOverride({ ...hoursOverride, [fb.id]: e.target.value })}
-                  />
-                </div>
-              ))}
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 4 }}>▸ HOURS PER FREIGHT BILL</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 10 }}>▸ AUTO-FILLED FROM APPROVED FB HOURS — ADJUST BELOW IF NEEDED</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
+              {matchedBills.map((fb) => {
+                const autoH = effectiveHours(fb);
+                const manual = hoursOverride[fb.id];
+                const isManual = manual !== undefined && manual !== "" && Number(manual) !== autoH;
+                return (
+                  <div key={fb.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700 }}>
+                        FB#{fb.freightBillNumber || "—"}
+                      </div>
+                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "var(--concrete)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""}
+                      </div>
+                    </div>
+                    <input
+                      className="fbt-input"
+                      type="number"
+                      step="0.25"
+                      style={{ padding: "6px 10px", fontSize: 13, width: 80, background: isManual ? "#FEF3C7" : undefined }}
+                      placeholder={autoH > 0 ? autoH.toFixed(2) : "hrs"}
+                      value={manual ?? ""}
+                      onChange={(e) => setHoursOverride({ ...hoursOverride, [fb.id]: e.target.value })}
+                      title={isManual ? "Manually overridden" : "Auto-filled from approved FB"}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
