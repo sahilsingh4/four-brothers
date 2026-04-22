@@ -8855,12 +8855,436 @@ const CustomerPortal = ({ token, onBack }) => {
   );
 };
 
+// ========== HOME / DASHBOARD TAB ==========
+const HomeTab = ({
+  freightBills, dispatches, contacts, projects, invoices, quotes, company,
+  onJumpTab, onToast,
+}) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // SECTION 1: Pending FB reviews
+  const pendingFbs = useMemo(() =>
+    freightBills.filter((fb) => (fb.status || "pending") === "pending")
+      .sort((a, b) => new Date(b.submittedAt || 0) - new Date(a.submittedAt || 0)),
+    [freightBills]);
+
+  // SECTION 2: Below-minimum FBs needing admin confirmation
+  const belowMinFbs = useMemo(() => {
+    return freightBills.filter((fb) => {
+      if (fb.minHoursApplied) return false;
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const p = projects.find((pp) => pp.id === d?.projectId);
+      const minH = Number(p?.minimumHours) || 0;
+      if (minH <= 0) return false;
+      let h = Number(fb.hoursBilled) || 0;
+      if (!h && fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins > 0) h = mins / 60;
+      }
+      return h > 0 && h < minH;
+    });
+  }, [freightBills, dispatches, projects]);
+
+  // SECTION 3 & 4: Invoice statuses
+  const invoiceStatus = (inv) => {
+    if (inv.statusOverride) return inv.statusOverride;
+    const paid = Number(inv.amountPaid || 0);
+    const total = Number(inv.total || 0);
+    if (total === 0) return "outstanding";
+    if (paid >= total - 0.01) return "paid";
+    if (paid > 0) return "partial";
+    if (inv.dueDate) {
+      const due = new Date(inv.dueDate);
+      if (!isNaN(due) && due < new Date()) return "overdue";
+    }
+    return "outstanding";
+  };
+  const unpaidInvoices = useMemo(() =>
+    invoices.filter((i) => ["outstanding", "partial", "overdue"].includes(invoiceStatus(i)))
+      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || "")),
+    [invoices]);
+  const overdueInvoices = useMemo(() =>
+    invoices.filter((i) => invoiceStatus(i) === "overdue")
+      .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || "")),
+    [invoices]);
+
+  // SECTION 5: Ready-to-pay subs (customer paid FBs waiting for payroll)
+  const readyToPay = useMemo(() => {
+    const bySub = new Map();
+    freightBills.forEach((fb) => {
+      if (fb.status !== "approved") return;
+      if (fb.paidAt) return; // already paid to sub
+      if (!fb.customerPaidAt) return; // customer hasn't paid yet
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const assignment = (d?.assignments || []).find((a) => a.aid === fb.assignmentId);
+      if (!assignment || !assignment.payRate) return;
+
+      let qty = 0;
+      const method = assignment.payMethod || "hour";
+      if (method === "hour") {
+        if (fb.hoursBilled) qty = Number(fb.hoursBilled);
+        else if (fb.pickupTime && fb.dropoffTime) {
+          const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+          const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) qty = mins / 60;
+        }
+      } else if (method === "ton") qty = Number(fb.tonnage) || 0;
+      else if (method === "load") qty = Number(fb.loadCount) || 1;
+
+      const key = assignment.contactId || `anon_${assignment.aid}`;
+      const contact = contacts.find((c) => c.id === assignment.contactId);
+      const brokPct = Number(contact?.brokeragePercent ?? 8);
+      const brokApplies = !!contact?.brokerageApplies;
+      const rawGross = qty * Number(assignment.payRate);
+      const extraSum = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      const gross = rawGross + extraSum;
+      const net = brokApplies ? gross * (1 - brokPct / 100) : gross;
+
+      if (!bySub.has(key)) {
+        bySub.set(key, { name: assignment.name, count: 0, net: 0, kind: assignment.kind });
+      }
+      const entry = bySub.get(key);
+      entry.count += 1;
+      entry.net += net;
+    });
+    return Array.from(bySub.values()).sort((a, b) => b.net - a.net);
+  }, [freightBills, dispatches, contacts]);
+
+  // SECTION 6: Open orders today
+  const todaysOrders = useMemo(() =>
+    dispatches.filter((d) => {
+      if ((d.status || "open") === "closed") return false;
+      const dd = (d.date || "").slice(0, 10);
+      return dd === todayStr;
+    }).sort((a, b) => (a.code || "").localeCompare(b.code || "")),
+    [dispatches, todayStr]);
+
+  const activeOrdersCount = useMemo(() =>
+    dispatches.filter((d) => (d.status || "open") !== "closed").length,
+    [dispatches]);
+
+  // SECTION 7: Active quotes (not accepted/rejected)
+  const activeQuotes = useMemo(() =>
+    (quotes || []).filter((q) => {
+      const s = (q.status || "pending").toLowerCase();
+      return s !== "accepted" && s !== "rejected" && s !== "closed";
+    }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+    [quotes]);
+
+  // SECTION 8: MTD stats
+  const mtd = useMemo(() => {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    const startMonth = new Date(y, m, 1);
+    let invoicedTotal = 0;
+    let paidTotal = 0;
+    invoices.forEach((i) => {
+      const d = new Date(i.invoiceDate || i.createdAt || 0);
+      if (d >= startMonth) {
+        invoicedTotal += Number(i.total) || 0;
+        paidTotal += Number(i.amountPaid) || 0;
+      }
+    });
+    const activeProjectsCount = projects.filter((p) => (p.status || "active") === "active").length;
+    return { invoicedTotal, paidTotal, activeProjectsCount };
+  }, [invoices, projects]);
+
+  // Totals
+  const totalUnpaid = unpaidInvoices.reduce((s, i) => s + ((Number(i.total) || 0) - (Number(i.amountPaid) || 0)), 0);
+  const totalOverdue = overdueInvoices.reduce((s, i) => s + ((Number(i.total) || 0) - (Number(i.amountPaid) || 0)), 0);
+  const totalReadyToPay = readyToPay.reduce((s, x) => s + x.net, 0);
+
+  // Reusable card wrapper
+  const SectionCard = ({ title, icon, count, total, color = "var(--steel)", bg = "#FFF", onClick, children, empty }) => (
+    <div
+      className="fbt-card"
+      style={{
+        padding: 0, overflow: "hidden", cursor: onClick ? "pointer" : "default",
+        transition: "transform 0.1s",
+      }}
+      onClick={onClick}
+      onMouseDown={(e) => { if (onClick) e.currentTarget.style.transform = "translateY(1px)"; }}
+      onMouseUp={(e) => { if (onClick) e.currentTarget.style.transform = ""; }}
+      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.transform = ""; }}
+    >
+      <div style={{ padding: "12px 16px", background: color, color: color === "#FFF" || color === "#F5F5F4" ? "var(--steel)" : "var(--cream)", display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {icon}
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", opacity: 0.85 }}>{title}</div>
+            <div className="fbt-display" style={{ fontSize: 20 }}>{count ?? 0}{total != null ? ` · ${fmt$(total)}` : ""}</div>
+          </div>
+        </div>
+        {onClick && <span className="fbt-mono" style={{ fontSize: 10, opacity: 0.7 }}>OPEN ▸</span>}
+      </div>
+      <div style={{ padding: 12, background: bg }}>
+        {count === 0 ? (
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", textAlign: "center", padding: "12px 0" }}>
+            {empty || "NOTHING PENDING ✓"}
+          </div>
+        ) : children}
+      </div>
+    </div>
+  );
+
+  const Row = ({ left, right, sub, onClick }) => (
+    <div
+      onClick={(e) => { if (onClick) { e.stopPropagation(); onClick(); } }}
+      style={{
+        padding: "6px 8px", fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+        borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between",
+        gap: 8, cursor: onClick ? "pointer" : "default",
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {left}
+        {sub && <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 1 }}>{sub}</div>}
+      </div>
+      {right && <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{right}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+
+      {/* Welcome header */}
+      <div className="fbt-card" style={{ padding: "18px 22px", background: "linear-gradient(135deg, var(--steel), #3F3B38)", color: "var(--cream)" }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em" }}>
+          ▸ COMMAND CENTER · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+        </div>
+        <h2 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>
+          {company?.name || "4 BROTHERS TRUCKING"}
+        </h2>
+      </div>
+
+      {/* MTD stat strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num" style={{ color: "var(--good)" }}>{fmt$(mtd.invoicedTotal).slice(0, 10)}</div>
+          <div className="stat-label">MTD Invoiced</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16, background: "var(--good)", color: "#FFF" }}>
+          <div className="stat-num" style={{ color: "#FFF" }}>{fmt$(mtd.paidTotal).slice(0, 10)}</div>
+          <div className="stat-label" style={{ color: "#FFF" }}>MTD Collected</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{activeOrdersCount}</div>
+          <div className="stat-label">Active Orders</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{mtd.activeProjectsCount}</div>
+          <div className="stat-label">Active Projects</div>
+        </div>
+      </div>
+
+      {/* Cards grid - priority order */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 16 }}>
+
+        {/* 1. Pending Review */}
+        <SectionCard
+          title="NEEDS REVIEW · FB APPROVAL"
+          icon={<ShieldCheck size={18} />}
+          count={pendingFbs.length}
+          color={pendingFbs.length > 0 ? "var(--hazard)" : "var(--good)"}
+          bg={pendingFbs.length > 0 ? "#FEF3C7" : "#F0FDF4"}
+          onClick={() => onJumpTab("review")}
+          empty="NO PENDING FBs ✓"
+        >
+          {pendingFbs.slice(0, 5).map((fb) => {
+            const d = dispatches.find((x) => x.id === fb.dispatchId);
+            return (
+              <Row
+                key={fb.id}
+                left={<><strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}</>}
+                sub={`Order #${d?.code || "—"} · ${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—"}`}
+              />
+            );
+          })}
+          {pendingFbs.length > 5 && <Row left={`+ ${pendingFbs.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 2. Below minimum hours */}
+        <SectionCard
+          title="BELOW MIN HOURS · NEEDS CONFIRM"
+          icon={<AlertTriangle size={18} />}
+          count={belowMinFbs.length}
+          color={belowMinFbs.length > 0 ? "var(--safety)" : "var(--good)"}
+          bg={belowMinFbs.length > 0 ? "#FEF2F2" : "#F0FDF4"}
+          onClick={() => onJumpTab("review")}
+          empty="NO MIN-HOUR EDGE CASES ✓"
+        >
+          {belowMinFbs.slice(0, 5).map((fb) => {
+            const d = dispatches.find((x) => x.id === fb.dispatchId);
+            const p = projects.find((pp) => pp.id === d?.projectId);
+            return (
+              <Row
+                key={fb.id}
+                left={<><strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}</>}
+                sub={`${p?.name || "—"} · min ${p?.minimumHours}hr`}
+                right={`${(Number(fb.hoursBilled) || 0).toFixed(1)}hr`}
+              />
+            );
+          })}
+          {belowMinFbs.length > 5 && <Row left={`+ ${belowMinFbs.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 3. Unpaid invoices (all) */}
+        <SectionCard
+          title="UNPAID INVOICES"
+          icon={<Receipt size={18} />}
+          count={unpaidInvoices.length}
+          total={totalUnpaid}
+          color={unpaidInvoices.length > 0 ? "var(--hazard)" : "var(--good)"}
+          bg={unpaidInvoices.length > 0 ? "#FEF3C7" : "#F0FDF4"}
+          onClick={() => onJumpTab("invoices")}
+          empty="ALL INVOICES PAID ✓"
+        >
+          {unpaidInvoices.slice(0, 5).map((inv) => {
+            const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
+            const status = invoiceStatus(inv);
+            return (
+              <Row
+                key={inv.id || inv.invoiceNumber}
+                left={<><strong>{inv.invoiceNumber}</strong> · {inv.billToName}</>}
+                sub={`${inv.invoiceDate}${inv.dueDate ? ` · due ${inv.dueDate}` : ""} · ${status}`}
+                right={fmt$(bal)}
+              />
+            );
+          })}
+          {unpaidInvoices.length > 5 && <Row left={`+ ${unpaidInvoices.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 4. Overdue invoices */}
+        <SectionCard
+          title="OVERDUE INVOICES"
+          icon={<Clock size={18} />}
+          count={overdueInvoices.length}
+          total={totalOverdue}
+          color={overdueInvoices.length > 0 ? "var(--safety)" : "var(--good)"}
+          bg={overdueInvoices.length > 0 ? "#FEE2E2" : "#F0FDF4"}
+          onClick={() => onJumpTab("invoices")}
+          empty="NOTHING OVERDUE ✓"
+        >
+          {overdueInvoices.slice(0, 5).map((inv) => {
+            const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
+            const daysPast = inv.dueDate ? Math.floor((Date.now() - new Date(inv.dueDate)) / 86400000) : 0;
+            return (
+              <Row
+                key={inv.id || inv.invoiceNumber}
+                left={<><strong>{inv.invoiceNumber}</strong> · {inv.billToName}</>}
+                sub={`Due ${inv.dueDate} · ${daysPast}d past`}
+                right={fmt$(bal)}
+              />
+            );
+          })}
+          {overdueInvoices.length > 5 && <Row left={`+ ${overdueInvoices.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 5. Ready to Pay */}
+        <SectionCard
+          title="READY TO PAY · SUBS/DRIVERS"
+          icon={<DollarSign size={18} />}
+          count={readyToPay.length}
+          total={totalReadyToPay}
+          color={readyToPay.length > 0 ? "var(--good)" : "var(--steel)"}
+          bg={readyToPay.length > 0 ? "#F0FDF4" : "#F5F5F4"}
+          onClick={() => onJumpTab("payroll")}
+          empty="PAYROLL CAUGHT UP ✓"
+        >
+          {readyToPay.slice(0, 5).map((s, idx) => (
+            <Row
+              key={idx}
+              left={<><strong>{s.name}</strong></>}
+              sub={`${s.kind === "driver" ? "Driver" : "Sub"} · ${s.count} FB${s.count !== 1 ? "s" : ""}`}
+              right={fmt$(s.net)}
+            />
+          ))}
+          {readyToPay.length > 5 && <Row left={`+ ${readyToPay.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 6. Today's orders */}
+        <SectionCard
+          title="OPEN ORDERS · TODAY"
+          icon={<ClipboardList size={18} />}
+          count={todaysOrders.length}
+          color="var(--steel)"
+          bg="#F5F5F4"
+          onClick={() => onJumpTab("dispatches")}
+          empty="NO ORDERS SCHEDULED TODAY"
+        >
+          {todaysOrders.slice(0, 5).map((d) => (
+            <Row
+              key={d.id}
+              left={<><strong>#{d.code}</strong> · {d.jobName || "—"}</>}
+              sub={`${d.clientName || "—"} · ${d.trucksExpected || 1} trucks`}
+            />
+          ))}
+          {todaysOrders.length > 5 && <Row left={`+ ${todaysOrders.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 7. Active quotes */}
+        <SectionCard
+          title="ACTIVE QUOTES"
+          icon={<Mail size={18} />}
+          count={activeQuotes.length}
+          color="var(--steel)"
+          bg="#F5F5F4"
+          onClick={() => onJumpTab("quotes")}
+          empty="NO PENDING QUOTES"
+        >
+          {activeQuotes.slice(0, 5).map((q) => (
+            <Row
+              key={q.id}
+              left={<><strong>{q.companyName || q.contactName || "—"}</strong></>}
+              sub={`${q.createdAt ? new Date(q.createdAt).toLocaleDateString() : "—"} · ${q.status || "pending"}`}
+              right={q.estimatedValue ? fmt$(q.estimatedValue) : ""}
+            />
+          ))}
+          {activeQuotes.length > 5 && <Row left={`+ ${activeQuotes.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 8. Recent activity feed */}
+        <SectionCard
+          title="RECENT FB SUBMISSIONS"
+          icon={<Activity size={18} />}
+          count={freightBills.filter((fb) => fb.submittedAt && (Date.now() - new Date(fb.submittedAt)) < 48 * 3600 * 1000).length}
+          color="var(--steel)"
+          bg="#F5F5F4"
+          empty="NO RECENT SUBMISSIONS"
+        >
+          {freightBills
+            .filter((fb) => fb.submittedAt)
+            .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+            .slice(0, 5)
+            .map((fb) => {
+              const d = dispatches.find((x) => x.id === fb.dispatchId);
+              const ago = Math.round((Date.now() - new Date(fb.submittedAt)) / 60000);
+              const label = ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago / 60)}h ago` : `${Math.round(ago / 1440)}d ago`;
+              return (
+                <Row
+                  key={fb.id}
+                  left={<><strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}</>}
+                  sub={`Order #${d?.code || "—"} · ${label}`}
+                  right={(fb.status || "pending").slice(0, 3).toUpperCase()}
+                />
+              );
+            })}
+        </SectionCard>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
-  const [tab, setTab] = useState("dispatches");
+  const [tab, setTab] = useState("home");
   const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
   const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const tabs = [
+    { k: "home", l: "Home", ico: <Activity size={16} /> },
     { k: "dispatches", l: "Orders", ico: <ClipboardList size={16} /> },
     { k: "review", l: "Review", ico: <ShieldCheck size={16} /> },
     { k: "payroll", l: "Payroll", ico: <DollarSign size={16} /> },
@@ -8910,6 +9334,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         </div>
       </div>
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 80px" }}>
+        {tab === "home" && <HomeTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} quotes={quotes || []} company={company} onJumpTab={(k) => setTab(k)} onToast={onToast} />}
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} onToast={onToast} />}
