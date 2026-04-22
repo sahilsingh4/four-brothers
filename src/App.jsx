@@ -107,12 +107,16 @@ const Toast = ({ msg, onClose }) => {
 };
 
 const Lightbox = ({ src, onClose }) => (
-  <div className="modal-bg" onClick={onClose} style={{ alignItems: "center" }}>
-    <div style={{ position: "relative", maxWidth: "90vw", maxHeight: "90vh" }}>
-      <button onClick={onClose} style={{ position: "absolute", top: -40, right: 0, background: "var(--hazard)", border: "2px solid var(--steel)", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+  <div
+    className="modal-bg"
+    onClick={onClose}
+    style={{ alignItems: "center", zIndex: 10000, background: "rgba(0,0,0,0.92)" }}
+  >
+    <div style={{ position: "relative", maxWidth: "95vw", maxHeight: "95vh" }} onClick={(e) => e.stopPropagation()}>
+      <button onClick={onClose} style={{ position: "absolute", top: -40, right: 0, background: "var(--hazard)", border: "2px solid var(--steel)", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }}>
         <X size={18} />
       </button>
-      <img src={src} alt="Scale ticket" style={{ maxWidth: "90vw", maxHeight: "90vh", border: "3px solid var(--hazard)" }} />
+      <img src={src} alt="Scale ticket" style={{ maxWidth: "95vw", maxHeight: "95vh", border: "3px solid var(--hazard)", display: "block" }} />
     </div>
   </div>
 );
@@ -5518,6 +5522,191 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
     onToast("REPORT OPENED — PRINT OR SAVE AS PDF");
   };
 
+  // Download FULL PACKET — one full page per FB with full-size photos
+  const downloadPacket = () => {
+    if (results.length === 0) { onToast("NO RESULTS"); return; }
+    const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const now = new Date().toLocaleString();
+    const totalTons = results.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+    const totalHours = results.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0);
+    const totalLoads = results.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
+
+    // Build filter summary
+    const filterSummary = [];
+    if (fromDate) filterSummary.push(`From ${fromDate}`);
+    if (toDate) filterSummary.push(`To ${toDate}`);
+    if (customerId) {
+      const c = customers.find((x) => String(x.id) === String(customerId));
+      if (c) filterSummary.push(`Customer: ${c.companyName}`);
+    }
+    if (projectId) {
+      const p = projects.find((x) => String(x.id) === String(projectId));
+      if (p) filterSummary.push(`Project: ${p.name}`);
+    }
+    if (search) filterSummary.push(`Search: "${search}"`);
+    if (statusFilter !== "all") filterSummary.push(`Status: ${statusFilter}`);
+
+    // Cover page
+    const coverHtml = `
+      <div class="page cover">
+        <div class="letterhead">
+          <h1>${esc(company?.name || "4 Brothers Trucking, LLC")}</h1>
+          <div class="sub">${esc(company?.address || "Bay Point, CA")}${company?.phone ? ` · ${esc(company.phone)}` : ""}</div>
+        </div>
+        <h2>FREIGHT BILL PACKET</h2>
+        <div class="meta">
+          <div><strong>Generated:</strong> ${esc(now)}</div>
+          <div><strong>Records:</strong> ${results.length} freight bill${results.length !== 1 ? "s" : ""}</div>
+          ${filterSummary.length > 0 ? `<div><strong>Filters:</strong> ${esc(filterSummary.join(" · "))}</div>` : ""}
+        </div>
+        <div class="totals-box">
+          <div class="totals-row"><span>Total Tons</span><strong>${totalTons.toFixed(2)}</strong></div>
+          <div class="totals-row"><span>Total Loads</span><strong>${totalLoads}</strong></div>
+          <div class="totals-row"><span>Total Hours</span><strong>${totalHours.toFixed(2)}</strong></div>
+        </div>
+
+        <h3>Index</h3>
+        <table class="index">
+          <thead><tr><th>#</th><th>FB #</th><th>Date</th><th>Driver · Truck</th><th>Order / Job</th><th>Customer</th><th>Tons</th><th>Hrs</th><th>Status</th></tr></thead>
+          <tbody>
+            ${results.map((fb, idx) => {
+              const d = dispatches.find((x) => x.id === fb.dispatchId);
+              const customer = contacts.find((c) => c.id === d?.clientId);
+              return `<tr>
+                <td>${idx + 1}</td>
+                <td>${esc(fb.freightBillNumber) || "—"}</td>
+                <td>${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}</td>
+                <td>${esc(fb.driverName || "—")}${fb.truckNumber ? ` · T${esc(fb.truckNumber)}` : ""}</td>
+                <td>${esc(d?.code || "")} — ${esc(d?.jobName || "")}</td>
+                <td>${esc(customer?.companyName || d?.clientName || "")}</td>
+                <td style="text-align:right;">${fb.tonnage || ""}</td>
+                <td style="text-align:right;">${fb.hoursBilled || ""}</td>
+                <td>${esc(fb.status || "pending")}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // One page per FB with full-size photos
+    const fbPages = results.map((fb, idx) => {
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const customer = contacts.find((c) => c.id === d?.clientId);
+      const project = projects.find((p) => p.id === d?.projectId);
+      const photos = fb.photos || [];
+      const hrsDisplay = fb.hoursBilled || (fb.pickupTime && fb.dropoffTime ? `${fb.pickupTime}→${fb.dropoffTime}` : "—");
+      return `
+        <div class="page fb-page">
+          <div class="fb-header">
+            <div class="fb-num">FREIGHT BILL #${esc(fb.freightBillNumber) || "—"}</div>
+            <div class="fb-status status-${esc(fb.status || "pending")}">${esc((fb.status || "pending").toUpperCase())}</div>
+            <div class="fb-seq">Page ${idx + 2} / ${results.length + 1}</div>
+          </div>
+          <div class="fb-grid">
+            <div class="fb-field"><span>DATE</span><strong>${fb.submittedAt ? new Date(fb.submittedAt).toLocaleString() : "—"}</strong></div>
+            <div class="fb-field"><span>DRIVER</span><strong>${esc(fb.driverName || "—")}</strong></div>
+            <div class="fb-field"><span>TRUCK #</span><strong>${esc(fb.truckNumber || "—")}</strong></div>
+            <div class="fb-field"><span>MATERIAL</span><strong>${esc(fb.material || "—")}</strong></div>
+            <div class="fb-field"><span>TONNAGE</span><strong>${fb.tonnage ? `${fb.tonnage}T` : "—"}</strong></div>
+            <div class="fb-field"><span>LOADS</span><strong>${fb.loadCount || 1}</strong></div>
+            <div class="fb-field"><span>HOURS</span><strong>${esc(String(hrsDisplay))}</strong></div>
+            <div class="fb-field"><span>PICKUP → DROPOFF</span><strong>${esc(fb.pickupTime || "—")} → ${esc(fb.dropoffTime || "—")}</strong></div>
+            <div class="fb-field wide"><span>ORDER</span><strong>#${esc(d?.code || "—")} — ${esc(d?.jobName || "—")}</strong></div>
+            <div class="fb-field wide"><span>CUSTOMER</span><strong>${esc(customer?.companyName || d?.clientName || "—")}</strong></div>
+            ${project ? `<div class="fb-field wide"><span>PROJECT</span><strong>${esc(project.name)}${project.contractNumber ? ` (${esc(project.contractNumber)})` : ""}</strong></div>` : ""}
+            ${d?.pickup ? `<div class="fb-field wide"><span>PICKUP LOC</span><strong>${esc(d.pickup)}</strong></div>` : ""}
+            ${d?.dropoff ? `<div class="fb-field wide"><span>DROPOFF LOC</span><strong>${esc(d.dropoff)}</strong></div>` : ""}
+          </div>
+          ${fb.description ? `<div class="fb-desc"><div class="label">DESCRIPTION</div>${esc(fb.description)}</div>` : ""}
+          ${fb.notes ? `<div class="fb-desc"><div class="label">DRIVER NOTES</div>${esc(fb.notes)}</div>` : ""}
+          ${fb.adminNotes ? `<div class="fb-desc admin"><div class="label">ADMIN NOTES</div>${esc(fb.adminNotes)}</div>` : ""}
+          ${photos.length > 0 ? `
+            <div class="fb-photos-header">SCALE TICKETS (${photos.length})</div>
+            <div class="fb-photos">
+              ${photos.map((p, pidx) => `
+                <div class="photo-wrap">
+                  <img src="${p.dataUrl}" alt="Scale ticket ${pidx + 1}" />
+                  <div class="photo-caption">Ticket ${pidx + 1} of ${photos.length}</div>
+                </div>
+              `).join("")}
+            </div>
+          ` : '<div class="no-photos">No scale tickets attached</div>'}
+          <div class="fb-footer">
+            ${esc(company?.name || "4 Brothers Trucking, LLC")} · FB #${esc(fb.freightBillNumber) || "—"} · ${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const html = `<!doctype html><html><head><title>FB Packet — ${esc(now)}</title>
+      <style>
+        @page { size: letter; margin: 0.5in; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #1C1917; }
+        .page { page-break-after: always; padding: 0; }
+        .page:last-child { page-break-after: auto; }
+
+        /* Cover */
+        .cover { padding: 20px 0; }
+        .letterhead { border-bottom: 3px solid #F59E0B; padding-bottom: 10px; margin-bottom: 20px; }
+        .letterhead h1 { font-size: 22px; margin: 0; letter-spacing: 0.02em; }
+        .letterhead .sub { font-size: 11px; color: #666; margin-top: 4px; }
+        .cover h2 { font-size: 28px; margin: 0 0 14px; color: #1C1917; letter-spacing: 0.05em; }
+        .meta { font-size: 12px; line-height: 1.7; padding: 10px 14px; background: #F5F5F4; margin-bottom: 14px; }
+        .totals-box { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .totals-row { padding: 12px; background: #FEF3C7; border: 2px solid #F59E0B; text-align: center; font-size: 11px; text-transform: uppercase; }
+        .totals-row strong { display: block; font-size: 22px; color: #1C1917; margin-top: 4px; }
+        .cover h3 { font-size: 14px; margin: 10px 0; border-bottom: 2px solid #1C1917; padding-bottom: 4px; }
+        .index { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .index th, .index td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; vertical-align: top; }
+        .index th { background: #1C1917; color: #FAFAF9; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
+        .index tr:nth-child(even) td { background: #F5F5F4; }
+
+        /* FB page */
+        .fb-page { display: flex; flex-direction: column; min-height: 10in; }
+        .fb-header { border-bottom: 3px solid #F59E0B; padding-bottom: 8px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+        .fb-num { font-size: 20px; font-weight: 700; letter-spacing: 0.02em; flex: 1; }
+        .fb-status { padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; border: 2px solid #1C1917; }
+        .fb-status.status-approved { background: #16A34A; color: #FFF; border-color: #16A34A; }
+        .fb-status.status-pending { background: #F59E0B; color: #1C1917; }
+        .fb-status.status-rejected { background: #DC2626; color: #FFF; border-color: #DC2626; }
+        .fb-seq { font-size: 10px; color: #999; }
+        .fb-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+        .fb-field { padding: 6px 10px; background: #F5F5F4; border-left: 3px solid #1C1917; }
+        .fb-field.wide { grid-column: 1 / -1; }
+        .fb-field span { display: block; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; }
+        .fb-field strong { font-size: 12px; display: block; margin-top: 2px; }
+        .fb-desc { padding: 10px 12px; background: #FEF3C7; border-left: 3px solid #F59E0B; margin-bottom: 10px; font-size: 12px; white-space: pre-wrap; }
+        .fb-desc.admin { background: #FFEDD5; border-color: #EA580C; }
+        .fb-desc .label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+        .fb-photos-header { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin: 14px 0 8px; border-bottom: 2px solid #1C1917; padding-bottom: 4px; }
+        .fb-photos { display: flex; flex-direction: column; gap: 10px; }
+        .photo-wrap { page-break-inside: avoid; border: 2px solid #1C1917; padding: 4px; background: #FFF; }
+        .photo-wrap img { width: 100%; max-height: 7in; object-fit: contain; display: block; }
+        .photo-caption { font-size: 10px; color: #666; text-align: center; padding: 4px; background: #F5F5F4; }
+        .no-photos { padding: 20px; text-align: center; background: #F5F5F4; color: #999; font-size: 12px; border: 2px dashed #ccc; }
+        .fb-footer { margin-top: auto; padding-top: 10px; border-top: 1px solid #ccc; font-size: 9px; color: #999; text-align: center; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .fb-header { border-bottom-color: #F59E0B !important; }
+        }
+        .print-btn { position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #F59E0B; color: #1C1917; border: 3px solid #1C1917; font-weight: 700; cursor: pointer; z-index: 100; font-size: 14px; }
+        @media print { .print-btn { display: none; } }
+      </style></head><body>
+      <button class="print-btn" onclick="window.print()">🖨 PRINT / SAVE AS PDF</button>
+      ${coverHtml}
+      ${fbPages}
+      </body></html>`;
+
+    const w = window.open("", "_blank", "width=1000,height=800");
+    if (!w) { onToast("POP-UP BLOCKED — ALLOW POPUPS & RETRY"); return; }
+    w.document.write(html);
+    w.document.close();
+    onToast(`PACKET OPENED — ${results.length} FB${results.length !== 1 ? "S" : ""} · HIT PRINT TO SAVE PDF`);
+  };
+
   return (
     <div className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
       {editing && (
@@ -5644,12 +5833,15 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
                   {results.length > 0 && ` · ${results.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0).toFixed(1)}T · ${results.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0).toFixed(1)}HRS`}
                 </div>
                 {results.length > 0 && (
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button onClick={exportCSV} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, background: "var(--steel)", color: "var(--cream)", borderColor: "var(--steel)" }}>
                       <Download size={11} style={{ marginRight: 3 }} /> CSV
                     </button>
                     <button onClick={printReport} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, background: "var(--steel)", color: "var(--cream)", borderColor: "var(--steel)" }}>
-                      <Printer size={11} style={{ marginRight: 3 }} /> PRINT / PDF
+                      <Printer size={11} style={{ marginRight: 3 }} /> SUMMARY PDF
+                    </button>
+                    <button onClick={downloadPacket} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }} title="Full packet: one page per FB with full-size scale tickets">
+                      <FileDown size={11} style={{ marginRight: 3 }} /> FULL PACKET PDF
                     </button>
                   </div>
                 )}
