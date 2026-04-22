@@ -112,6 +112,9 @@ const fbFromDB = (row) => ({
   paidCheckNumber: row.paid_check_number || "",
   paidAmount: row.paid_amount !== null && row.paid_amount !== undefined ? Number(row.paid_amount) : null,
   paidNotes: row.paid_notes || "",
+  invoiceId: row.invoice_id || null,
+  customerPaidAt: row.customer_paid_at || null,
+  customerPaidAmount: row.customer_paid_amount !== null && row.customer_paid_amount !== undefined ? Number(row.customer_paid_amount) : null,
 });
 
 const fbToDB = (fb) => ({
@@ -141,6 +144,9 @@ const fbToDB = (fb) => ({
   paid_check_number: fb.paidCheckNumber || null,
   paid_amount: fb.paidAmount !== null && fb.paidAmount !== undefined && fb.paidAmount !== "" ? Number(fb.paidAmount) : null,
   paid_notes: fb.paidNotes || null,
+  invoice_id: fb.invoiceId || null,
+  customer_paid_at: fb.customerPaidAt || null,
+  customer_paid_amount: fb.customerPaidAmount !== null && fb.customerPaidAmount !== undefined && fb.customerPaidAmount !== "" ? Number(fb.customerPaidAmount) : null,
 });
 
 export const fetchFreightBills = async () => {
@@ -376,6 +382,10 @@ const invoiceFromDB = (row) => ({
   freightBillIds: row.freight_bill_ids || [],
   total: row.total,
   createdAt: row.created_at,
+  amountPaid: row.amount_paid !== null && row.amount_paid !== undefined ? Number(row.amount_paid) : 0,
+  paymentHistory: row.payment_history || [],
+  paymentStatus: row.payment_status || "outstanding",
+  statusOverride: row.status_override || null,
 });
 
 const invoiceToDB = (i) => ({
@@ -400,7 +410,22 @@ const invoiceToDB = (i) => ({
   include_photos: !!i.includePhotos,
   freight_bill_ids: i.freightBillIds || [],
   total: i.total ? Number(i.total) : null,
+  amount_paid: Number(i.amountPaid) || 0,
+  payment_history: i.paymentHistory || [],
+  payment_status: i.paymentStatus || "outstanding",
+  status_override: i.statusOverride || null,
 });
+
+export const updateInvoice = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("invoices")
+    .update(invoiceToDB(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateInvoice:", error); throw error; }
+  return invoiceFromDB(data);
+};
 
 export const fetchInvoices = async () => {
   const { data, error } = await supabase.from("invoices").select("*").order("invoice_date", { ascending: false });

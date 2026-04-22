@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
 import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save } from "lucide-react";
 
 const GlobalStyles = () => (
@@ -2557,7 +2557,343 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
 };
 
 // ========== INVOICES TAB ==========
-const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], onToast }) => {
+// ========== RECORD PAYMENT MODAL ==========
+const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoices, invoices, onClose, onToast }) => {
+  const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
+  const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
+
+  const [mode, setMode] = useState("full"); // 'full' | 'perfb'
+  const [form, setForm] = useState({
+    amount: balance.toFixed(2),
+    date: new Date().toISOString().slice(0, 10),
+    method: "check",
+    reference: "",
+    notes: "",
+  });
+  const [checkedFbs, setCheckedFbs] = useState(() => {
+    const m = {};
+    invFbs.forEach((fb) => { m[fb.id] = false; });
+    return m;
+  });
+  const [saving, setSaving] = useState(false);
+
+  // For per-FB mode, estimate the per-FB gross within this invoice
+  // (uses the invoice's pricing method/rate since we don't have line-level totals stored)
+  const fbEstimate = (fb) => {
+    const method = invoice.pricingMethod || "ton";
+    const rate = Number(invoice.rate) || 0;
+    let qty = 0;
+    if (method === "ton") qty = Number(fb.tonnage) || 0;
+    else if (method === "load") qty = Number(fb.loadCount) || 1;
+    else if (method === "hour") {
+      if (fb.hoursBilled) qty = Number(fb.hoursBilled);
+      else if (fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        if (!isNaN(h1) && !isNaN(h2)) {
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) qty = mins / 60;
+        }
+      }
+    }
+    return qty * rate;
+  };
+
+  // Auto-calc amount from checked FBs in per-FB mode
+  const perFbTotal = useMemo(() => {
+    if (mode !== "perfb") return 0;
+    return invFbs.filter((fb) => checkedFbs[fb.id]).reduce((s, fb) => s + fbEstimate(fb), 0);
+  }, [checkedFbs, mode, invFbs]);
+
+  useEffect(() => {
+    if (mode === "perfb") {
+      setForm((f) => ({ ...f, amount: perFbTotal.toFixed(2) }));
+    } else {
+      setForm((f) => ({ ...f, amount: balance.toFixed(2) }));
+    }
+  }, [mode, perFbTotal]);
+
+  const proceed = async () => {
+    const amt = Number(form.amount);
+    if (!amt || amt <= 0) { onToast("ENTER AMOUNT"); return; }
+    if (mode === "perfb" && Object.values(checkedFbs).every((v) => !v)) {
+      onToast("SELECT AT LEAST ONE FB"); return;
+    }
+
+    setSaving(true);
+    try {
+      // 1. Stamp each selected FB (or all if full) with customer_paid_at + amount (prorated)
+      const fbsToStamp = mode === "full"
+        ? invFbs.filter((fb) => !fb.customerPaidAt) // skip already paid
+        : invFbs.filter((fb) => checkedFbs[fb.id]);
+
+      if (fbsToStamp.length > 0) {
+        const baseSum = fbsToStamp.reduce((s, fb) => s + fbEstimate(fb), 0);
+        for (const fb of fbsToStamp) {
+          const share = baseSum > 0 ? (fbEstimate(fb) / baseSum) * amt : amt / fbsToStamp.length;
+          await editFreightBill(fb.id, {
+            ...fb,
+            customerPaidAt: new Date(form.date).toISOString(),
+            customerPaidAmount: Number(share.toFixed(2)),
+          });
+        }
+      }
+
+      // 2. Update invoice: append to payment_history + recompute amount_paid
+      const newPayment = {
+        date: new Date(form.date).toISOString(),
+        amount: amt,
+        method: form.method,
+        reference: form.reference || "",
+        notes: form.notes || "",
+        fbIds: fbsToStamp.map((fb) => fb.id),
+        mode,
+      };
+      const newHistory = [...(invoice.paymentHistory || []), newPayment];
+      const newAmountPaid = newHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const newTotal = Number(invoice.total) || 0;
+      let newStatus = "outstanding";
+      if (newTotal > 0 && newAmountPaid >= newTotal - 0.01) newStatus = "paid";
+      else if (newAmountPaid > 0) newStatus = "partial";
+
+      // Use direct updateInvoice since setInvoices diff-logic relies on object mutation
+      try {
+        const { updateInvoice } = await import("./db");
+        await updateInvoice(invoice.id, {
+          ...invoice,
+          amountPaid: newAmountPaid,
+          paymentHistory: newHistory,
+          paymentStatus: newStatus,
+        });
+      } catch (e) {
+        console.error("updateInvoice failed:", e);
+      }
+
+      onToast(`✓ PAYMENT RECORDED — ${fmt$(amt)}`);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      onToast("RECORD PAYMENT FAILED");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+        <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>RECORD CUSTOMER PAYMENT</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{invoice.invoiceNumber}</h3>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
+              {invoice.billToName} · Total {fmt$(invoice.total)} · Balance {fmt$(balance)}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 22, display: "grid", gap: 14 }}>
+          {/* Mode toggle */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setMode("full")}
+              className={mode === "full" ? "btn-primary" : "btn-ghost"}
+              style={{ flex: 1, padding: "10px", fontSize: 11 }}
+            >
+              FULL INVOICE PAID
+            </button>
+            <button
+              onClick={() => setMode("perfb")}
+              className={mode === "perfb" ? "btn-primary" : "btn-ghost"}
+              style={{ flex: 1, padding: "10px", fontSize: 11 }}
+            >
+              PARTIAL (PICK FBs)
+            </button>
+          </div>
+
+          {/* Per-FB checklist */}
+          {mode === "perfb" && (
+            <div style={{ padding: 10, border: "1.5px solid var(--steel)", background: "#F5F5F4", maxHeight: 280, overflowY: "auto" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
+                ▸ CHECK WHICH FBs THE CUSTOMER PAID FOR
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 10, padding: "4px 8px" }}
+                  onClick={() => { const m = {}; invFbs.forEach((fb) => { m[fb.id] = !fb.customerPaidAt; }); setCheckedFbs(m); }}
+                >
+                  CHECK ALL UNPAID
+                </button>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 10, padding: "4px 8px" }}
+                  onClick={() => { const m = {}; invFbs.forEach((fb) => { m[fb.id] = false; }); setCheckedFbs(m); }}
+                >
+                  CLEAR
+                </button>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                {invFbs.map((fb) => {
+                  const alreadyPaid = !!fb.customerPaidAt;
+                  const est = fbEstimate(fb);
+                  return (
+                    <label
+                      key={fb.id}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
+                        background: alreadyPaid ? "#E5E7EB" : "#FFF", border: "1px solid var(--steel)",
+                        opacity: alreadyPaid ? 0.6 : 1, cursor: alreadyPaid ? "not-allowed" : "pointer",
+                        fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!checkedFbs[fb.id]}
+                        disabled={alreadyPaid}
+                        onChange={(e) => setCheckedFbs({ ...checkedFbs, [fb.id]: e.target.checked })}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}
+                        {alreadyPaid && <span style={{ color: "var(--good)", marginLeft: 6 }}>✓ ALREADY PAID</span>}
+                      </span>
+                      <span style={{ fontWeight: 700 }}>{fmt$(est)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label className="fbt-label">Date Received</label>
+              <input className="fbt-input" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Amount Received $</label>
+              <input className="fbt-input" type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label className="fbt-label">Method</label>
+              <select className="fbt-select" value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+                <option value="check">Check</option>
+                <option value="ach">ACH / Wire</option>
+                <option value="cash">Cash</option>
+                <option value="zelle">Zelle</option>
+                <option value="venmo">Venmo</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="fbt-label">Reference / Check #</label>
+              <input className="fbt-input" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} placeholder="e.g. 1024 or confirmation #" />
+            </div>
+          </div>
+
+          <div>
+            <label className="fbt-label">Notes</label>
+            <textarea className="fbt-textarea" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Short-pay reason, dispute notes, etc." style={{ minHeight: 50 }} />
+          </div>
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={proceed} disabled={saving} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
+              <CheckCircle2 size={16} /> RECORD PAYMENT
+            </button>
+            <button onClick={onClose} className="btn-ghost">CANCEL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== INVOICE VIEW MODAL (payment history) ==========
+const InvoiceViewModal = ({ invoice, freightBills, onClose, onToast }) => {
+  const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
+  const history = invoice.paymentHistory || [];
+  const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+        <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>INVOICE DETAILS</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{invoice.invoiceNumber}</h3>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
+              {invoice.billToName} · Total {fmt$(invoice.total)} · Paid {fmt$(invoice.amountPaid || 0)} · Balance {fmt$(balance)}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 22, display: "grid", gap: 16 }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PAYMENT HISTORY</div>
+            {history.length === 0 ? (
+              <div style={{ padding: 18, textAlign: "center", background: "#F5F5F4", fontSize: 12, color: "var(--concrete)" }}>
+                No payments recorded yet.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 4 }}>
+                {history.map((p, idx) => (
+                  <div key={idx} style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <strong>{fmt$(p.amount)}</strong> · {p.date ? new Date(p.date).toLocaleDateString() : "—"} · {p.method?.toUpperCase()}{p.reference ? ` #${p.reference}` : ""}
+                      {p.mode === "perfb" && p.fbIds?.length > 0 && <span style={{ color: "var(--concrete)" }}> · {p.fbIds.length} FB{p.fbIds.length !== 1 ? "s" : ""}</span>}
+                      {p.notes && <div style={{ color: "var(--concrete)", fontSize: 11, marginTop: 2, fontStyle: "italic" }}>"{p.notes}"</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ FREIGHT BILLS ON THIS INVOICE ({invFbs.length})</div>
+            <div style={{ display: "grid", gap: 4, maxHeight: 300, overflowY: "auto" }}>
+              {invFbs.map((fb) => {
+                const paid = !!fb.customerPaidAt;
+                return (
+                  <div key={fb.id} style={{ padding: 8, background: paid ? "#F0FDF4" : "#FEF3C7", border: "1px solid var(--steel)", borderLeft: `3px solid ${paid ? "var(--good)" : "var(--hazard)"}`, fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <div>
+                      <strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""}
+                      <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
+                        {fb.tonnage ? `${fb.tonnage}T` : ""}
+                        {fb.loadCount ? ` · ${fb.loadCount} loads` : ""}
+                        {fb.hoursBilled ? ` · ${fb.hoursBilled} hrs` : ""}
+                      </div>
+                    </div>
+                    {paid ? (
+                      <div style={{ color: "var(--good)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                        ✓ {fb.customerPaidAt.slice(0, 10)}
+                        {fb.customerPaidAmount != null && <div style={{ fontSize: 10 }}>{fmt$(fb.customerPaidAmount)}</div>}
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--hazard-deep)", fontWeight: 700, fontSize: 10 }}>UNPAID</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={onClose} className="btn-ghost">CLOSE</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== INVOICES TAB ==========
+const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], editFreightBill, onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -2565,6 +2901,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const [pricingMethod, setPricingMethod] = useState("ton");
   const [rate, setRate] = useState("");
   const [billTo, setBillTo] = useState({ id: "", name: "", address: "", contact: "" });
+  const [payingInvoice, setPayingInvoice] = useState(null);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
   const [jobRef, setJobRef] = useState("");
   const [projectId, setProjectId] = useState("");
   const [poNumber, setPoNumber] = useState("");
@@ -2578,6 +2916,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const [includePhotos, setIncludePhotos] = useState(true);
   const [hoursOverride, setHoursOverride] = useState({}); // fb.id -> hours for "per hour" pricing
   const [includeUnapproved, setIncludeUnapproved] = useState(false);
+  const [showAlreadyInvoiced, setShowAlreadyInvoiced] = useState(false);
 
   useEffect(() => {
     if (company?.defaultTerms && !terms) setTerms(company.defaultTerms);
@@ -2598,7 +2937,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     return 0;
   };
 
-  // Filter freight bills by date + client (dispatch sub/job) + APPROVED status
+  // Filter freight bills by date + client (dispatch sub/job) + APPROVED status + invoice binding
   const matchedBills = useMemo(() => {
     return freightBills.filter((fb) => {
       // Only approved FBs unless explicitly opted in
@@ -2606,6 +2945,9 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       if (!includeUnapproved && status !== "approved") return false;
       // Always hide rejected
       if (status === "rejected") return false;
+
+      // Skip FBs already locked to another invoice (unless toggle enabled)
+      if (!showAlreadyInvoiced && fb.invoiceId) return false;
 
       const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
       if (fromDate && fbDate < fromDate) return false;
@@ -2617,7 +2959,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       }
       return true;
     });
-  }, [freightBills, dispatches, fromDate, toDate, clientFilter, includeUnapproved]);
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, includeUnapproved, showAlreadyInvoiced]);
 
   // When matchedBills change, auto-populate hoursOverride from fb.hoursBilled (if empty)
   useEffect(() => {
@@ -2714,7 +3056,23 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
       // Save to history
       const next = [invoice, ...invoices];
-      setInvoices(next);
+      await setInvoices(next);
+
+      // Find the newly saved invoice (real id from Supabase) and lock FBs to it
+      // Wait briefly for realtime sub to give us the saved invoice, then match by number
+      setTimeout(async () => {
+        const saved = invoices.find((x) => x.invoiceNumber === invoiceNumber);
+        const realId = saved?.id;
+        if (realId && editFreightBill && matchedBills.length > 0) {
+          for (const fb of matchedBills) {
+            if (!fb.invoiceId) {
+              try { await editFreightBill(fb.id, { ...fb, invoiceId: realId }); }
+              catch (e) { console.warn("Could not tag FB with invoice", fb.id, e); }
+            }
+          }
+          onToast(`✓ ${matchedBills.length} FB${matchedBills.length !== 1 ? "S" : ""} LOCKED TO ${invoiceNumber}`);
+        }
+      }, 800);
 
       onToast(`${invoiceNumber} OPENED — HIT PRINT TO SAVE AS PDF`);
     } catch (e) {
@@ -2744,6 +3102,25 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {payingInvoice && (
+        <RecordPaymentModal
+          invoice={payingInvoice}
+          freightBills={freightBills}
+          editFreightBill={editFreightBill}
+          setInvoices={setInvoices}
+          invoices={invoices}
+          onClose={() => setPayingInvoice(null)}
+          onToast={onToast}
+        />
+      )}
+      {viewingInvoice && (
+        <InvoiceViewModal
+          invoice={viewingInvoice}
+          freightBills={freightBills}
+          onClose={() => setViewingInvoice(null)}
+          onToast={onToast}
+        />
+      )}
       {showProfile && <CompanyProfileModal company={company} onSave={setCompany} onClose={() => setShowProfile(false)} onToast={onToast} />}
 
       {/* Company profile summary */}
@@ -2779,7 +3156,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           <div><label className="fbt-label">Client / Sub / Job Contains</label><input className="fbt-input" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} placeholder="e.g. MCI" /></div>
         </div>
 
-        {/* Approval filter — new */}
+        {/* Approval filter */}
         <div style={{ padding: 10, background: includeUnapproved ? "#FEF2F2" : "#F0FDF4", border: "2px solid " + (includeUnapproved ? "var(--safety)" : "var(--good)"), marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
             <input
@@ -2794,6 +3171,25 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           {includeUnapproved && (
             <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginLeft: "auto" }}>
               ⚠ INCLUDING PENDING FBs
+            </span>
+          )}
+        </div>
+
+        {/* Already-invoiced toggle */}
+        <div style={{ padding: 10, background: showAlreadyInvoiced ? "#FEF2F2" : "#F0FDF4", border: "2px solid " + (showAlreadyInvoiced ? "var(--safety)" : "var(--good)"), marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+            <input
+              type="checkbox"
+              checked={!showAlreadyInvoiced}
+              onChange={(e) => setShowAlreadyInvoiced(!e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            <Lock size={14} style={{ color: showAlreadyInvoiced ? "var(--safety)" : "var(--good)" }} />
+            <strong>HIDE FBs ALREADY ON ANOTHER INVOICE</strong>
+          </label>
+          {showAlreadyInvoiced && (
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginLeft: "auto" }}>
+              ⚠ INCLUDING INVOICED FBs (DUPLICATE RISK)
             </span>
           )}
         </div>
@@ -3088,6 +3484,60 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         </div>
       </div>
 
+      {/* Invoice payment stats */}
+      {invoices.length > 0 && (() => {
+        const getStatus = (inv) => {
+          if (inv.statusOverride) return inv.statusOverride;
+          const paid = Number(inv.amountPaid || 0);
+          const total = Number(inv.total || 0);
+          if (total === 0) return "outstanding";
+          if (paid >= total - 0.01) return "paid";
+          if (paid > 0) return "partial";
+          // Check overdue
+          if (inv.dueDate) {
+            const due = new Date(inv.dueDate);
+            if (!isNaN(due) && due < new Date()) return "overdue";
+          }
+          return "outstanding";
+        };
+        const outstanding = invoices.filter((i) => getStatus(i) === "outstanding");
+        const partial = invoices.filter((i) => getStatus(i) === "partial");
+        const overdue = invoices.filter((i) => getStatus(i) === "overdue");
+        const paidThisMonth = invoices.filter((i) => {
+          if (getStatus(i) !== "paid") return false;
+          const lastPay = (i.paymentHistory || [])[i.paymentHistory?.length - 1];
+          if (!lastPay?.date) return false;
+          const d = new Date(lastPay.date);
+          const now = new Date();
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        });
+        const outstandingAmt = [...outstanding, ...partial, ...overdue].reduce((s, i) => s + (Number(i.total) || 0) - (Number(i.amountPaid) || 0), 0);
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
+            <div className="fbt-card" style={{ padding: 16, background: "var(--hazard)", color: "var(--steel)" }}>
+              <div className="stat-num" style={{ color: "var(--steel)" }}>{fmt$(outstandingAmt).slice(0, 10)}</div>
+              <div className="stat-label">Total Outstanding</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 16 }}>
+              <div className="stat-num">{outstanding.length}</div>
+              <div className="stat-label">Outstanding</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 16, background: "#FEF3C7" }}>
+              <div className="stat-num">{partial.length}</div>
+              <div className="stat-label">Partial Pay</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 16, background: overdue.length > 0 ? "var(--safety)" : undefined, color: overdue.length > 0 ? "#FFF" : undefined }}>
+              <div className="stat-num" style={{ color: overdue.length > 0 ? "#FFF" : undefined }}>{overdue.length}</div>
+              <div className="stat-label" style={{ color: overdue.length > 0 ? "#FFF" : undefined }}>Overdue</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 16, background: "var(--good)", color: "#FFF" }}>
+              <div className="stat-num" style={{ color: "#FFF" }}>{paidThisMonth.length}</div>
+              <div className="stat-label" style={{ color: "#FFF" }}>Paid This Month</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Invoice history */}
       <div className="fbt-card" style={{ padding: 0 }}>
         <div style={{ padding: "18px 24px", borderBottom: "2px solid var(--steel)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -3102,23 +3552,64 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         ) : (
           <div className="scroll-x">
             <table className="fbt-table">
-              <thead><tr><th>Invoice #</th><th>Date</th><th>Bill To</th><th>FBs</th><th>Total</th><th></th></tr></thead>
+              <thead><tr><th>Invoice #</th><th>Date</th><th>Bill To</th><th>FBs</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead>
               <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.invoiceNumber}>
-                    <td><strong>{inv.invoiceNumber}</strong></td>
-                    <td>{inv.invoiceDate}</td>
-                    <td>{inv.billToName}</td>
-                    <td>{inv.freightBillIds?.length || 0}</td>
-                    <td style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{fmt$(inv.total)}</td>
-                    <td style={{ display: "flex", gap: 6 }}>
-                      <button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => reDownload(inv)}>
-                        <FileDown size={12} style={{ marginRight: 4 }} /> OPEN
-                      </button>
-                      <button className="btn-danger" onClick={() => removeInvoice(inv.invoiceNumber)}><Trash2 size={12} /></button>
-                    </td>
-                  </tr>
-                ))}
+                {invoices.map((inv) => {
+                  const getStatus = (i) => {
+                    if (i.statusOverride) return i.statusOverride;
+                    const paid = Number(i.amountPaid || 0);
+                    const total = Number(i.total || 0);
+                    if (total === 0) return "outstanding";
+                    if (paid >= total - 0.01) return "paid";
+                    if (paid > 0) return "partial";
+                    if (i.dueDate) {
+                      const due = new Date(i.dueDate);
+                      if (!isNaN(due) && due < new Date()) return "overdue";
+                    }
+                    return "outstanding";
+                  };
+                  const status = getStatus(inv);
+                  const paid = Number(inv.amountPaid || 0);
+                  const balance = (Number(inv.total) || 0) - paid;
+                  const statusBg = {
+                    paid: "var(--good)", partial: "var(--hazard)",
+                    overdue: "var(--safety)", outstanding: "var(--concrete)",
+                  }[status];
+                  return (
+                    <tr key={inv.invoiceNumber}>
+                      <td><strong>{inv.invoiceNumber}</strong></td>
+                      <td>{inv.invoiceDate}</td>
+                      <td>{inv.billToName}</td>
+                      <td>{inv.freightBillIds?.length || 0}</td>
+                      <td style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{fmt$(inv.total)}</td>
+                      <td style={{ color: "var(--good)", fontWeight: 600 }}>{paid > 0 ? fmt$(paid) : "—"}</td>
+                      <td style={{ color: balance > 0 ? "var(--safety)" : "var(--concrete)", fontWeight: 600 }}>{balance > 0 ? fmt$(balance) : "✓"}</td>
+                      <td>
+                        <span className="chip" style={{ background: statusBg, color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                          {status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {status !== "paid" && (
+                          <button
+                            className="btn-primary"
+                            style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)", padding: "4px 10px", fontSize: 11 }}
+                            onClick={() => setPayingInvoice(inv)}
+                          >
+                            <DollarSign size={12} /> PAY
+                          </button>
+                        )}
+                        <button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => setViewingInvoice(inv)}>
+                          <Eye size={12} style={{ marginRight: 4 }} /> VIEW
+                        </button>
+                        <button className="btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }} onClick={() => reDownload(inv)}>
+                          <FileDown size={12} style={{ marginRight: 4 }} /> OPEN
+                        </button>
+                        <button className="btn-danger" onClick={() => removeInvoice(inv.invoiceNumber)}><Trash2 size={12} /></button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -7757,7 +8248,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} company={company} onToast={onToast} />}
-        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} onToast={onToast} />}
+        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
