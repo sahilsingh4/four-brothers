@@ -5,7 +5,6 @@
 import { supabase } from "./supabase";
 
 // ========== DISPATCHES ==========
-// Convert database row → app object
 const dispatchFromDB = (row) => ({
   id: row.id,
   code: row.code,
@@ -27,7 +26,6 @@ const dispatchFromDB = (row) => ({
   updatedAt: row.updated_at,
 });
 
-// Convert app object → database row
 const dispatchToDB = (d) => ({
   code: d.code,
   date: d.date,
@@ -122,8 +120,189 @@ export const deleteFreightBill = async (id) => {
   if (error) { console.error("deleteFreightBill:", error); throw error; }
 };
 
+// ========== CONTACTS ==========
+const contactFromDB = (row) => ({
+  id: row.id,
+  type: row.type || "sub",
+  companyName: row.company_name || "",
+  contactName: row.contact_name || "",
+  phone: row.phone || "",
+  phone2: row.phone2 || "",
+  email: row.email || "",
+  address: row.address || "",
+  typicalTrucks: row.typical_trucks || "",
+  rateNotes: row.rate_notes || "",
+  usdot: row.usdot || "",
+  insurance: row.insurance || "",
+  notes: row.notes || "",
+  favorite: !!row.favorite,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const contactToDB = (c) => ({
+  type: c.type || "sub",
+  company_name: c.companyName || null,
+  contact_name: c.contactName || null,
+  phone: c.phone || null,
+  phone2: c.phone2 || null,
+  email: c.email || null,
+  address: c.address || null,
+  typical_trucks: c.typicalTrucks || null,
+  rate_notes: c.rateNotes || null,
+  usdot: c.usdot || null,
+  insurance: c.insurance || null,
+  notes: c.notes || null,
+  favorite: !!c.favorite,
+});
+
+export const fetchContacts = async () => {
+  const { data, error } = await supabase.from("contacts").select("*").order("company_name", { ascending: true });
+  if (error) { console.error("fetchContacts:", error); return []; }
+  return (data || []).map(contactFromDB);
+};
+
+export const insertContact = async (c) => {
+  const { data, error } = await supabase.from("contacts").insert(contactToDB(c)).select().single();
+  if (error) { console.error("insertContact:", error); throw error; }
+  return contactFromDB(data);
+};
+
+export const updateContact = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("contacts")
+    .update({ ...contactToDB(patch), updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateContact:", error); throw error; }
+  return contactFromDB(data);
+};
+
+export const deleteContact = async (id) => {
+  const { error } = await supabase.from("contacts").delete().eq("id", id);
+  if (error) { console.error("deleteContact:", error); throw error; }
+};
+
+// ========== QUARRIES ==========
+const quarryFromDB = (row) => ({
+  id: row.id,
+  name: row.name,
+  address: row.address || "",
+  contactName: row.contact_name || "",
+  phone: row.phone || "",
+  email: row.email || "",
+  hours: row.hours || "",
+  deliveryTerms: row.delivery_terms || "",
+  scaleInfo: row.scale_info || "",
+  notes: row.notes || "",
+  materials: row.materials || [],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const quarryToDB = (q) => ({
+  name: q.name,
+  address: q.address || null,
+  contact_name: q.contactName || null,
+  phone: q.phone || null,
+  email: q.email || null,
+  hours: q.hours || null,
+  delivery_terms: q.deliveryTerms || null,
+  scale_info: q.scaleInfo || null,
+  notes: q.notes || null,
+  materials: q.materials || [],
+});
+
+export const fetchQuarries = async () => {
+  const { data, error } = await supabase.from("quarries").select("*").order("name", { ascending: true });
+  if (error) { console.error("fetchQuarries:", error); return []; }
+  return (data || []).map(quarryFromDB);
+};
+
+export const insertQuarry = async (q) => {
+  const { data, error } = await supabase.from("quarries").insert(quarryToDB(q)).select().single();
+  if (error) { console.error("insertQuarry:", error); throw error; }
+  return quarryFromDB(data);
+};
+
+export const updateQuarry = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("quarries")
+    .update({ ...quarryToDB(patch), updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateQuarry:", error); throw error; }
+  return quarryFromDB(data);
+};
+
+export const deleteQuarry = async (id) => {
+  const { error } = await supabase.from("quarries").delete().eq("id", id);
+  if (error) { console.error("deleteQuarry:", error); throw error; }
+};
+
+// ========== INVOICES ==========
+const invoiceFromDB = (row) => ({
+  id: row.id,
+  invoiceNumber: row.invoice_number,
+  invoiceDate: row.invoice_date,
+  dueDate: row.due_date || "",
+  billToName: row.bill_to_name || "",
+  billToAddress: row.bill_to_address || "",
+  billToContact: row.bill_to_contact || "",
+  jobReference: row.job_reference || "",
+  pricingMethod: row.pricing_method || "ton",
+  rate: row.rate,
+  extraFees: row.extra_fees || 0,
+  extraFeesLabel: row.extra_fees_label || "",
+  discount: row.discount || 0,
+  terms: row.terms || "",
+  notes: row.notes || "",
+  includePhotos: !!row.include_photos,
+  freightBillIds: row.freight_bill_ids || [],
+  total: row.total,
+  createdAt: row.created_at,
+});
+
+const invoiceToDB = (i) => ({
+  invoice_number: i.invoiceNumber,
+  invoice_date: i.invoiceDate,
+  due_date: i.dueDate || null,
+  bill_to_name: i.billToName || null,
+  bill_to_address: i.billToAddress || null,
+  bill_to_contact: i.billToContact || null,
+  job_reference: i.jobReference || null,
+  pricing_method: i.pricingMethod || null,
+  rate: i.rate ? Number(i.rate) : null,
+  extra_fees: Number(i.extraFees) || 0,
+  extra_fees_label: i.extraFeesLabel || null,
+  discount: Number(i.discount) || 0,
+  terms: i.terms || null,
+  notes: i.notes || null,
+  include_photos: !!i.includePhotos,
+  freight_bill_ids: i.freightBillIds || [],
+  total: i.total ? Number(i.total) : null,
+});
+
+export const fetchInvoices = async () => {
+  const { data, error } = await supabase.from("invoices").select("*").order("invoice_date", { ascending: false });
+  if (error) { console.error("fetchInvoices:", error); return []; }
+  return (data || []).map(invoiceFromDB);
+};
+
+export const insertInvoice = async (i) => {
+  const { data, error } = await supabase.from("invoices").insert(invoiceToDB(i)).select().single();
+  if (error) { console.error("insertInvoice:", error); throw error; }
+  return invoiceFromDB(data);
+};
+
+export const deleteInvoice = async (id) => {
+  const { error } = await supabase.from("invoices").delete().eq("id", id);
+  if (error) { console.error("deleteInvoice:", error); throw error; }
+};
+
 // ========== REAL-TIME SUBSCRIPTIONS ==========
-// Fire a callback whenever dispatches or freight bills change (from anywhere)
 export const subscribeToDispatches = (callback) => {
   const channel = supabase
     .channel("dispatches-changes")
@@ -136,6 +315,30 @@ export const subscribeToFreightBills = (callback) => {
   const channel = supabase
     .channel("fb-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: "freight_bills" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
+
+export const subscribeToContacts = (callback) => {
+  const channel = supabase
+    .channel("contacts-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "contacts" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
+
+export const subscribeToQuarries = (callback) => {
+  const channel = supabase
+    .channel("quarries-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "quarries" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
+
+export const subscribeToInvoices = (callback) => {
+  const channel = supabase
+    .channel("invoices-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 };

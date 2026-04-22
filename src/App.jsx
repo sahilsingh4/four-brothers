@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills } from "./db";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices } from "./db";
 import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap } from "lucide-react";
 
 const GlobalStyles = () => (
@@ -2030,7 +2030,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       // Save to history
       const next = [invoice, ...invoices];
       setInvoices(next);
-      await storageSet("fbt:invoices", next);
+
       onToast(`${invoiceNumber} OPENED — HIT PRINT TO SAVE AS PDF`);
     } catch (e) {
       console.error("Invoice generation failed:", e);
@@ -2054,7 +2054,6 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     if (!confirm(`Delete invoice ${invNum} from history? This won't affect the freight bills.`)) return;
     const next = invoices.filter((i) => i.invoiceNumber !== invNum);
     setInvoices(next);
-    await storageSet("fbt:invoices", next);
     onToast("INVOICE DELETED");
   };
 
@@ -2414,7 +2413,7 @@ const ContactModal = ({ contact, onSave, onClose, onToast }) => {
     }
     await onSave({
       ...draft,
-      id: draft.id || Date.now(),
+      id: draft.id || ("temp-" + Date.now()),
       createdAt: draft.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -2638,7 +2637,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
     const exists = contacts.find((c) => c.id === contact.id);
     const next = exists ? contacts.map((c) => c.id === contact.id ? contact : c) : [contact, ...contacts];
     setContacts(next);
-    await storageSet("fbt:contacts", next);
+
   };
 
   const remove = async (id) => {
@@ -2647,7 +2646,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
     if (!confirm(`Delete contact "${c.companyName || c.contactName}"? This won't affect past dispatches.`)) return;
     const next = contacts.filter((x) => x.id !== id);
     setContacts(next);
-    await storageSet("fbt:contacts", next);
+
     onToast("CONTACT DELETED");
     setViewing(null);
   };
@@ -2655,7 +2654,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
   const toggleFavorite = async (id) => {
     const next = contacts.map((c) => c.id === id ? { ...c, favorite: !c.favorite } : c);
     setContacts(next);
-    await storageSet("fbt:contacts", next);
+
   };
 
   const filtered = useMemo(() => {
@@ -2874,7 +2873,7 @@ const QuarryModal = ({ quarry, onSave, onClose, onToast }) => {
     const saved = {
       ...draft,
       materials: updatedMaterials.filter((m) => m.name.trim()),
-      id: draft.id || Date.now(),
+      id: draft.id || ("temp-" + Date.now()),
       createdAt: draft.createdAt || now,
       updatedAt: now,
     };
@@ -3177,7 +3176,7 @@ const MaterialsTab = ({ quarries, setQuarries, dispatches, onToast }) => {
     const exists = quarries.find((q) => q.id === quarry.id);
     const next = exists ? quarries.map((q) => q.id === quarry.id ? quarry : q) : [quarry, ...quarries];
     setQuarries(next);
-    await storageSet("fbt:quarries", next);
+
   };
 
   const remove = async (id) => {
@@ -3186,7 +3185,7 @@ const MaterialsTab = ({ quarries, setQuarries, dispatches, onToast }) => {
     if (!confirm(`Delete quarry "${q.name}"? Linked dispatches will lose their quarry reference.`)) return;
     const next = quarries.filter((x) => x.id !== id);
     setQuarries(next);
-    await storageSet("fbt:quarries", next);
+
     onToast("QUARRY DELETED");
     setViewing(null);
   };
@@ -4345,9 +4344,9 @@ export default function App() {
   const [fleet, setFleet] = useState([]);
   const [dispatches, setDispatches] = useState([]);
   const [freightBills, setFreightBills] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [contacts, setContacts] = useState([]);
-  const [quarries, setQuarries] = useState([]);
+  const [invoices, setInvoicesState] = useState([]);
+  const [contacts, setContactsState] = useState([]);
+  const [quarries, setQuarriesState] = useState([]);
   const [lastViewedMondayReport, setLastViewedMondayReportState] = useState(null);
   const [company, setCompanyState] = useState({ name: "4 Brothers Trucking, LLC", address: "Bay Point, CA", phone: "", email: "", usdot: "", logoDataUrl: null, defaultTerms: "Net 30. Remit by check or ACH." });
   const [toast, setToast] = useState(null);
@@ -4384,13 +4383,19 @@ export default function App() {
         if (event === "SIGNED_OUT") setAuthed(false);
       });
 
-      // Load dispatches + freight bills from Supabase (shared across devices)
-      const [cloudDispatches, cloudFreightBills] = await Promise.all([
+      // Load dispatches + freight bills + contacts + quarries + invoices from Supabase
+      const [cloudDispatches, cloudFreightBills, cloudContacts, cloudQuarries, cloudInvoices] = await Promise.all([
         fetchDispatches(),
         fetchFreightBills(),
+        fetchContacts(),
+        fetchQuarries(),
+        fetchInvoices(),
       ]);
       setDispatches(cloudDispatches);
       setFreightBills(cloudFreightBills);
+      setContactsState(cloudContacts);
+      setQuarriesState(cloudQuarries);
+      setInvoicesState(cloudInvoices);
       prevFbIdsRef.current = new Set(cloudFreightBills.map((x) => x.id));
 
       // Load local-cached preferences (these don't need cloud sync)
@@ -4405,17 +4410,12 @@ export default function App() {
       }
       if (lvmr) setLastViewedMondayReportState(lvmr);
 
-      // TODO (future sessions): migrate contacts, quarries, invoices, hours, quotes, fleet, company to Supabase
-      // For now those still use local storage
-      const [l, q, f, inv, co, ct, qr] = await Promise.all([
+      // Hours, quotes, fleet, company still use local storage (smaller impact, less critical to sync)
+      const [l, q, f, co] = await Promise.all([
         storageGet("fbt:logs"), storageGet("fbt:quotes"), storageGet("fbt:fleet"),
-        storageGet("fbt:invoices"), storageGet("fbt:company"), storageGet("fbt:contacts"),
-        storageGet("fbt:quarries"),
+        storageGet("fbt:company"),
       ]);
       if (l) setLogs(l); if (q) setQuotes(q); if (f) setFleet(f);
-      if (inv) setInvoices(inv);
-      if (ct) setContacts(ct);
-      if (qr) setQuarries(qr);
       if (co) setCompanyState((prev) => ({ ...prev, ...co }));
 
       setLoaded(true);
@@ -4453,9 +4453,27 @@ export default function App() {
       setDispatches(fresh);
     });
 
+    const unsubC = subscribeToContacts(async () => {
+      const fresh = await fetchContacts();
+      setContactsState(fresh);
+    });
+
+    const unsubQ = subscribeToQuarries(async () => {
+      const fresh = await fetchQuarries();
+      setQuarriesState(fresh);
+    });
+
+    const unsubI = subscribeToInvoices(async () => {
+      const fresh = await fetchInvoices();
+      setInvoicesState(fresh);
+    });
+
     return () => {
       unsubFB?.();
       unsubD?.();
+      unsubC?.();
+      unsubQ?.();
+      unsubI?.();
     };
   }, [authed, loaded, dispatches, soundEnabled, browserNotifsEnabled]);
 
@@ -4579,6 +4597,102 @@ export default function App() {
   };
 
   const showToast = (msg) => setToast(msg);
+
+  // --- Contacts (Supabase) ---
+  const setContacts = async (val) => {
+    const currentMap = new Map(contacts.map((c) => [c.id, c]));
+    const newMap = new Map(val.map((c) => [c.id, c]));
+    try {
+      for (const [id] of currentMap) {
+        if (!newMap.has(id) && !String(id).startsWith("temp-")) {
+          await deleteContact(id);
+        }
+      }
+      const saved = [];
+      for (const c of val) {
+        if (!currentMap.has(c.id) || String(c.id).startsWith("temp-")) {
+          const { id: _drop, ...rest } = c;
+          const newRow = await insertContact(rest);
+          saved.push(newRow);
+        } else {
+          const prev = currentMap.get(c.id);
+          if (JSON.stringify(prev) !== JSON.stringify(c)) {
+            const updated = await updateContact(c.id, c);
+            saved.push(updated);
+          } else {
+            saved.push(c);
+          }
+        }
+      }
+      setContactsState(saved);
+    } catch (e) {
+      console.error("setContacts failed:", e);
+      setContactsState(val);
+    }
+  };
+
+  // --- Quarries (Supabase) ---
+  const setQuarries = async (val) => {
+    const currentMap = new Map(quarries.map((q) => [q.id, q]));
+    const newMap = new Map(val.map((q) => [q.id, q]));
+    try {
+      for (const [id] of currentMap) {
+        if (!newMap.has(id) && !String(id).startsWith("temp-")) {
+          await deleteQuarry(id);
+        }
+      }
+      const saved = [];
+      for (const q of val) {
+        if (!currentMap.has(q.id) || String(q.id).startsWith("temp-")) {
+          const { id: _drop, ...rest } = q;
+          const newRow = await insertQuarry(rest);
+          saved.push(newRow);
+        } else {
+          const prev = currentMap.get(q.id);
+          if (JSON.stringify(prev) !== JSON.stringify(q)) {
+            const updated = await updateQuarry(q.id, q);
+            saved.push(updated);
+          } else {
+            saved.push(q);
+          }
+        }
+      }
+      setQuarriesState(saved);
+    } catch (e) {
+      console.error("setQuarries failed:", e);
+      setQuarriesState(val);
+    }
+  };
+
+  // --- Invoices (Supabase) ---
+  // Invoices are append-only mostly — we just insert new ones
+  const setInvoices = async (val) => {
+    const currentIds = new Set(invoices.map((i) => i.id));
+    try {
+      // Find deleted ones
+      const newIds = new Set(val.map((i) => i.id));
+      for (const id of currentIds) {
+        if (!newIds.has(id) && !String(id).startsWith("temp-")) {
+          await deleteInvoice(id);
+        }
+      }
+      // Insert new ones
+      const saved = [];
+      for (const inv of val) {
+        if (!currentIds.has(inv.id) || String(inv.id).startsWith("temp-")) {
+          const { id: _drop, ...rest } = inv;
+          const newRow = await insertInvoice(rest);
+          saved.push(newRow);
+        } else {
+          saved.push(inv);
+        }
+      }
+      setInvoicesState(saved);
+    } catch (e) {
+      console.error("setInvoices failed:", e);
+      setInvoicesState(val);
+    }
+  };
 
   const handleQuoteSubmit = async (quote) => { const next = [quote, ...quotes]; setQuotes(next); await storageSet("fbt:quotes", next); };
   // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
