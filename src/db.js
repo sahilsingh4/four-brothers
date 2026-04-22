@@ -86,6 +86,7 @@ export const deleteDispatch = async (id) => {
 const fbFromDB = (row) => ({
   id: row.id,
   dispatchId: row.dispatch_id,
+  assignmentId: row.assignment_id || null,
   freightBillNumber: row.freight_bill_number,
   driverName: row.driver_name,
   driverId: row.driver_id || null,
@@ -102,6 +103,7 @@ const fbFromDB = (row) => ({
 
 const fbToDB = (fb) => ({
   dispatch_id: fb.dispatchId,
+  assignment_id: fb.assignmentId || null,
   freight_bill_number: fb.freightBillNumber || null,
   driver_name: fb.driverName || null,
   driver_id: fb.driverId ? Number(fb.driverId) : null,

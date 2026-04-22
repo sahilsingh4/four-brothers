@@ -666,8 +666,18 @@ const ClientTrackingPage = ({ token, dispatches, freightBills, company, onBack }
   );
 };
 
-const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [] }) => {
-  const [form, setForm] = useState({ freightBillNumber: "", driverName: "", driverId: null, truckNumber: "", material: dispatch?.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "" });
+const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null }) => {
+  // For driver-kind assignments, driver name is locked in
+  const lockedDriverName = assignment?.kind === "driver" ? assignment.name : null;
+  const [form, setForm] = useState({
+    freightBillNumber: "",
+    driverName: lockedDriverName || "",
+    driverId: assignment?.kind === "driver" ? assignment.contactId : null,
+    truckNumber: "",
+    material: dispatch?.material || "",
+    tonnage: "", loadCount: "1",
+    pickupTime: "", dropoffTime: "", notes: "",
+  });
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -734,9 +744,26 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         <div style={{ maxWidth: 720, margin: "0 auto" }}><Logo size="sm" /></div>
       </div>
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px 80px" }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 8 }}>▸ DRIVER / SUB UPLOAD · DISPATCH #{dispatch.code}</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 8 }}>
+          ▸ DRIVER / SUB UPLOAD · ORDER #{dispatch.code}
+        </div>
         <h1 className="fbt-display" style={{ fontSize: 32, margin: "0 0 8px", lineHeight: 1.1 }}>UPLOAD YOUR FREIGHT BILL</h1>
         <p style={{ color: "var(--concrete)", margin: "0 0 24px", fontSize: 15 }}>One submission per truck. Fill out the freight bill info and attach the scale ticket photos.</p>
+
+        {/* Assignment-specific banner when using a sublink */}
+        {assignment && (
+          <div className="fbt-card" style={{ padding: 18, marginBottom: 20, background: "var(--steel)", color: "var(--cream)", borderLeft: "6px solid var(--hazard)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em", marginBottom: 4 }}>
+              ▸ {assignment.kind === "driver" ? "DRIVER LINK" : "SUB-CONTRACTOR LINK"}
+            </div>
+            <div className="fbt-display" style={{ fontSize: 18, marginBottom: 6 }}>{assignment.name}</div>
+            <div className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em" }}>
+              {dispatch.submittedCount} OF {dispatch.trucksExpected} TRUCK{dispatch.trucksExpected !== 1 ? "S" : ""} SUBMITTED
+              {dispatch.submittedCount >= dispatch.trucksExpected && " · ✓ COMPLETE"}
+            </div>
+          </div>
+        )}
+
         <div className="fbt-card" style={{ padding: 20, marginBottom: 24, background: "#FEF3C7" }}>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>JOB DETAILS</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
@@ -758,7 +785,15 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
               <div>
                 <label className="fbt-label">Driver Name *</label>
-                {availableDrivers.length > 0 ? (
+                {lockedDriverName ? (
+                  <input
+                    className="fbt-input"
+                    value={lockedDriverName}
+                    disabled
+                    style={{ background: "#FEF3C7", fontWeight: 700 }}
+                    title="This link is assigned to you"
+                  />
+                ) : availableDrivers.length > 0 ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select
                       className="fbt-select"
@@ -1019,7 +1054,10 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     }).filter(Boolean);
 
     // Compute expected trucks from assignments (if any) else use manual input
-    const assignments = (draft.assignments || []).filter((a) => a.contactId);
+    const assignments = (draft.assignments || []).filter((a) => a.contactId).map((a, idx) => ({
+      ...a,
+      aid: a.aid || `a${Date.now().toString(36).slice(-4)}${idx}`, // stable short ID
+    }));
     const assignmentsTrucks = assignments.reduce((s, a) => s + (Number(a.trucks) || 0), 0);
     const finalTrucksExpected = assignmentsTrucks > 0
       ? assignmentsTrucks
@@ -1418,16 +1456,16 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
             <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 900 }}>
               <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>DISPATCH #{d.code}</div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>ORDER #{d.code}</div>
                   <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{d.jobName}</h3>
                 </div>
                 <button onClick={() => setActiveDispatch(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
               </div>
               <div style={{ padding: 24 }}>
                 <div style={{ background: "#FEF3C7", border: "2px solid var(--hazard)", padding: 16, marginBottom: 20 }}>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ SHARE WITH DRIVER / SUB</div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ MASTER LINK (ANYONE CAN UPLOAD)</div>
                   <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <QRCodeBlock url={shareUrl} size={150} label={`dispatch-${d.code}`} onToast={onToast} />
+                    <QRCodeBlock url={shareUrl} size={150} label={`order-${d.code}`} onToast={onToast} />
                     <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 10 }}>
                       <div>
                         <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>▸ LINK</div>
@@ -1436,34 +1474,118 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button className="btn-primary" onClick={() => copyLink(d.code)} style={{ padding: "8px 16px", fontSize: 11 }}><Share2 size={12} /> COPY LINK</button>
                         <button className="btn-ghost" onClick={() => printDriverSheet(d, shareUrl, onToast)} style={{ padding: "8px 16px", fontSize: 11 }}><Printer size={12} style={{ marginRight: 4 }} /> PRINT SHEET</button>
-                        {(() => {
-                          const sub = contacts.find((c) => c.id === d.subContractorId) || (d.subContractor ? contacts.find((c) => (c.companyName || "").toLowerCase() === (d.subContractor || "").toLowerCase()) : null);
-                          if (!sub) return null;
-                          const msg = buildDispatchMessage(d, shareUrl, company?.name);
-                          const smsLink = buildSMSLink(sub.phone, msg);
-                          const emailLink = buildEmailLink(sub.email, `Dispatch #${d.code} — ${d.jobName}`, msg);
-                          return (
-                            <>
-                              {smsLink && (
-                                <a href={smsLink} className="btn-ghost" style={{ padding: "8px 16px", fontSize: 11, textDecoration: "none" }}>
-                                  <MessageSquare size={12} style={{ marginRight: 4 }} /> TEXT {sub.companyName || sub.contactName}
-                                </a>
-                              )}
-                              {emailLink && (
-                                <a href={emailLink} className="btn-ghost" style={{ padding: "8px 16px", fontSize: 11, textDecoration: "none" }}>
-                                  <Mail size={12} style={{ marginRight: 4 }} /> EMAIL
-                                </a>
-                              )}
-                            </>
-                          );
-                        })()}
                       </div>
                       <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", lineHeight: 1.5, marginTop: 4 }}>
-                        ▸ TEXT THE LINK, OR HAND THEM THE PRINT SHEET AT THE JOB SITE. QR WORKS WITH ANY PHONE CAMERA.
+                        ▸ MASTER LINK — SHARE WITH THE FIELD, OR USE PER-ASSIGNMENT SUBLINKS BELOW FOR INDIVIDUAL TRACKING.
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* PER-ASSIGNMENT SUBLINKS */}
+                {(d.assignments || []).length > 0 && (() => {
+                  const origin = `${window.location.origin}${window.location.pathname}`;
+                  // Build all assignment sublink details
+                  const assignmentRows = (d.assignments || []).map((a) => {
+                    const aFbs = bills.filter((fb) => fb.assignmentId === a.aid);
+                    const expected = Number(a.trucks) || 1;
+                    const submitted = aFbs.length;
+                    const subUrl = `${origin}#/submit/${d.code}/a/${a.aid}`;
+                    const contact = contacts.find((c) => c.id === a.contactId);
+                    const statusKey = submitted === 0 ? "pending" : submitted >= expected ? "complete" : "in_progress";
+                    const statusLabel = submitted === 0 ? "PENDING" : submitted >= expected ? "COMPLETE" : "IN PROGRESS";
+                    const statusBg = { pending: "var(--concrete)", in_progress: "var(--hazard)", complete: "var(--good)" }[statusKey];
+                    const msg = `Hi ${a.name} — upload your freight bill${expected > 1 ? "s" : ""} for job "${d.jobName}" (${fmtDate(d.date)}) here: ${subUrl}`;
+                    const subject = `Order #${d.code} — ${d.jobName}`;
+                    const smsLink = contact?.phone ? buildSMSLink(contact.phone, msg) : null;
+                    const emailLink = contact?.email ? buildEmailLink(contact.email, subject, msg) : null;
+                    return { a, contact, subUrl, expected, submitted, statusLabel, statusBg, smsLink, emailLink, msg };
+                  });
+
+                  return (
+                    <div style={{ background: "#FFF", border: "2px solid var(--steel)", padding: 16, marginBottom: 20 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                          ▸ PER-ASSIGNMENT LINKS ({assignmentRows.length})
+                        </div>
+                        {/* Send to All button */}
+                        <button
+                          className="btn-ghost"
+                          style={{ padding: "6px 12px", fontSize: 10 }}
+                          onClick={() => {
+                            const textable = assignmentRows.filter((r) => r.smsLink);
+                            if (textable.length === 0) { onToast("NO CONTACTS HAVE PHONE NUMBERS"); return; }
+                            if (!confirm(`Open ${textable.length} text message${textable.length !== 1 ? "s" : ""} one by one?`)) return;
+                            // Open each in sequence with a small delay
+                            textable.forEach((r, i) => {
+                              setTimeout(() => { window.location.href = r.smsLink; }, i * 600);
+                            });
+                          }}
+                          title="Send each sublink by text one at a time"
+                        >
+                          <MessageSquare size={12} style={{ marginRight: 4 }} /> TEXT ALL
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {assignmentRows.map(({ a, contact, subUrl, expected, submitted, statusLabel, statusBg, smsLink, emailLink }) => (
+                          <div key={a.aid} style={{ padding: 12, border: "1.5px solid var(--steel)", background: "var(--cream)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                              <div style={{ flex: 1, minWidth: 200 }}>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                                  <span className="chip" style={{ background: a.kind === "driver" ? "#FFF" : "var(--hazard)", fontSize: 9, padding: "2px 8px" }}>
+                                    {a.kind === "driver" ? "DRIVER" : "SUB"}
+                                  </span>
+                                  <span className="chip" style={{ background: statusBg, color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                                    {statusLabel} · {submitted}/{expected}
+                                  </span>
+                                </div>
+                                <div className="fbt-display" style={{ fontSize: 15, lineHeight: 1.15 }}>{a.name}</div>
+                                {contact && (
+                                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                                    {contact.phone && `☎ ${contact.phone}`}
+                                    {contact.phone && contact.email && " · "}
+                                    {contact.email && `✉ ${contact.email}`}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <code style={{ display: "block", padding: "6px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 8 }}>
+                              {subUrl}
+                            </code>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                className="btn-ghost"
+                                style={{ padding: "5px 10px", fontSize: 10 }}
+                                onClick={async () => {
+                                  try { await navigator.clipboard.writeText(subUrl); onToast("SUBLINK COPIED"); }
+                                  catch { onToast("COPY FAILED"); }
+                                }}
+                              >
+                                <Link2 size={11} style={{ marginRight: 3 }} /> COPY
+                              </button>
+                              {smsLink && (
+                                <a href={smsLink} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none" }}>
+                                  <MessageSquare size={11} style={{ marginRight: 3 }} /> TEXT
+                                </a>
+                              )}
+                              {emailLink && (
+                                <a href={emailLink} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none" }}>
+                                  <Mail size={11} style={{ marginRight: 3 }} /> EMAIL
+                                </a>
+                              )}
+                              {!contact && (
+                                <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", padding: "6px 4px" }}>
+                                  (Add contact to enable TEXT/EMAIL)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Client tracking links */}
                 <div style={{ background: "#FFF", border: "2px solid var(--steel)", padding: 16, marginBottom: 20 }}>
@@ -1619,6 +1741,32 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                         {d.subContractor ? `SUB: ${d.subContractor}` : "INTERNAL"}
                         {d.pickup && ` · ${d.pickup}`}{d.dropoff && ` → ${d.dropoff}`}
                       </div>
+                      {/* Per-assignment progress chips */}
+                      {(d.assignments || []).length > 0 && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+                          {d.assignments.map((a) => {
+                            const aFbs = bills.filter((fb) => fb.assignmentId === a.aid);
+                            const expected = Number(a.trucks) || 1;
+                            const submitted = aFbs.length;
+                            const bg = submitted === 0 ? "var(--concrete)"
+                              : submitted >= expected ? "var(--good)"
+                              : "var(--hazard)";
+                            return (
+                              <span
+                                key={a.aid}
+                                className="chip"
+                                style={{
+                                  background: bg, color: "#FFF", fontSize: 9, padding: "2px 8px",
+                                  borderColor: "var(--steel)",
+                                }}
+                                title={`${a.name}: ${submitted} of ${expected} submitted`}
+                              >
+                                {a.name.slice(0, 18)}{a.name.length > 18 ? "…" : ""} · {submitted}/{expected}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => copyLink(d.code)}><Link2 size={12} style={{ marginRight: 4 }} /> COPY LINK</button>
@@ -5589,7 +5737,7 @@ export default function App() {
     else { setView("login"); }
   };
 
-  const submitMatch = route.match(/^#\/submit\/([A-Z0-9]+)/i);
+  const submitMatch = route.match(/^#\/submit\/([A-Z0-9]+)(?:\/a\/([A-Za-z0-9]+))?/i);
   const trackMatch = route.match(/^#\/track\/([A-Z0-9]+)/i);
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]+)/i);
 
@@ -5605,17 +5753,61 @@ export default function App() {
   // Driver upload link route — public, bypasses all auth
   if (submitMatch) {
     const code = submitMatch[1].toUpperCase();
+    const aid = submitMatch[2] || null;
     const d = dispatches.find((x) => x.code.toUpperCase() === code);
-    const enriched = d ? { ...d, submittedCount: freightBills.filter(fb => fb.dispatchId === d.id).length } : null;
-    // Build available drivers list from embedded names (public-safe — no private data leaked)
+    const assignment = d && aid ? (d.assignments || []).find((a) => a.aid === aid) : null;
+
+    // Freight bills for this specific assignment (or the whole dispatch if no aid)
+    const scopedFBs = d
+      ? freightBills.filter((fb) => {
+          if (fb.dispatchId !== d.id) return false;
+          if (aid) return fb.assignmentId === aid;
+          return true;
+        })
+      : [];
+    const expectedTrucks = assignment ? Number(assignment.trucks) || 1 : (d?.trucksExpected || 1);
+    const enriched = d ? {
+      ...d,
+      submittedCount: scopedFBs.length,
+      trucksExpected: expectedTrucks,
+      // Override job name header with assignment-specific info if using a sublink
+      _assignmentLabel: assignment ? assignment.name : null,
+      _assignmentKind: assignment?.kind || null,
+      _assignmentAid: aid,
+    } : null;
+
     const availableDrivers = (d?.assignedDriverIds || []).map((id, idx) => ({
       id,
       companyName: (d.assignedDriverNames || [])[idx] || `Driver ${idx + 1}`,
     }));
+
+    // Check if order is closed — show closed message
+    if (d && d.status === "closed") {
+      return (
+        <div className="fbt-root texture-paper" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <GlobalStyles />
+          <div className="fbt-card" style={{ padding: 40, textAlign: "center", maxWidth: 440 }}>
+            <CheckCircle2 size={48} style={{ color: "var(--good)", marginBottom: 16 }} />
+            <h2 className="fbt-display" style={{ fontSize: 22, margin: "0 0 10px" }}>JOB COMPLETE</h2>
+            <p style={{ color: "var(--concrete)", margin: "0 0 16px" }}>
+              This dispatch has been closed. If you have a freight bill for this job, contact dispatch.
+            </p>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ #{code}</div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="fbt-root">
         <GlobalStyles />
-        <DriverUploadPage dispatch={enriched} onSubmitTruck={handleTruckSubmit} onBack={() => { window.location.hash = ""; }} availableDrivers={availableDrivers} />
+        <DriverUploadPage
+          dispatch={enriched}
+          onSubmitTruck={(fb) => handleTruckSubmit({ ...fb, assignmentId: aid })}
+          onBack={() => { window.location.hash = ""; }}
+          availableDrivers={availableDrivers}
+          assignment={assignment}
+        />
       </div>
     );
   }
