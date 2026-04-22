@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices } from "./db";
-import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap } from "lucide-react";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects } from "./db";
+import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap, Briefcase, Hash } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -984,7 +984,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], onToast }) => {
+const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   const [activeDispatch, setActiveDispatch] = useState(null);
 
@@ -1007,24 +1007,32 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
+  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
 
   const createDispatch = async () => {
     if (!draft.jobName) { onToast("JOB NAME REQUIRED"); return; }
     const code = randomCode(6);
-    // Look up driver names for the assigned IDs so they're embedded in the dispatch
     const assignedIds = draft.assignedDriverIds || [];
     const assignedNames = assignedIds.map((id) => {
       const c = contacts.find((x) => x.id === id);
       return c ? (c.companyName || c.contactName) : "";
     }).filter(Boolean);
+
+    // Compute expected trucks from assignments (if any) else use manual input
+    const assignments = (draft.assignments || []).filter((a) => a.contactId);
+    const assignmentsTrucks = assignments.reduce((s, a) => s + (Number(a.trucks) || 0), 0);
+    const finalTrucksExpected = assignmentsTrucks > 0
+      ? assignmentsTrucks
+      : (Number(draft.trucksExpected) || 1);
+
     const d = {
       ...draft,
       id: "temp-" + Date.now(),
       code,
-      trucksExpected: Number(draft.trucksExpected) || 1,
+      trucksExpected: finalTrucksExpected,
       assignedDriverIds: assignedIds,
       assignedDriverNames: assignedNames,
+      assignments,
       createdAt: new Date().toISOString(),
       status: "open",
     };
@@ -1035,8 +1043,8 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       const fresh = dispatches.find((x) => x.code === code);
       if (fresh) setActiveDispatch(fresh.id);
     }, 100);
-    setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", subContractor: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
-    onToast("DISPATCH CREATED — COPY THE LINK");
+    setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [], assignments: [] });
+    onToast("ORDER CREATED — COPY THE LINK");
   };
 
   const removeDispatch = async (id) => {
@@ -1152,6 +1160,40 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   <input className="fbt-input" value={draft.clientName || ""} onChange={(e) => setDraft({ ...draft, clientName: e.target.value })} placeholder="e.g. Mountain Cascade, Inc. — add as Customer in Contacts for dropdown" />
                 )}
               </div>
+
+              {/* Project dropdown — filtered by selected customer */}
+              {(() => {
+                const availableProjects = projects.filter((p) => {
+                  if (p.status === "cancelled") return false;
+                  if (draft.clientId) return p.customerId === Number(draft.clientId) || p.customerId === draft.clientId;
+                  return true;
+                });
+                return (
+                  <div>
+                    <label className="fbt-label">
+                      Project {draft.clientId && ` · ${availableProjects.length} for this customer`}
+                    </label>
+                    {availableProjects.length > 0 ? (
+                      <select
+                        className="fbt-select"
+                        value={draft.projectId || ""}
+                        onChange={(e) => setDraft({ ...draft, projectId: e.target.value ? Number(e.target.value) : null })}
+                      >
+                        <option value="">— No project / One-off job —</option>
+                        {availableProjects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "8px 10px", border: "1px dashed var(--concrete)", background: "#F5F5F4" }}>
+                        {draft.clientId ? "NO PROJECTS FOR THIS CUSTOMER YET — ADD ONE IN PROJECTS TAB" : "NO PROJECTS YET"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div>
                 <label className="fbt-label">Sub-Contractor / Crew</label>
                 {contacts.filter((c) => c.type === "sub").length > 0 ? (
@@ -1245,6 +1287,93 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   </div>
                 );
               })()}
+
+              {/* ADDITIONAL ASSIGNMENTS — multi-sub/multi-driver with per-sub truck counts */}
+              <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14 }}>
+                <label className="fbt-label">
+                  Additional Assignments (multi-sub / multi-driver){draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
+                </label>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
+                  ▸ USE THIS WHEN ONE ORDER HAS MULTIPLE SUBS OR INDIVIDUAL DRIVERS · DRIVER = 1 TRUCK · SUB = NUMBER YOU ENTER
+                </div>
+                {(draft.assignments || []).length > 0 && (
+                  <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                    {draft.assignments.map((a, idx) => {
+                      const isDriver = a.kind === "driver";
+                      const contactsOfKind = contacts.filter((c) => c.type === (isDriver ? "driver" : "sub"));
+                      return (
+                        <div key={idx} style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px auto", gap: 8, padding: 8, border: "1.5px solid var(--steel)", background: "#FFF", alignItems: "center" }}>
+                          <select
+                            className="fbt-select"
+                            style={{ padding: "6px 8px", fontSize: 11 }}
+                            value={a.kind}
+                            onChange={(e) => {
+                              const next = [...draft.assignments];
+                              next[idx] = { ...next[idx], kind: e.target.value, contactId: null, name: "", trucks: e.target.value === "driver" ? 1 : next[idx].trucks || 1 };
+                              setDraft({ ...draft, assignments: next });
+                            }}
+                          >
+                            <option value="sub">Sub</option>
+                            <option value="driver">Driver</option>
+                          </select>
+                          <select
+                            className="fbt-select"
+                            style={{ padding: "6px 8px", fontSize: 12 }}
+                            value={a.contactId || ""}
+                            onChange={(e) => {
+                              const id = e.target.value;
+                              const c = contactsOfKind.find((x) => String(x.id) === id);
+                              const next = [...draft.assignments];
+                              next[idx] = { ...next[idx], contactId: c?.id || null, name: c ? (c.companyName || c.contactName) : "" };
+                              setDraft({ ...draft, assignments: next });
+                            }}
+                          >
+                            <option value="">— Choose {isDriver ? "driver" : "sub"} —</option>
+                            {contactsOfKind.map((c) => (
+                              <option key={c.id} value={c.id}>{c.favorite ? "★ " : ""}{c.companyName || c.contactName}</option>
+                            ))}
+                          </select>
+                          <input
+                            className="fbt-input"
+                            style={{ padding: "6px 8px", fontSize: 12 }}
+                            type="number" min="1"
+                            disabled={isDriver}
+                            value={a.trucks || 1}
+                            onChange={(e) => {
+                              const next = [...draft.assignments];
+                              next[idx] = { ...next[idx], trucks: Number(e.target.value) || 1 };
+                              setDraft({ ...draft, assignments: next });
+                            }}
+                            title={isDriver ? "Drivers always = 1 truck" : "Truck count for this sub"}
+                          />
+                          <button
+                            onClick={() => setDraft({ ...draft, assignments: draft.assignments.filter((_, i) => i !== idx) })}
+                            className="btn-danger"
+                            style={{ padding: "6px 10px", fontSize: 11 }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1 }] })}
+                  style={{ padding: "6px 12px", fontSize: 11 }}
+                >
+                  <Plus size={12} style={{ marginRight: 4 }} /> ADD SUB / DRIVER
+                </button>
+
+                {/* Total trucks calculation */}
+                {(draft.assignments || []).length > 0 && (
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginTop: 8, fontWeight: 700 }}>
+                    ▸ TOTAL EXPECTED TRUCKS/FBs FROM ASSIGNMENTS: {draft.assignments.reduce((s, a) => s + (Number(a.trucks) || 0), 0)}
+                  </div>
+                )}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Pickup</label><input className="fbt-input" value={draft.pickup} onChange={(e) => setDraft({ ...draft, pickup: e.target.value })} /></div>
                 <div><label className="fbt-label">Dropoff</label><input className="fbt-input" value={draft.dropoff} onChange={(e) => setDraft({ ...draft, dropoff: e.target.value })} /></div>
@@ -1917,6 +2046,7 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     <div># ${esc(invoice.invoiceNumber)}</div>
     <div>DATE: ${esc(invoice.invoiceDate)}</div>
     ${invoice.dueDate ? `<div>DUE: &nbsp;${esc(invoice.dueDate)}</div>` : ""}
+    ${invoice.poNumber ? `<div>PO #: &nbsp;${esc(invoice.poNumber)}</div>` : ""}
   </div>
 </div>
 
@@ -2063,7 +2193,7 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
 };
 
 // ========== INVOICES TAB ==========
-const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], onToast }) => {
+const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -2072,6 +2202,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const [rate, setRate] = useState("");
   const [billTo, setBillTo] = useState({ id: "", name: "", address: "", contact: "" });
   const [jobRef, setJobRef] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [poNumber, setPoNumber] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [terms, setTerms] = useState("");
   const [notes, setNotes] = useState("");
@@ -2146,6 +2278,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       billToAddress: billTo.address,
       billToContact: billTo.contact,
       billToId: billTo.id || null,
+      projectId: projectId || null,
+      poNumber: poNumber || null,
       jobReference: jobRef,
       terms,
       notes,
@@ -2319,7 +2453,44 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
             <div><label className="fbt-label">Contact / Attn</label><input className="fbt-input" value={billTo.contact} onChange={(e) => setBillTo({ ...billTo, contact: e.target.value })} placeholder="Accounts Payable" /></div>
           </div>
           <div><label className="fbt-label">Address</label><input className="fbt-input" value={billTo.address} onChange={(e) => setBillTo({ ...billTo, address: e.target.value })} placeholder="Street, City, State ZIP" /></div>
-          <div><label className="fbt-label">Job Reference</label><input className="fbt-input" value={jobRef} onChange={(e) => setJobRef(e.target.value)} placeholder="MCI #91684 — Salinas Stormwater 2A" /></div>
+          {(() => {
+            // Filter projects by selected customer (if any)
+            const availableProjects = projects.filter((p) => {
+              if (p.status === "cancelled") return false;
+              if (billTo.id) return p.customerId === Number(billTo.id) || p.customerId === billTo.id;
+              return true;
+            });
+            return availableProjects.length > 0 ? (
+              <div>
+                <label className="fbt-label">Project (auto-fills PO# & Job Reference)</label>
+                <select
+                  className="fbt-select"
+                  value={projectId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setProjectId(id);
+                    if (!id) return;
+                    const p = availableProjects.find((x) => String(x.id) === id);
+                    if (p) {
+                      if (p.poNumber) setPoNumber(p.poNumber);
+                      if (p.name && !jobRef) setJobRef(`${p.contractNumber ? p.contractNumber + " — " : ""}${p.name}`);
+                    }
+                  }}
+                >
+                  <option value="">— No project / Manual entry —</option>
+                  {availableProjects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}{p.poNumber ? ` · PO ${p.poNumber}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null;
+          })()}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+            <div><label className="fbt-label">PO # (shown on invoice)</label><input className="fbt-input" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-2026-0045" /></div>
+            <div><label className="fbt-label">Job Reference</label><input className="fbt-input" value={jobRef} onChange={(e) => setJobRef(e.target.value)} placeholder="MCI #91684 — Salinas Stormwater 2A" /></div>
+          </div>
         </div>
 
         {/* Terms / notes */}
@@ -3369,6 +3540,441 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+// ========== PROJECT MODAL ==========
+const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
+  const [draft, setDraft] = useState(project || {
+    customerId: null, name: "", description: "", contractNumber: "", poNumber: "",
+    location: "", status: "active", startDate: "", endDate: "",
+    tonnageGoal: "", budget: "", bidAmount: "",
+    primeContractor: "", fundingSource: "", certifiedPayroll: false, notes: "",
+  });
+
+  const customers = contacts.filter((c) => c.type === "customer");
+
+  const save = async () => {
+    if (!draft.name) { alert("Project name is required."); return; }
+    await onSave({
+      ...draft,
+      id: draft.id || ("temp-" + Date.now()),
+      createdAt: draft.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    onToast(project ? "PROJECT UPDATED" : "PROJECT CREATED");
+    onClose();
+  };
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+        <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h3 className="fbt-display" style={{ fontSize: 20, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
+            <Briefcase size={18} /> {project ? "EDIT PROJECT" : "NEW PROJECT"}
+          </h3>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+        <div style={{ padding: 24, display: "grid", gap: 14 }}>
+          <div>
+            <label className="fbt-label">Customer</label>
+            {customers.length > 0 ? (
+              <select className="fbt-select" value={draft.customerId || ""} onChange={(e) => setDraft({ ...draft, customerId: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— Choose customer —</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.favorite ? "★ " : ""}{c.companyName || c.contactName}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "8px 10px", border: "1px dashed var(--concrete)", background: "#F5F5F4" }}>
+                ADD A CUSTOMER IN CONTACTS FIRST
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="fbt-label">Project Name *</label>
+            <input className="fbt-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Salinas Stormwater Phase 2A" />
+          </div>
+
+          <div>
+            <label className="fbt-label">Description</label>
+            <textarea className="fbt-textarea" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Brief summary of the work..." />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Contract #</label>
+              <input className="fbt-input" value={draft.contractNumber} onChange={(e) => setDraft({ ...draft, contractNumber: e.target.value })} placeholder="MCI #91684" />
+            </div>
+            <div>
+              <label className="fbt-label">PO # (for invoices)</label>
+              <input className="fbt-input" value={draft.poNumber} onChange={(e) => setDraft({ ...draft, poNumber: e.target.value })} placeholder="PO-2026-0045" />
+            </div>
+            <div>
+              <label className="fbt-label">Status</label>
+              <select className="fbt-select" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                <option value="active">Active</option>
+                <option value="complete">Complete</option>
+                <option value="on_hold">On Hold</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="fbt-label">Location</label>
+            <input className="fbt-input" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} placeholder="Hitchcock Rd, Salinas, CA" />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Start Date</label>
+              <input className="fbt-input" type="date" value={draft.startDate} onChange={(e) => setDraft({ ...draft, startDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">End Date</label>
+              <input className="fbt-input" type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Tonnage Goal</label>
+              <input className="fbt-input" type="number" value={draft.tonnageGoal} onChange={(e) => setDraft({ ...draft, tonnageGoal: e.target.value })} placeholder="5000" />
+            </div>
+            <div>
+              <label className="fbt-label">Bid Amount $</label>
+              <input className="fbt-input" type="number" step="0.01" value={draft.bidAmount} onChange={(e) => setDraft({ ...draft, bidAmount: e.target.value })} placeholder="125000.00" />
+            </div>
+            <div>
+              <label className="fbt-label">Budget $</label>
+              <input className="fbt-input" type="number" step="0.01" value={draft.budget} onChange={(e) => setDraft({ ...draft, budget: e.target.value })} placeholder="118000.00" />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Prime Contractor</label>
+              <input className="fbt-input" value={draft.primeContractor} onChange={(e) => setDraft({ ...draft, primeContractor: e.target.value })} placeholder="MCI (if we're the sub)" />
+            </div>
+            <div>
+              <label className="fbt-label">Funding Source</label>
+              <select className="fbt-select" value={draft.fundingSource} onChange={(e) => setDraft({ ...draft, fundingSource: e.target.value })}>
+                <option value="">— Select —</option>
+                <option value="public_works">Public Works</option>
+                <option value="federal">Federal</option>
+                <option value="state">State</option>
+                <option value="local">Local / Municipal</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, border: "2px solid var(--steel)", background: draft.certifiedPayroll ? "#FEF3C7" : "#FFF", cursor: "pointer" }}>
+            <input type="checkbox" checked={draft.certifiedPayroll} onChange={(e) => setDraft({ ...draft, certifiedPayroll: e.target.checked })} style={{ width: 18, height: 18, cursor: "pointer" }} />
+            <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.08em" }}>CERTIFIED PAYROLL REQUIRED (Prevailing Wage)</span>
+          </label>
+
+          <div>
+            <label className="fbt-label">Notes</label>
+            <textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Internal notes, quirks, special requirements..." />
+          </div>
+
+          <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+            <button onClick={save} className="btn-primary"><CheckCircle2 size={16} /> SAVE PROJECT</button>
+            <button onClick={onClose} className="btn-ghost">CANCEL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== PROJECT DETAIL MODAL ==========
+const ProjectDetailModal = ({ project, contacts, dispatches, freightBills, invoices, onEdit, onDelete, onClose }) => {
+  const customer = contacts.find((c) => c.id === project.customerId);
+  const projectDispatches = dispatches.filter((d) => d.projectId === project.id);
+  const projectBills = freightBills.filter((fb) => projectDispatches.some((d) => d.id === fb.dispatchId));
+  const projectInvoices = invoices.filter((i) => i.projectId === project.id);
+
+  const totalTons = projectBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+  const totalInvoiced = projectInvoices.reduce((s, i) => s + (Number(i.total) || 0), 0);
+
+  const statusColor = {
+    active: "var(--good)", complete: "var(--concrete)",
+    on_hold: "var(--hazard-deep)", cancelled: "var(--safety)",
+  }[project.status] || "var(--concrete)";
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+        <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+              PROJECT · {project.status?.toUpperCase().replace("_", " ")}
+            </div>
+            <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{project.name}</h3>
+            {customer && <div className="fbt-mono" style={{ fontSize: 12, color: "#D6D3D1", marginTop: 4 }}>for {customer.companyName}</div>}
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onEdit} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "6px 12px", fontSize: 11 }}><Edit2 size={12} /></button>
+            <button onClick={onDelete} className="btn-danger" style={{ color: "var(--hazard)", borderColor: "var(--hazard)" }}><Trash2 size={12} /></button>
+            <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+          </div>
+        </div>
+
+        <div style={{ padding: 24 }}>
+          {/* Key stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10, marginBottom: 20 }}>
+            <div className="fbt-card" style={{ padding: 14, background: statusColor, color: "#FFF" }}>
+              <div className="stat-num" style={{ fontSize: 22, color: "#FFF" }}>{project.status?.replace("_", " ").toUpperCase()}</div>
+              <div className="stat-label" style={{ color: "#FFF" }}>Status</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 14 }}>
+              <div className="stat-num" style={{ fontSize: 28 }}>{projectDispatches.length}</div>
+              <div className="stat-label">Orders</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 14 }}>
+              <div className="stat-num" style={{ fontSize: 28 }}>{totalTons.toFixed(1)}</div>
+              <div className="stat-label">Tons Hauled</div>
+            </div>
+            <div className="fbt-card" style={{ padding: 14, background: "var(--hazard)" }}>
+              <div className="stat-num" style={{ fontSize: 22 }}>{fmt$(totalInvoiced)}</div>
+              <div className="stat-label">Invoiced</div>
+            </div>
+          </div>
+
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ PROJECT INFO</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+            {project.contractNumber && <div><strong>CONTRACT:</strong> {project.contractNumber}</div>}
+            {project.poNumber && <div><strong>PO #:</strong> {project.poNumber}</div>}
+            {project.location && <div style={{ gridColumn: "1 / -1" }}><strong>LOCATION:</strong> {project.location}</div>}
+            {project.startDate && <div><strong>START:</strong> {fmtDate(project.startDate)}</div>}
+            {project.endDate && <div><strong>END:</strong> {fmtDate(project.endDate)}</div>}
+            {project.primeContractor && <div><strong>PRIME:</strong> {project.primeContractor}</div>}
+            {project.fundingSource && <div><strong>FUNDING:</strong> {project.fundingSource.replace("_", " ").toUpperCase()}</div>}
+            {project.bidAmount && <div><strong>BID:</strong> {fmt$(project.bidAmount)}</div>}
+            {project.budget && <div><strong>BUDGET:</strong> {fmt$(project.budget)}</div>}
+            {project.tonnageGoal && <div><strong>TONNAGE GOAL:</strong> {Number(project.tonnageGoal).toFixed(0)}</div>}
+            {project.certifiedPayroll && <div style={{ gridColumn: "1 / -1", color: "var(--hazard-deep)" }}><strong>⚠ CERTIFIED PAYROLL REQUIRED</strong></div>}
+          </div>
+
+          {project.description && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ DESCRIPTION</div>
+              <div style={{ padding: 12, background: "#F5F5F4", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>{project.description}</div>
+            </>
+          )}
+
+          {project.notes && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ INTERNAL NOTES</div>
+              <div style={{ padding: 12, background: "#FEF3C7", borderLeft: "3px solid var(--hazard)", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>{project.notes}</div>
+            </>
+          )}
+
+          {/* Progress bar if tonnage goal set */}
+          {project.tonnageGoal > 0 && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>
+                ▸ PROGRESS · {totalTons.toFixed(1)} / {Number(project.tonnageGoal).toFixed(0)} TONS
+              </div>
+              <div style={{ height: 14, background: "#E7E5E4", border: "1px solid var(--steel)", marginBottom: 20 }}>
+                <div style={{
+                  height: "100%",
+                  width: `${Math.min(100, (totalTons / Number(project.tonnageGoal)) * 100)}%`,
+                  background: totalTons >= Number(project.tonnageGoal) ? "var(--good)" : "var(--hazard)",
+                }} />
+              </div>
+            </>
+          )}
+
+          {projectDispatches.length > 0 && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ ORDERS ON THIS PROJECT ({projectDispatches.length})</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {projectDispatches.slice(0, 15).map((d) => {
+                  const bills = freightBills.filter((fb) => fb.dispatchId === d.id);
+                  return (
+                    <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", fontSize: 12, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div><strong>#{d.code}</strong> · {d.jobName}</div>
+                      <div style={{ color: "var(--concrete)" }}>{fmtDate(d.date)} · {bills.length}/{d.trucksExpected} FB</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== PROJECTS TAB ==========
+const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freightBills, invoices, onToast }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("active");
+
+  const save = async (p) => {
+    const exists = projects.find((x) => x.id === p.id);
+    const next = exists ? projects.map((x) => x.id === p.id ? p : x) : [p, ...projects];
+    setProjects(next);
+  };
+
+  const remove = async (id) => {
+    const p = projects.find((x) => x.id === id);
+    if (!p) return;
+    if (!confirm(`Delete project "${p.name}"? Orders linked to it will keep their project reference (but the project won't exist anymore).`)) return;
+    const next = projects.filter((x) => x.id !== id);
+    setProjects(next);
+    onToast("PROJECT DELETED");
+    setViewing(null);
+  };
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return projects
+      .filter((p) => statusFilter === "all" || p.status === statusFilter)
+      .filter((p) => {
+        if (!s) return true;
+        const customer = contacts.find((c) => c.id === p.customerId);
+        const hay = `${p.name} ${p.contractNumber} ${p.poNumber} ${p.location} ${customer?.companyName || ""}`.toLowerCase();
+        return hay.includes(s);
+      })
+      .sort((a, b) => (b.startDate || "").localeCompare(a.startDate || ""));
+  }, [projects, contacts, search, statusFilter]);
+
+  const activeCount = projects.filter((p) => p.status === "active").length;
+  const completeCount = projects.filter((p) => p.status === "complete").length;
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      {showModal && (
+        <ProjectModal
+          project={editing}
+          contacts={contacts}
+          onSave={save}
+          onClose={() => { setShowModal(false); setEditing(null); }}
+          onToast={onToast}
+        />
+      )}
+      {viewing && !showModal && (
+        <ProjectDetailModal
+          project={viewing}
+          contacts={contacts}
+          dispatches={dispatches}
+          freightBills={freightBills}
+          invoices={invoices}
+          onEdit={() => { setEditing(viewing); setShowModal(true); }}
+          onDelete={() => remove(viewing.id)}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16 }}>
+        <div className="fbt-card" style={{ padding: 20 }}>
+          <div className="stat-num">{projects.length}</div>
+          <div className="stat-label">Total</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 20, background: "var(--good)", color: "#FFF" }}>
+          <div className="stat-num" style={{ color: "#FFF" }}>{activeCount}</div>
+          <div className="stat-label" style={{ color: "#FFF" }}>Active</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 20 }}>
+          <div className="stat-num">{completeCount}</div>
+          <div className="stat-label">Complete</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 20, background: "var(--hazard)" }}>
+          <div className="stat-num">{projects.filter((p) => p.certifiedPayroll).length}</div>
+          <div className="stat-label">Cert Payroll</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
+          <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search name, contract, PO, location…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <select className="fbt-select" style={{ width: "auto" }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <option value="all">All Status</option>
+          <option value="active">Active</option>
+          <option value="complete">Complete</option>
+          <option value="on_hold">On Hold</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <button onClick={() => { setEditing(null); setShowModal(true); }} className="btn-primary">
+          <Plus size={16} /> NEW PROJECT
+        </button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
+          <Briefcase size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+          <div className="fbt-mono" style={{ fontSize: 13 }}>
+            {search || statusFilter !== "all" ? "NO MATCHES" : "NO PROJECTS YET — ADD YOUR FIRST ONE"}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+          {filtered.map((p) => {
+            const customer = contacts.find((c) => c.id === p.customerId);
+            const orders = dispatches.filter((d) => d.projectId === p.id);
+            const bills = freightBills.filter((fb) => orders.some((d) => d.id === fb.dispatchId));
+            const tons = bills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+            const statusBg = {
+              active: "var(--good)", complete: "var(--concrete)",
+              on_hold: "var(--hazard-deep)", cancelled: "var(--safety)",
+            }[p.status] || "var(--concrete)";
+            return (
+              <div key={p.id} className="fbt-card" style={{ padding: 0, overflow: "hidden", cursor: "pointer" }} onClick={() => setViewing(p)}>
+                <div className="hazard-stripe-thin" style={{ height: 6 }} />
+                <div style={{ padding: 18 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                    <Briefcase size={18} style={{ color: "var(--hazard-deep)", flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 3, flexWrap: "wrap" }}>
+                        <span className="chip" style={{ background: statusBg, color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                          {p.status?.replace("_", " ").toUpperCase()}
+                        </span>
+                        {p.certifiedPayroll && <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 8px" }}>CERT PAYROLL</span>}
+                      </div>
+                      <div className="fbt-display" style={{ fontSize: 17, lineHeight: 1.15 }}>{p.name}</div>
+                      {customer && <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>for {customer.companyName}</div>}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", lineHeight: 1.6, marginTop: 8 }}>
+                    {p.contractNumber && <div>CONTRACT ▸ {p.contractNumber}</div>}
+                    {p.poNumber && <div>PO ▸ {p.poNumber}</div>}
+                    {p.location && <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}><MapPin size={11} style={{ marginTop: 2, flexShrink: 0 }} /> {p.location}</div>}
+                  </div>
+
+                  <div style={{ marginTop: 12, padding: 10, background: "#F5F5F4", borderRadius: 0, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, textAlign: "center" }}>
+                    <div>
+                      <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1 }}>{orders.length}</div>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>ORDERS</div>
+                    </div>
+                    <div>
+                      <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1 }}>{tons.toFixed(0)}</div>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>TONS</div>
+                    </div>
+                    <div>
+                      <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1, color: "var(--hazard-deep)" }}>{p.bidAmount ? fmt$(p.bidAmount).replace("$", "$").slice(0, 8) : "—"}</div>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>BID</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -4482,11 +5088,12 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
 
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("dispatches");
-  const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport } = state;
-  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport } = setters;
+  const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
+  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const tabs = [
-    { k: "dispatches", l: "Dispatches", ico: <ClipboardList size={16} /> },
+    { k: "dispatches", l: "Orders", ico: <ClipboardList size={16} /> },
+    { k: "projects", l: "Projects", ico: <Briefcase size={16} /> },
     { k: "invoices", l: "Invoices", ico: <Receipt size={16} /> },
     { k: "contacts", l: "Contacts", ico: <Users size={16} /> },
     { k: "hours", l: "Hours", ico: <FileText size={16} /> },
@@ -4532,8 +5139,9 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         </div>
       </div>
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 80px" }}>
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} onToast={onToast} />}
-        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
+        {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
+        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
@@ -4557,6 +5165,7 @@ export default function App() {
   const [invoices, setInvoicesState] = useState([]);
   const [contacts, setContactsState] = useState([]);
   const [quarries, setQuarriesState] = useState([]);
+  const [projects, setProjectsState] = useState([]);
   const [lastViewedMondayReport, setLastViewedMondayReportState] = useState(null);
   const [company, setCompanyState] = useState({ name: "4 Brothers Trucking, LLC", address: "Bay Point, CA", phone: "", email: "", usdot: "", logoDataUrl: null, defaultTerms: "Net 30. Remit by check or ACH." });
   const [toast, setToast] = useState(null);
@@ -4593,19 +5202,21 @@ export default function App() {
         if (event === "SIGNED_OUT") setAuthed(false);
       });
 
-      // Load dispatches + freight bills + contacts + quarries + invoices from Supabase
-      const [cloudDispatches, cloudFreightBills, cloudContacts, cloudQuarries, cloudInvoices] = await Promise.all([
+      // Load dispatches + freight bills + contacts + quarries + invoices + projects from Supabase
+      const [cloudDispatches, cloudFreightBills, cloudContacts, cloudQuarries, cloudInvoices, cloudProjects] = await Promise.all([
         fetchDispatches(),
         fetchFreightBills(),
         fetchContacts(),
         fetchQuarries(),
         fetchInvoices(),
+        fetchProjects(),
       ]);
       setDispatches(cloudDispatches);
       setFreightBills(cloudFreightBills);
       setContactsState(cloudContacts);
       setQuarriesState(cloudQuarries);
       setInvoicesState(cloudInvoices);
+      setProjectsState(cloudProjects);
       prevFbIdsRef.current = new Set(cloudFreightBills.map((x) => x.id));
 
       // Load local-cached preferences (these don't need cloud sync)
@@ -4678,12 +5289,18 @@ export default function App() {
       setInvoicesState(fresh);
     });
 
+    const unsubP = subscribeToProjects(async () => {
+      const fresh = await fetchProjects();
+      setProjectsState(fresh);
+    });
+
     return () => {
       unsubFB?.();
       unsubD?.();
       unsubC?.();
       unsubQ?.();
       unsubI?.();
+      unsubP?.();
     };
   }, [authed, loaded, dispatches, soundEnabled, browserNotifsEnabled]);
 
@@ -4904,6 +5521,39 @@ export default function App() {
     }
   };
 
+  // --- Projects (Supabase) ---
+  const setProjects = async (val) => {
+    const currentMap = new Map(projects.map((p) => [p.id, p]));
+    const newMap = new Map(val.map((p) => [p.id, p]));
+    try {
+      for (const [id] of currentMap) {
+        if (!newMap.has(id) && !String(id).startsWith("temp-")) {
+          await deleteProject(id);
+        }
+      }
+      const saved = [];
+      for (const p of val) {
+        if (!currentMap.has(p.id) || String(p.id).startsWith("temp-")) {
+          const { id: _drop, ...rest } = p;
+          const newRow = await insertProject(rest);
+          saved.push(newRow);
+        } else {
+          const prev = currentMap.get(p.id);
+          if (JSON.stringify(prev) !== JSON.stringify(p)) {
+            const updated = await updateProject(p.id, p);
+            saved.push(updated);
+          } else {
+            saved.push(p);
+          }
+        }
+      }
+      setProjectsState(saved);
+    } catch (e) {
+      console.error("setProjects failed:", e);
+      setProjectsState(val);
+    }
+  };
+
   const handleQuoteSubmit = async (quote) => { const next = [quote, ...quotes]; setQuotes(next); await storageSet("fbt:quotes", next); };
   // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
   const handleTruckSubmit = async (fb) => {
@@ -5021,8 +5671,8 @@ export default function App() {
       ) : (
         <>
           <Dashboard
-            state={{ logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport }}
-            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport }}
+            state={{ logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
+            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects }}
             onToast={showToast}
             onExit={() => setView("public")}
             onLogout={handleLogout}

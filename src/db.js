@@ -12,10 +12,12 @@ const dispatchFromDB = (row) => ({
   jobName: row.job_name,
   clientName: row.client_name || "",
   clientId: row.client_id || null,
+  projectId: row.project_id || null,
   subContractor: row.sub_contractor || "",
   subContractorId: row.sub_contractor_id,
   assignedDriverIds: row.assigned_driver_ids || [],
   assignedDriverNames: row.assigned_driver_names || [],
+  assignments: row.assignments || [],
   pickup: row.pickup || "",
   dropoff: row.dropoff || "",
   material: row.material || "",
@@ -35,10 +37,12 @@ const dispatchToDB = (d) => ({
   job_name: d.jobName,
   client_name: d.clientName || null,
   client_id: d.clientId ? Number(d.clientId) : null,
+  project_id: d.projectId ? Number(d.projectId) : null,
   sub_contractor: d.subContractor || null,
   sub_contractor_id: d.subContractorId || null,
   assigned_driver_ids: d.assignedDriverIds || [],
   assigned_driver_names: d.assignedDriverNames || [],
+  assignments: d.assignments || [],
   pickup: d.pickup || null,
   dropoff: d.dropoff || null,
   material: d.material || null,
@@ -262,6 +266,8 @@ const invoiceFromDB = (row) => ({
   billToAddress: row.bill_to_address || "",
   billToContact: row.bill_to_contact || "",
   billToId: row.bill_to_id || null,
+  projectId: row.project_id || null,
+  poNumber: row.po_number || "",
   jobReference: row.job_reference || "",
   pricingMethod: row.pricing_method || "ton",
   rate: row.rate,
@@ -284,6 +290,8 @@ const invoiceToDB = (i) => ({
   bill_to_address: i.billToAddress || null,
   bill_to_contact: i.billToContact || null,
   bill_to_id: i.billToId ? Number(i.billToId) : null,
+  project_id: i.projectId ? Number(i.projectId) : null,
+  po_number: i.poNumber || null,
   job_reference: i.jobReference || null,
   pricing_method: i.pricingMethod || null,
   rate: i.rate ? Number(i.rate) : null,
@@ -312,6 +320,76 @@ export const insertInvoice = async (i) => {
 export const deleteInvoice = async (id) => {
   const { error } = await supabase.from("invoices").delete().eq("id", id);
   if (error) { console.error("deleteInvoice:", error); throw error; }
+};
+
+// ========== PROJECTS ==========
+const projectFromDB = (row) => ({
+  id: row.id,
+  customerId: row.customer_id || null,
+  name: row.name,
+  description: row.description || "",
+  contractNumber: row.contract_number || "",
+  poNumber: row.po_number || "",
+  location: row.location || "",
+  status: row.status || "active",
+  startDate: row.start_date || "",
+  endDate: row.end_date || "",
+  tonnageGoal: row.tonnage_goal,
+  budget: row.budget,
+  bidAmount: row.bid_amount,
+  primeContractor: row.prime_contractor || "",
+  fundingSource: row.funding_source || "",
+  certifiedPayroll: !!row.certified_payroll,
+  notes: row.notes || "",
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const projectToDB = (p) => ({
+  customer_id: p.customerId ? Number(p.customerId) : null,
+  name: p.name,
+  description: p.description || null,
+  contract_number: p.contractNumber || null,
+  po_number: p.poNumber || null,
+  location: p.location || null,
+  status: p.status || "active",
+  start_date: p.startDate || null,
+  end_date: p.endDate || null,
+  tonnage_goal: p.tonnageGoal ? Number(p.tonnageGoal) : null,
+  budget: p.budget ? Number(p.budget) : null,
+  bid_amount: p.bidAmount ? Number(p.bidAmount) : null,
+  prime_contractor: p.primeContractor || null,
+  funding_source: p.fundingSource || null,
+  certified_payroll: !!p.certifiedPayroll,
+  notes: p.notes || null,
+});
+
+export const fetchProjects = async () => {
+  const { data, error } = await supabase.from("projects").select("*").order("name", { ascending: true });
+  if (error) { console.error("fetchProjects:", error); return []; }
+  return (data || []).map(projectFromDB);
+};
+
+export const insertProject = async (p) => {
+  const { data, error } = await supabase.from("projects").insert(projectToDB(p)).select().single();
+  if (error) { console.error("insertProject:", error); throw error; }
+  return projectFromDB(data);
+};
+
+export const updateProject = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("projects")
+    .update({ ...projectToDB(patch), updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateProject:", error); throw error; }
+  return projectFromDB(data);
+};
+
+export const deleteProject = async (id) => {
+  const { error } = await supabase.from("projects").delete().eq("id", id);
+  if (error) { console.error("deleteProject:", error); throw error; }
 };
 
 // ========== REAL-TIME SUBSCRIPTIONS ==========
@@ -351,6 +429,14 @@ export const subscribeToInvoices = (callback) => {
   const channel = supabase
     .channel("invoices-changes")
     .on("postgres_changes", { event: "*", schema: "public", table: "invoices" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
+
+export const subscribeToProjects = (callback) => {
+  const channel = supabase
+    .channel("projects-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
 };
