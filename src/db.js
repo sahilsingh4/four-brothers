@@ -106,6 +106,12 @@ const fbFromDB = (row) => ({
   jobNameOverride: row.job_name_override || "",
   description: row.description || "",
   hoursBilled: row.hours_billed,
+  paidAt: row.paid_at || null,
+  paidBy: row.paid_by || "",
+  paidMethod: row.paid_method || "",
+  paidCheckNumber: row.paid_check_number || "",
+  paidAmount: row.paid_amount !== null && row.paid_amount !== undefined ? Number(row.paid_amount) : null,
+  paidNotes: row.paid_notes || "",
 });
 
 const fbToDB = (fb) => ({
@@ -128,7 +134,13 @@ const fbToDB = (fb) => ({
   approved_by: fb.approvedBy || null,
   job_name_override: fb.jobNameOverride || null,
   description: fb.description || null,
-  hours_billed: fb.hoursBilled ? Number(fb.hoursBilled) : null,
+  hours_billed: fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "" ? Number(fb.hoursBilled) : null,
+  paid_at: fb.paidAt || null,
+  paid_by: fb.paidBy || null,
+  paid_method: fb.paidMethod || null,
+  paid_check_number: fb.paidCheckNumber || null,
+  paid_amount: fb.paidAmount !== null && fb.paidAmount !== undefined && fb.paidAmount !== "" ? Number(fb.paidAmount) : null,
+  paid_notes: fb.paidNotes || null,
 });
 
 export const fetchFreightBills = async () => {

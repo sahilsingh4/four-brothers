@@ -4656,6 +4656,612 @@ const ReviewTab = ({ freightBills, dispatches, contacts, editFreightBill, onToas
   );
 };
 
+// ========== PAYROLL: MARK PAID MODAL ==========
+const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser }) => {
+  // target = { projectName, subName, subId, gross, brokeragePct, brokerageAmt, net, fbs }
+  const defaultAmt = target.net.toFixed(2);
+  const [form, setForm] = useState({
+    amount: defaultAmt,
+    method: "check",
+    checkNumber: "",
+    paidAt: new Date().toISOString().slice(0, 10),
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const proceed = async () => {
+    if (!form.amount || Number(form.amount) <= 0) { onToast("ENTER AMOUNT"); return; }
+    if (form.method === "check" && !form.checkNumber) {
+      if (!confirm("No check number entered. Mark paid anyway?")) return;
+    }
+    setSaving(true);
+    try {
+      const stamp = {
+        paidAt: new Date(form.paidAt).toISOString(),
+        paidBy: currentUser || "admin",
+        paidMethod: form.method,
+        paidCheckNumber: form.checkNumber || "",
+        paidNotes: form.notes || "",
+      };
+
+      // Distribute the amount across each FB proportionally to its gross
+      const grossByFb = fbs.map((x) => x.gross);
+      const grossSum = grossByFb.reduce((s, v) => s + v, 0) || 1;
+      const totalAmt = Number(form.amount);
+
+      for (let i = 0; i < fbs.length; i++) {
+        const entry = fbs[i];
+        const share = grossSum > 0 ? (entry.gross / grossSum) * totalAmt : totalAmt / fbs.length;
+        await editFreightBill(entry.fb.id, {
+          ...entry.fb,
+          ...stamp,
+          paidAmount: Number(share.toFixed(2)),
+        });
+      }
+      onToast(`✓ PAID ${target.subName} — ${fbs.length} FB${fbs.length !== 1 ? "S" : ""}`);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      onToast("MARK PAID FAILED");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
+        <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>MARK PAID</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{target.subName}</h3>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
+              {target.projectName || "(No project)"} · {fbs.length} FB{fbs.length !== 1 ? "S" : ""}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+        <div style={{ padding: 22, display: "grid", gap: 12 }}>
+
+          {/* Breakdown */}
+          <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span>GROSS:</span><strong>{fmt$(target.gross)}</strong>
+            </div>
+            {target.brokerageAmt > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "var(--hazard-deep)" }}>
+                <span>BROKERAGE ({target.brokeragePct}%):</span><strong>−{fmt$(target.brokerageAmt)}</strong>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6, borderTop: "1px solid var(--steel)", fontWeight: 700 }}>
+              <span>NET:</span><span style={{ color: "var(--good)" }}>{fmt$(target.net)}</span>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label className="fbt-label">Date Paid</label>
+              <input className="fbt-input" type="date" value={form.paidAt} onChange={(e) => setForm({ ...form, paidAt: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Amount Paid $</label>
+              <input className="fbt-input" type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            </div>
+          </div>
+
+          <div>
+            <label className="fbt-label">Method</label>
+            <select className="fbt-select" value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+              <option value="check">Check</option>
+              <option value="ach">ACH / Bank Transfer</option>
+              <option value="cash">Cash</option>
+              <option value="zelle">Zelle</option>
+              <option value="venmo">Venmo</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          {form.method === "check" && (
+            <div>
+              <label className="fbt-label">Check #</label>
+              <input className="fbt-input" value={form.checkNumber} onChange={(e) => setForm({ ...form, checkNumber: e.target.value })} placeholder="e.g. 1024" />
+            </div>
+          )}
+
+          <div>
+            <label className="fbt-label">Notes (optional)</label>
+            <textarea className="fbt-textarea" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Payment reference, memo, etc." style={{ minHeight: 50 }} />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <button onClick={proceed} disabled={saving} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
+              <CheckCircle2 size={16} /> MARK PAID
+            </button>
+            <button onClick={onClose} className="btn-ghost">CANCEL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== PAYROLL TAB ==========
+const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightBill, company, onToast }) => {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [paidFilter, setPaidFilter] = useState("unpaid"); // unpaid | paid | all
+  const [subFilter, setSubFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
+  const [expanded, setExpanded] = useState({});
+  const [payTarget, setPayTarget] = useState(null);
+  const [editingFB, setEditingFB] = useState(null);
+
+  // helper: approved + within date range + filters
+  const filteredFbs = useMemo(() => {
+    return freightBills.filter((fb) => {
+      if ((fb.status || "pending") !== "approved") return false;
+      const isPaid = !!fb.paidAt;
+      if (paidFilter === "unpaid" && isPaid) return false;
+      if (paidFilter === "paid" && !isPaid) return false;
+      const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
+      if (fromDate && fbDate < fromDate) return false;
+      if (toDate && fbDate > toDate) return false;
+      return true;
+    });
+  }, [freightBills, paidFilter, fromDate, toDate]);
+
+  // Calculate gross for an FB based on its assignment's pay rate + method
+  const calcGross = (fb, dispatch) => {
+    const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
+    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, assignment: null };
+    const rate = Number(assignment.payRate) || 0;
+    const method = assignment.payMethod || "hour";
+    let qty = 0;
+    if (method === "hour") {
+      if (fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "") qty = Number(fb.hoursBilled);
+      else if (fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        if (!isNaN(h1) && !isNaN(h2)) {
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) qty = mins / 60;
+        }
+      }
+    } else if (method === "ton") qty = Number(fb.tonnage) || 0;
+    else if (method === "load") qty = Number(fb.loadCount) || 1;
+    return { gross: qty * rate, qty, method, rate, assignment };
+  };
+
+  // Build grouped data: project -> sub/driver -> [fbs with calcs]
+  const grouped = useMemo(() => {
+    const byProject = new Map(); // projectKey -> { projectName, projectId, subs: Map<subKey, {subName, subId, type, fbs, gross, ...}> }
+    filteredFbs.forEach((fb) => {
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      if (!d) return;
+      const calc = calcGross(fb, d);
+      if (!calc.assignment) return; // skip unassigned FBs (can't pay without a rate)
+
+      // Apply filters
+      if (projectFilter && String(d.projectId || "none") !== projectFilter) return;
+      if (subFilter && String(calc.assignment.contactId) !== subFilter) return;
+
+      const project = projects.find((p) => p.id === d.projectId);
+      const projectKey = d.projectId || "none";
+      const projectName = project?.name || "(No project)";
+
+      if (!byProject.has(projectKey)) {
+        byProject.set(projectKey, { projectKey, projectId: d.projectId || null, projectName, subs: new Map() });
+      }
+      const projectData = byProject.get(projectKey);
+
+      const subKey = calc.assignment.contactId || `anon_${calc.assignment.aid}`;
+      const contact = contacts.find((c) => c.id === calc.assignment.contactId);
+      const brokerageApplies = contact?.brokerageApplies;
+      const brokeragePct = Number(contact?.brokeragePercent ?? 8);
+
+      if (!projectData.subs.has(subKey)) {
+        projectData.subs.set(subKey, {
+          subKey,
+          subId: calc.assignment.contactId,
+          subName: calc.assignment.name,
+          kind: calc.assignment.kind,
+          brokerageApplies: !!brokerageApplies,
+          brokeragePct,
+          fbs: [],
+          gross: 0,
+          paidSum: 0,
+        });
+      }
+      const subData = projectData.subs.get(subKey);
+      subData.fbs.push({ fb, gross: calc.gross, qty: calc.qty, method: calc.method, rate: calc.rate, dispatch: d });
+      subData.gross += calc.gross;
+      if (fb.paidAmount) subData.paidSum += Number(fb.paidAmount);
+    });
+    // Compute net, brokerage
+    const asArray = Array.from(byProject.values()).map((pd) => {
+      const subs = Array.from(pd.subs.values()).map((s) => {
+        const brokerageAmt = s.brokerageApplies ? s.gross * (s.brokeragePct / 100) : 0;
+        return { ...s, brokerageAmt, net: s.gross - brokerageAmt };
+      }).sort((a, b) => a.subName.localeCompare(b.subName));
+      const projGross = subs.reduce((s, x) => s + x.gross, 0);
+      const projNet = subs.reduce((s, x) => s + x.net, 0);
+      const projBrok = subs.reduce((s, x) => s + x.brokerageAmt, 0);
+      return { ...pd, subs, projGross, projNet, projBrok };
+    });
+    // Sort: active projects first (by name), "No project" last
+    asArray.sort((a, b) => {
+      if (a.projectKey === "none") return 1;
+      if (b.projectKey === "none") return -1;
+      return a.projectName.localeCompare(b.projectName);
+    });
+    return asArray;
+  }, [filteredFbs, dispatches, projects, contacts, projectFilter, subFilter]);
+
+  const allUnpaidSubs = useMemo(() => grouped.flatMap((p) => p.subs.filter((s) => s.fbs.some((x) => !x.fb.paidAt))), [grouped]);
+  const totalUnpaidGross = grouped.reduce((s, p) => s + p.subs.reduce((ss, sub) => ss + sub.fbs.filter((x) => !x.fb.paidAt).reduce((sss, x) => sss + x.gross, 0), 0), 0);
+  const totalBrokerageUnpaid = grouped.reduce((s, p) => s + p.subs.reduce((ss, sub) => {
+    const unpaidGross = sub.fbs.filter((x) => !x.fb.paidAt).reduce((g, x) => g + x.gross, 0);
+    return ss + (sub.brokerageApplies ? unpaidGross * (sub.brokeragePct / 100) : 0);
+  }, 0), 0);
+  const totalNetUnpaid = totalUnpaidGross - totalBrokerageUnpaid;
+  const unpaidFBCount = grouped.reduce((s, p) => s + p.subs.reduce((ss, sub) => ss + sub.fbs.filter((x) => !x.fb.paidAt).length, 0), 0);
+
+  const toggleProject = (key) => setExpanded((e) => ({ ...e, [`p_${key}`]: !e[`p_${key}`] }));
+  const toggleSub = (pkey, skey) => setExpanded((e) => ({ ...e, [`s_${pkey}_${skey}`]: !e[`s_${pkey}_${skey}`] }));
+
+  // Bulk pay all subs on a project
+  const openPaySub = (pd, sub) => {
+    const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
+    if (unpaidFbs.length === 0) { onToast("ALL PAID"); return; }
+    const gross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
+    const brokerageAmt = sub.brokerageApplies ? gross * (sub.brokeragePct / 100) : 0;
+    setPayTarget({
+      projectName: pd.projectName,
+      subName: sub.subName,
+      subId: sub.subId,
+      gross, brokeragePct: sub.brokeragePct, brokerageAmt, net: gross - brokerageAmt,
+      fbs: unpaidFbs,
+    });
+  };
+
+  // Unmark paid (soft lock release)
+  const unmarkPaid = async (fb) => {
+    if (!confirm(`Un-mark FB #${fb.freightBillNumber || "(no #)"} as paid? This removes the payment record.`)) return;
+    try {
+      await editFreightBill(fb.id, {
+        ...fb,
+        paidAt: null, paidBy: "", paidMethod: "", paidCheckNumber: "",
+        paidAmount: null, paidNotes: "",
+      });
+      onToast("PAYMENT RECORD REMOVED");
+    } catch (e) { console.error(e); onToast("FAILED"); }
+  };
+
+  // CSV export for a project's payroll
+  const exportProjectCSV = (pd) => {
+    const rows = [["Sub/Driver", "FB#", "Date", "Order", "Driver", "Truck", "Method", "Qty", "Rate", "Gross", "Brok%", "Brokerage", "Net Due", "Paid Date", "Paid Amount", "Check #"]];
+    pd.subs.forEach((sub) => {
+      sub.fbs.forEach((entry) => {
+        const brok = sub.brokerageApplies ? entry.gross * (sub.brokeragePct / 100) : 0;
+        rows.push([
+          sub.subName,
+          entry.fb.freightBillNumber || "",
+          entry.fb.submittedAt ? entry.fb.submittedAt.slice(0, 10) : "",
+          entry.dispatch?.code || "",
+          entry.fb.driverName || "",
+          entry.fb.truckNumber || "",
+          entry.method,
+          entry.qty.toFixed(2),
+          entry.rate.toFixed(2),
+          entry.gross.toFixed(2),
+          sub.brokerageApplies ? sub.brokeragePct : "",
+          brok.toFixed(2),
+          (entry.gross - brok).toFixed(2),
+          entry.fb.paidAt ? entry.fb.paidAt.slice(0, 10) : "",
+          entry.fb.paidAmount != null ? Number(entry.fb.paidAmount).toFixed(2) : "",
+          entry.fb.paidCheckNumber || "",
+        ]);
+      });
+    });
+    const csv = rows.map((r) => r.map((v) => {
+      const s = String(v).replace(/"/g, '""');
+      return /[,"\n]/.test(s) ? `"${s}"` : s;
+    }).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `payroll-${pd.projectName.replace(/[^a-z0-9]/gi, "_")}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onToast("CSV EXPORTED");
+  };
+
+  const subContactOptions = contacts.filter((c) => c.type === "sub" || c.type === "driver");
+  const methodLabel = { check: "Check", ach: "ACH", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      {payTarget && (
+        <PaidModal
+          target={payTarget}
+          fbs={payTarget.fbs}
+          editFreightBill={editFreightBill}
+          onClose={() => setPayTarget(null)}
+          onToast={onToast}
+          currentUser="admin"
+        />
+      )}
+      {editingFB && (
+        <FBEditModal
+          fb={editingFB}
+          dispatches={dispatches}
+          contacts={contacts}
+          editFreightBill={editFreightBill}
+          onClose={() => setEditingFB(null)}
+          onToast={onToast}
+          currentUser="admin"
+        />
+      )}
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+        <div className="fbt-card" style={{ padding: 16, background: "var(--hazard)", color: "var(--steel)" }}>
+          <div className="stat-num" style={{ color: "var(--steel)" }}>{unpaidFBCount}</div>
+          <div className="stat-label">Unpaid FBs</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{fmt$(totalUnpaidGross).replace("$", "$").slice(0, 10)}</div>
+          <div className="stat-label">Unpaid Gross</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num" style={{ color: "var(--hazard-deep)" }}>−{fmt$(totalBrokerageUnpaid).replace("$", "$").slice(0, 10)}</div>
+          <div className="stat-label">Brokerage</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16, background: "var(--good)", color: "#FFF" }}>
+          <div className="stat-num" style={{ color: "#FFF" }}>{fmt$(totalNetUnpaid).replace("$", "$").slice(0, 10)}</div>
+          <div className="stat-label" style={{ color: "#FFF" }}>Total Net Due</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{allUnpaidSubs.length}</div>
+          <div className="stat-label">Subs/Drivers Owed</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="fbt-card" style={{ padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+          <div>
+            <label className="fbt-label">Status</label>
+            <select className="fbt-select" value={paidFilter} onChange={(e) => setPaidFilter(e.target.value)}>
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <div>
+            <label className="fbt-label">From</label>
+            <input className="fbt-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="fbt-label">To</label>
+            <input className="fbt-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="fbt-label">Project</label>
+            <select className="fbt-select" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
+              <option value="">All Projects</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              <option value="none">(No project)</option>
+            </select>
+          </div>
+          <div>
+            <label className="fbt-label">Sub / Driver</label>
+            <select className="fbt-select" value={subFilter} onChange={(e) => setSubFilter(e.target.value)}>
+              <option value="">All</option>
+              {subContactOptions.map((c) => (
+                <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Grouped results */}
+      {grouped.length === 0 ? (
+        <div className="fbt-card" style={{ padding: 40, textAlign: "center", color: "var(--concrete)" }}>
+          <DollarSign size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+          <div className="fbt-mono" style={{ fontSize: 13 }}>
+            {paidFilter === "unpaid" ? "NO UNPAID FREIGHT BILLS — ALL PAID" : "NO MATCHING FREIGHT BILLS"}
+          </div>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+            FBs must be APPROVED and have a PAY RATE set on their order assignment to appear here.
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 14 }}>
+          {grouped.map((pd) => {
+            const pExp = expanded[`p_${pd.projectKey}`] !== false; // default expanded
+            return (
+              <div key={pd.projectKey} className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
+                {/* Project header */}
+                <div
+                  style={{
+                    padding: "12px 16px", background: "var(--steel)", color: "var(--cream)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => toggleProject(pd.projectKey)}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 200 }}>
+                    <ChevronDown size={16} style={{ transform: pExp ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.2s" }} />
+                    <Briefcase size={16} style={{ color: "var(--hazard)" }} />
+                    <div>
+                      <div className="fbt-display" style={{ fontSize: 16 }}>{pd.projectName}</div>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
+                        {pd.subs.length} SUB{pd.subs.length !== 1 ? "S" : ""} · {pd.subs.reduce((s, x) => s + x.fbs.length, 0)} FB{pd.subs.reduce((s, x) => s + x.fbs.length, 0) !== 1 ? "S" : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1" }}>GROSS</div>
+                      <div className="fbt-display" style={{ fontSize: 14 }}>{fmt$(pd.projGross)}</div>
+                    </div>
+                    {pd.projBrok > 0 && (
+                      <div style={{ textAlign: "right" }}>
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1" }}>BROK</div>
+                        <div className="fbt-display" style={{ fontSize: 14, color: "var(--hazard)" }}>−{fmt$(pd.projBrok)}</div>
+                      </div>
+                    )}
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>NET</div>
+                      <div className="fbt-display" style={{ fontSize: 16, color: "var(--hazard)" }}>{fmt$(pd.projNet)}</div>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); exportProjectCSV(pd); }}
+                      className="btn-ghost"
+                      style={{ padding: "5px 10px", fontSize: 10, color: "var(--cream)", borderColor: "var(--cream)" }}
+                    >
+                      <Download size={11} style={{ marginRight: 3 }} /> CSV
+                    </button>
+                  </div>
+                </div>
+
+                {/* Subs under this project */}
+                {pExp && (
+                  <div style={{ padding: 12, display: "grid", gap: 10 }}>
+                    {pd.subs.map((sub) => {
+                      const sExp = expanded[`s_${pd.projectKey}_${sub.subKey}`];
+                      const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
+                      const paidFbs = sub.fbs.filter((x) => !!x.fb.paidAt);
+                      const unpaidGross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
+                      const unpaidBrok = sub.brokerageApplies ? unpaidGross * (sub.brokeragePct / 100) : 0;
+                      const unpaidNet = unpaidGross - unpaidBrok;
+                      const isAllPaid = unpaidFbs.length === 0 && paidFbs.length > 0;
+                      return (
+                        <div key={sub.subKey} style={{ border: "1.5px solid var(--steel)", background: isAllPaid ? "#F0FDF4" : "#FFF" }}>
+                          <div
+                            style={{ padding: 10, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, cursor: "pointer" }}
+                            onClick={() => toggleSub(pd.projectKey, sub.subKey)}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 180 }}>
+                              <ChevronDown size={14} style={{ transform: sExp ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.2s" }} />
+                              <span className="chip" style={{ background: sub.kind === "driver" ? "#FFF" : "var(--hazard)", fontSize: 9, padding: "2px 7px" }}>
+                                {sub.kind === "driver" ? "DRIVER" : "SUB"}
+                              </span>
+                              {sub.brokerageApplies && (
+                                <span className="chip" style={{ background: "var(--hazard-deep)", color: "#FFF", fontSize: 9, padding: "2px 7px" }}>
+                                  −{sub.brokeragePct}% BROK
+                                </span>
+                              )}
+                              {isAllPaid && (
+                                <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 7px" }}>
+                                  ✓ PAID
+                                </span>
+                              )}
+                              <div className="fbt-display" style={{ fontSize: 14 }}>{sub.subName}</div>
+                              <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                                {unpaidFbs.length > 0 ? `${unpaidFbs.length} UNPAID` : ""}
+                                {paidFbs.length > 0 ? ` ${paidFbs.length} PAID` : ""}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                              {unpaidFbs.length > 0 ? (
+                                <>
+                                  <div style={{ textAlign: "right" }}>
+                                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>GROSS</div>
+                                    <div className="fbt-display" style={{ fontSize: 13 }}>{fmt$(unpaidGross)}</div>
+                                  </div>
+                                  {sub.brokerageApplies && (
+                                    <div style={{ textAlign: "right" }}>
+                                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>BROK</div>
+                                      <div className="fbt-display" style={{ fontSize: 13, color: "var(--hazard-deep)" }}>−{fmt$(unpaidBrok)}</div>
+                                    </div>
+                                  )}
+                                  <div style={{ textAlign: "right" }}>
+                                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>NET DUE</div>
+                                    <div className="fbt-display" style={{ fontSize: 15, color: "var(--good)" }}>{fmt$(unpaidNet)}</div>
+                                  </div>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openPaySub(pd, sub); }}
+                                    className="btn-primary"
+                                    style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)", padding: "6px 14px", fontSize: 11 }}
+                                  >
+                                    <DollarSign size={12} /> PAY
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
+                                  ✓ ALL PAID
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Individual FBs */}
+                          {sExp && (
+                            <div style={{ padding: "0 10px 10px", display: "grid", gap: 4 }}>
+                              {sub.fbs.map((entry) => {
+                                const fb = entry.fb;
+                                const isPaid = !!fb.paidAt;
+                                return (
+                                  <div
+                                    key={fb.id}
+                                    style={{
+                                      padding: 8, fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                                      background: isPaid ? "#F0FDF4" : "#FEF3C7",
+                                      borderLeft: `3px solid ${isPaid ? "var(--good)" : "var(--hazard)"}`,
+                                      display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center",
+                                    }}
+                                  >
+                                    <div style={{ minWidth: 0, overflow: "hidden" }}>
+                                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                        <strong style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setEditingFB(fb)}>
+                                          FB#{fb.freightBillNumber || "—"}
+                                        </strong>
+                                        <span style={{ color: "var(--concrete)" }}>
+                                          {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""} · Order #{entry.dispatch?.code}
+                                        </span>
+                                        {isPaid && (
+                                          <span style={{ color: "var(--good)", fontWeight: 700 }}>
+                                            ✓ {fb.paidAt.slice(0, 10)} · {methodLabel[fb.paidMethod] || "Paid"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""} · {fmt$(fb.paidAmount || 0)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
+                                        {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""} · {entry.qty.toFixed(2)} {entry.method} × ${entry.rate.toFixed(2)} = <strong style={{ color: "var(--steel)" }}>{fmt$(entry.gross)}</strong>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 4 }}>
+                                      <button onClick={() => setEditingFB(fb)} className="btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }}>
+                                        <Edit2 size={10} />
+                                      </button>
+                                      {isPaid && (
+                                        <button onClick={() => unmarkPaid(fb)} className="btn-ghost" style={{ padding: "3px 8px", fontSize: 10, color: "var(--safety)" }} title="Un-mark paid">
+                                          <RefreshCw size={10} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ========== PROJECT MODAL ==========
 const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(project || {
@@ -7100,6 +7706,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
   const tabs = [
     { k: "dispatches", l: "Orders", ico: <ClipboardList size={16} /> },
     { k: "review", l: "Review", ico: <ShieldCheck size={16} /> },
+    { k: "payroll", l: "Payroll", ico: <DollarSign size={16} /> },
     { k: "projects", l: "Projects", ico: <Briefcase size={16} /> },
     { k: "invoices", l: "Invoices", ico: <Receipt size={16} /> },
     { k: "contacts", l: "Contacts", ico: <Users size={16} /> },
@@ -7149,6 +7756,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} editFreightBill={editFreightBill} onToast={onToast} />}
+        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} company={company} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
