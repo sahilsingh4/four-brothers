@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills } from "./db";
 import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap } from "lucide-react";
 
 const GlobalStyles = () => (
@@ -688,7 +689,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack }) => {
 
   const submit = async () => {
     if (!form.freightBillNumber || !form.driverName || !form.truckNumber) { alert("Freight bill #, driver name, and truck # are required."); return; }
-    await onSubmitTruck({ ...form, id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), dispatchId: dispatch.id, photos, submittedAt: new Date().toISOString() });
+    await onSubmitTruck({ ...form, id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), dispatchId: dispatch.id, photos, submittedAt: new Date().toISOString() });
     setLastFB(form.freightBillNumber);
     setSubmitted(true);
   };
@@ -977,11 +978,16 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   const createDispatch = async () => {
     if (!draft.jobName) { onToast("JOB NAME REQUIRED"); return; }
     const code = randomCode(6);
-    const d = { ...draft, id: Date.now(), code, trucksExpected: Number(draft.trucksExpected) || 1, createdAt: new Date().toISOString(), status: "open" };
+    const d = { ...draft, id: "temp-" + Date.now(), code, trucksExpected: Number(draft.trucksExpected) || 1, createdAt: new Date().toISOString(), status: "open" };
     const next = [d, ...dispatches];
     await setDispatches(next);
     setShowNew(false);
-    setActiveDispatch(d.id);
+    // Find the newly inserted dispatch (its ID is now the Supabase UUID)
+    // Small delay to let state settle then activate by code
+    setTimeout(() => {
+      const fresh = dispatches.find((x) => x.code === code);
+      if (fresh) setActiveDispatch(fresh.id);
+    }, 100);
     setDraft({ date: todayISO(), jobName: "", clientName: "", subContractor: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "" });
     onToast("DISPATCH CREATED — COPY THE LINK");
   };
@@ -4378,6 +4384,15 @@ export default function App() {
         if (event === "SIGNED_OUT") setAuthed(false);
       });
 
+      // Load dispatches + freight bills from Supabase (shared across devices)
+      const [cloudDispatches, cloudFreightBills] = await Promise.all([
+        fetchDispatches(),
+        fetchFreightBills(),
+      ]);
+      setDispatches(cloudDispatches);
+      setFreightBills(cloudFreightBills);
+      prevFbIdsRef.current = new Set(cloudFreightBills.map((x) => x.id));
+
       // Load local-cached preferences (these don't need cloud sync)
       const [seen, notifPrefs, lvmr] = await Promise.all([
         storageGet("fbt:seenFbIds"), storageGet("fbt:notifPrefs"),
@@ -4390,59 +4405,59 @@ export default function App() {
       }
       if (lvmr) setLastViewedMondayReportState(lvmr);
 
-      // TODO (next session): load dispatches, freight bills, contacts, etc. from Supabase
-      // For now, fall back to local storage so nothing breaks
-      const [l, q, f, d, fb, inv, co, ct, qr] = await Promise.all([
+      // TODO (future sessions): migrate contacts, quarries, invoices, hours, quotes, fleet, company to Supabase
+      // For now those still use local storage
+      const [l, q, f, inv, co, ct, qr] = await Promise.all([
         storageGet("fbt:logs"), storageGet("fbt:quotes"), storageGet("fbt:fleet"),
-        storageGet("fbt:dispatches", true), storageGet("fbt:freightbills", true),
         storageGet("fbt:invoices"), storageGet("fbt:company"), storageGet("fbt:contacts"),
         storageGet("fbt:quarries"),
       ]);
       if (l) setLogs(l); if (q) setQuotes(q); if (f) setFleet(f);
-      if (d) setDispatches(d); if (fb) setFreightBills(fb);
       if (inv) setInvoices(inv);
       if (ct) setContacts(ct);
       if (qr) setQuarries(qr);
       if (co) setCompanyState((prev) => ({ ...prev, ...co }));
 
-      prevFbIdsRef.current = new Set((fb || []).map((x) => x.id));
       setLoaded(true);
     })();
   }, []);
 
-  // Poll shared storage for new freight bills every 8 seconds (only when authed)
+  // Supabase realtime subscriptions — fire when data changes from ANY device
   useEffect(() => {
-    if (!authed) return;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const fresh = await storageGet("fbt:freightbills", true);
-        if (cancelled || !fresh || !Array.isArray(fresh)) return;
-        const freshIds = new Set(fresh.map((x) => x.id));
-        // Any IDs in `fresh` not in prev = newly arrived
-        const newOnes = fresh.filter((fb) => !prevFbIdsRef.current.has(fb.id));
-        if (newOnes.length > 0 && !firstLoadRef.current) {
-          // Fire notifications for each new one
-          newOnes.forEach((fb) => {
-            const d = dispatches.find((x) => x.id === fb.dispatchId);
-            const title = `New freight bill: FB #${fb.freightBillNumber}`;
-            const body = `${fb.driverName || "Driver"} · Truck ${fb.truckNumber || "?"}${d ? ` · ${d.jobName}` : ""}`;
-            if (browserNotifsEnabled) fireBrowserNotif(title, body, `fb-${fb.id}`);
-          });
-          if (soundEnabled) playDing();
-          // Update local state from shared
-          setFreightBills(fresh);
-        }
-        prevFbIdsRef.current = freshIds;
-        firstLoadRef.current = false;
-      } catch (e) { console.warn("notif poll failed", e); }
-    };
-    const interval = setInterval(poll, 8000);
-    // Also run once on mount
+    if (!authed || !loaded) return;
+
     firstLoadRef.current = true;
     setTimeout(() => { firstLoadRef.current = false; }, 2000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [authed, dispatches, soundEnabled, browserNotifsEnabled]);
+
+    const unsubFB = subscribeToFreightBills(async (payload) => {
+      // Refetch to get fresh data
+      const fresh = await fetchFreightBills();
+      const freshIds = new Set(fresh.map((x) => x.id));
+      const newOnes = fresh.filter((fb) => !prevFbIdsRef.current.has(fb.id));
+
+      if (newOnes.length > 0 && !firstLoadRef.current) {
+        newOnes.forEach((fb) => {
+          const d = dispatches.find((x) => x.id === fb.dispatchId);
+          const title = `New freight bill: FB #${fb.freightBillNumber}`;
+          const body = `${fb.driverName || "Driver"} · Truck ${fb.truckNumber || "?"}${d ? ` · ${d.jobName}` : ""}`;
+          if (browserNotifsEnabled) fireBrowserNotif(title, body, `fb-${fb.id}`);
+        });
+        if (soundEnabled) playDing();
+      }
+      setFreightBills(fresh);
+      prevFbIdsRef.current = freshIds;
+    });
+
+    const unsubD = subscribeToDispatches(async () => {
+      const fresh = await fetchDispatches();
+      setDispatches(fresh);
+    });
+
+    return () => {
+      unsubFB?.();
+      unsubD?.();
+    };
+  }, [authed, loaded, dispatches, soundEnabled, browserNotifsEnabled]);
 
   // Keep seenFbIds storage in sync
   useEffect(() => {
@@ -4492,17 +4507,92 @@ export default function App() {
   const setCompany = async (val) => { setCompanyState(val); await storageSet("fbt:company", val); };
   const setLastViewedMondayReport = async (val) => { setLastViewedMondayReportState(val); await storageSet("fbt:lastViewedMondayReport", val); };
 
-  const setDispatchesShared = async (val) => { setDispatches(val); await storageSet("fbt:dispatches", val, true); };
-  const setFreightBillsShared = async (val) => {
-    setFreightBills(val);
-    // Keep prev set current so our own additions don't re-fire notifs
-    prevFbIdsRef.current = new Set(val.map((x) => x.id));
-    await storageSet("fbt:freightbills", val, true);
+  // Dispatch & freight bill operations — now go through Supabase
+  // The setter receives the NEW FULL ARRAY (how the UI calls it today).
+  // We diff against current state to figure out insert/update/delete.
+  const setDispatchesShared = async (val) => {
+    // Diff: find new/updated/deleted items
+    const currentMap = new Map(dispatches.map((d) => [d.id, d]));
+    const newMap = new Map(val.map((d) => [d.id, d]));
+
+    try {
+      // Deletes: in current but not in new
+      for (const [id, d] of currentMap) {
+        if (!newMap.has(id) && !String(id).startsWith("temp-")) {
+          await deleteDispatch(id);
+        }
+      }
+      // Inserts & updates
+      const saved = [];
+      for (const d of val) {
+        if (!currentMap.has(d.id) || String(d.id).startsWith("temp-")) {
+          // New — insert
+          const { id: _drop, ...rest } = d;
+          const newRow = await insertDispatch(rest);
+          saved.push(newRow);
+        } else {
+          // Possibly update — only if it actually changed
+          const prev = currentMap.get(d.id);
+          const fieldsChanged = JSON.stringify(prev) !== JSON.stringify(d);
+          if (fieldsChanged) {
+            const updated = await updateDispatch(d.id, d);
+            saved.push(updated);
+          } else {
+            saved.push(d);
+          }
+        }
+      }
+      setDispatches(saved);
+    } catch (e) {
+      console.error("setDispatchesShared failed:", e);
+      // Fall back to optimistic local update
+      setDispatches(val);
+    }
   };
+
+  const setFreightBillsShared = async (val) => {
+    const currentMap = new Map(freightBills.map((fb) => [fb.id, fb]));
+    const newMap = new Map(val.map((fb) => [fb.id, fb]));
+
+    try {
+      for (const [id] of currentMap) {
+        if (!newMap.has(id) && !String(id).startsWith("temp-")) {
+          await deleteFreightBill(id);
+        }
+      }
+      const saved = [];
+      for (const fb of val) {
+        if (!currentMap.has(fb.id) || String(fb.id).startsWith("temp-")) {
+          const { id: _drop, ...rest } = fb;
+          const newRow = await insertFreightBill(rest);
+          saved.push(newRow);
+        } else {
+          saved.push(fb);
+        }
+      }
+      setFreightBills(saved);
+      prevFbIdsRef.current = new Set(saved.map((x) => x.id));
+    } catch (e) {
+      console.error("setFreightBillsShared failed:", e);
+      setFreightBills(val);
+    }
+  };
+
   const showToast = (msg) => setToast(msg);
 
   const handleQuoteSubmit = async (quote) => { const next = [quote, ...quotes]; setQuotes(next); await storageSet("fbt:quotes", next); };
-  const handleTruckSubmit = async (fb) => { const next = [fb, ...freightBills]; await setFreightBillsShared(next); };
+  // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
+  const handleTruckSubmit = async (fb) => {
+    try {
+      const { id: _drop, ...rest } = fb;
+      const newRow = await insertFreightBill(rest);
+      // Realtime subscription will pick this up on dispatcher's devices, but also update our own state
+      setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
+    } catch (e) {
+      console.error("handleTruckSubmit failed:", e);
+      throw e;
+    }
+  };
 
   // Auth handlers
   const handleLoginSuccess = (user) => {
