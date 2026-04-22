@@ -1371,12 +1371,21 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                       <select
                         className="fbt-select"
                         value={draft.projectId || ""}
-                        onChange={(e) => setDraft({ ...draft, projectId: e.target.value ? Number(e.target.value) : null })}
+                        onChange={(e) => {
+                          const pid = e.target.value ? Number(e.target.value) : null;
+                          const p = availableProjects.find((x) => x.id === pid);
+                          const patch = { projectId: pid };
+                          // Inherit project's default rate if order rate is still the default "142"
+                          if (p?.defaultRate != null && p.defaultRate !== "" && (draft.ratePerHour === "142" || !draft.ratePerHour)) {
+                            patch.ratePerHour = String(p.defaultRate);
+                          }
+                          setDraft({ ...draft, ...patch });
+                        }}
                       >
                         <option value="">— No project / One-off job —</option>
                         {availableProjects.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}
+                            {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}{p.defaultRate ? ` · $${p.defaultRate}/hr` : ""}{p.minimumHours ? ` · ${p.minimumHours}hr min` : ""}
                           </option>
                         ))}
                       </select>
@@ -2985,6 +2994,19 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     return 0;
   };
 
+  // Billable hours for INVOICE — applies project minimum ONLY if admin has acknowledged
+  // On the PAYROLL side we continue to use actual hours (effectiveHours).
+  const billableHoursForInvoice = (fb) => {
+    const actual = effectiveHours(fb);
+    // If admin hasn't confirmed the minimum, use actual regardless
+    if (!fb.minHoursApplied) return actual;
+    const d = dispatches.find((x) => x.id === fb.dispatchId);
+    const project = projects.find((p) => p.id === d?.projectId);
+    const minH = Number(project?.minimumHours) || 0;
+    if (minH > 0 && actual < minH) return minH;
+    return actual;
+  };
+
   // Filter freight bills by date + client (dispatch sub/job) + APPROVED status + invoice binding
   const matchedBills = useMemo(() => {
     return freightBills.filter((fb) => {
@@ -3017,7 +3039,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       matchedBills.forEach((fb) => {
         // Only auto-fill if user hasn't typed anything yet
         if (next[fb.id] === undefined || next[fb.id] === "") {
-          const h = effectiveHours(fb);
+          const h = billableHoursForInvoice(fb);
           if (h > 0) {
             next[fb.id] = h.toFixed(2);
             changed = true;
@@ -3039,7 +3061,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       else if (pricingMethod === "hour") {
         const manual = hoursOverride[fb.id];
         if (manual !== undefined && manual !== "") qty = Number(manual) || 0;
-        else qty = effectiveHours(fb);
+        else qty = billableHoursForInvoice(fb);
       }
       subtotal += qty * r;
       // Sum reimbursable FB-level extras (tolls/dump/fuel/other paid by driver/sub)
@@ -3073,7 +3095,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
     const billsWithHours = matchedBills.map((fb) => {
       const manual = hoursOverride[fb.id];
-      const qty = (manual !== undefined && manual !== "") ? Number(manual) : effectiveHours(fb);
+      const qty = (manual !== undefined && manual !== "") ? Number(manual) : billableHoursForInvoice(fb);
       return { ...fb, hoursOverride: qty };
     });
 
@@ -4875,8 +4897,9 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
 };
 
 // ========== FREIGHT BILL EDIT / APPROVE MODAL ==========
-const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToast, currentUser }) => {
+const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, onClose, onToast, currentUser }) => {
   const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
+  const project = dispatch ? projects.find((p) => p.id === dispatch.projectId) : null;
   const [draft, setDraft] = useState({
     freightBillNumber: fb.freightBillNumber || "",
     driverName: fb.driverName || "",
@@ -4893,6 +4916,7 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
     adminNotes: fb.adminNotes || "",
     photos: fb.photos || [],
     extras: fb.extras || [],
+    minHoursApplied: !!fb.minHoursApplied,
   });
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -4911,13 +4935,33 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
   const save = async (andApprove = false) => {
     setSaving(true);
     try {
+      const actualH = draft.hoursBilled ? Number(draft.hoursBilled) : (autoHours ? Number(autoHours) : null);
+      const minH = Number(project?.minimumHours) || 0;
+      const belowMin = minH > 0 && actualH != null && actualH < minH;
+
       const patch = {
         ...fb,
         ...draft,
         tonnage: draft.tonnage ? Number(draft.tonnage) : null,
         loadCount: Number(draft.loadCount) || 1,
-        hoursBilled: draft.hoursBilled ? Number(draft.hoursBilled) : (autoHours ? Number(autoHours) : null),
+        hoursBilled: actualH,
       };
+
+      // If admin confirmed min-hours, stamp audit
+      if (belowMin && draft.minHoursApplied && !fb.minHoursApplied) {
+        patch.minHoursApplied = true;
+        patch.minHoursApprovedBy = currentUser || "admin";
+        patch.minHoursApprovedAt = new Date().toISOString();
+      } else if (!belowMin) {
+        // Actual hours >= min → unneeded, clear the flag
+        patch.minHoursApplied = false;
+        patch.minHoursApprovedBy = null;
+        patch.minHoursApprovedAt = null;
+      } else {
+        // belowMin but not confirmed — keep flag as is
+        patch.minHoursApplied = !!draft.minHoursApplied;
+      }
+
       if (andApprove) {
         patch.status = "approved";
         patch.approvedAt = new Date().toISOString();
@@ -5055,6 +5099,40 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
               ▸ LEAVE HOURS BILLED BLANK TO AUTO-USE PICKUP→DROPOFF DIFFERENCE
             </div>
+
+            {/* Minimum hours warning */}
+            {(() => {
+              const actualH = draft.hoursBilled ? Number(draft.hoursBilled) : (autoHours ? Number(autoHours) : 0);
+              const minH = Number(project?.minimumHours) || 0;
+              if (minH <= 0 || actualH <= 0 || actualH >= minH) return null;
+              return (
+                <div style={{ marginTop: 10, padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
+                    ⚠ BELOW PROJECT MINIMUM
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
+                    Actual hours: <strong>{actualH.toFixed(2)}</strong> · Project "{project.name}" minimum: <strong>{minH}</strong> hrs
+                    <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
+                      ▸ CUSTOMER WILL BE INVOICED FOR {minH} HRS · SUB PAID FOR {actualH.toFixed(2)} HRS (ACTUAL)
+                    </div>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!draft.minHoursApplied}
+                      onChange={(e) => setDraft({ ...draft, minHoursApplied: e.target.checked })}
+                      style={{ width: 16, height: 16, cursor: "pointer" }}
+                    />
+                    CONFIRM — APPLY {minH}-HR MINIMUM ON INVOICE
+                  </label>
+                  {fb.minHoursApplied && fb.minHoursApprovedBy && (
+                    <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
+                      Previously confirmed by {fb.minHoursApprovedBy} on {fb.minHoursApprovedAt?.slice(0, 10)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Notes */}
@@ -5214,7 +5292,7 @@ const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToa
 };
 
 // ========== REVIEW TAB (End-of-day approval screen) ==========
-const ReviewTab = ({ freightBills, dispatches, contacts, editFreightBill, onToast }) => {
+const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFreightBill, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -5942,6 +6020,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
           fb={editingFB}
           dispatches={dispatches}
           contacts={contacts}
+          projects={projects}
           editFreightBill={editFreightBill}
           onClose={() => setEditingFB(null)}
           onToast={onToast}
@@ -6311,6 +6390,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
     location: "", status: "active", startDate: "", endDate: "",
     tonnageGoal: "", budget: "", bidAmount: "",
     primeContractor: "", fundingSource: "", certifiedPayroll: false, notes: "",
+    defaultRate: "", minimumHours: "",
   });
 
   const customers = contacts.filter((c) => c.type === "customer");
@@ -6396,6 +6476,40 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
             <div>
               <label className="fbt-label">End Date</label>
               <input className="fbt-input" type="date" value={draft.endDate} onChange={(e) => setDraft({ ...draft, endDate: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Project Billing Defaults — inherited by orders under this project */}
+          <div style={{ padding: 14, background: "#F0FDF4", border: "2px solid var(--good)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
+              ▸ BILLING DEFAULTS · APPLIED TO ORDERS + INVOICES UNDER THIS PROJECT
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+              <div>
+                <label className="fbt-label">Default Rate $/hr</label>
+                <input
+                  className="fbt-input"
+                  type="number"
+                  step="0.01"
+                  value={draft.defaultRate ?? ""}
+                  onChange={(e) => setDraft({ ...draft, defaultRate: e.target.value })}
+                  placeholder="142.00"
+                />
+              </div>
+              <div>
+                <label className="fbt-label">Minimum Hours</label>
+                <input
+                  className="fbt-input"
+                  type="number"
+                  step="0.25"
+                  value={draft.minimumHours ?? ""}
+                  onChange={(e) => setDraft({ ...draft, minimumHours: e.target.value })}
+                  placeholder="8"
+                />
+              </div>
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+              ▸ INVOICE USES max(ACTUAL_HOURS, MINIMUM) × RATE · SUB PAYROLL USES ACTUAL HOURS
             </div>
           </div>
 
@@ -7587,6 +7701,7 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
           fb={editing}
           dispatches={dispatches}
           contacts={contacts}
+          projects={projects}
           editFreightBill={editFreightBill}
           onClose={() => setEditing(null)}
           onToast={onToast}
@@ -8797,7 +8912,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 80px" }}>
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
-        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} editFreightBill={editFreightBill} onToast={onToast} />}
+        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}

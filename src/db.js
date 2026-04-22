@@ -116,6 +116,9 @@ const fbFromDB = (row) => ({
   customerPaidAt: row.customer_paid_at || null,
   customerPaidAmount: row.customer_paid_amount !== null && row.customer_paid_amount !== undefined ? Number(row.customer_paid_amount) : null,
   extras: row.extras || [],
+  minHoursApplied: !!row.min_hours_applied,
+  minHoursApprovedBy: row.min_hours_approved_by || "",
+  minHoursApprovedAt: row.min_hours_approved_at || null,
 });
 
 const fbToDB = (fb) => ({
@@ -149,6 +152,9 @@ const fbToDB = (fb) => ({
   customer_paid_at: fb.customerPaidAt || null,
   customer_paid_amount: fb.customerPaidAmount !== null && fb.customerPaidAmount !== undefined && fb.customerPaidAmount !== "" ? Number(fb.customerPaidAmount) : null,
   extras: fb.extras || [],
+  min_hours_applied: !!fb.minHoursApplied,
+  min_hours_approved_by: fb.minHoursApprovedBy || null,
+  min_hours_approved_at: fb.minHoursApprovedAt || null,
 });
 
 export const fetchFreightBills = async () => {
@@ -471,6 +477,8 @@ const projectFromDB = (row) => ({
   fundingSource: row.funding_source || "",
   certifiedPayroll: !!row.certified_payroll,
   notes: row.notes || "",
+  defaultRate: row.default_rate !== null && row.default_rate !== undefined ? Number(row.default_rate) : null,
+  minimumHours: row.minimum_hours !== null && row.minimum_hours !== undefined ? Number(row.minimum_hours) : null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -492,6 +500,8 @@ const projectToDB = (p) => ({
   funding_source: p.fundingSource || null,
   certified_payroll: !!p.certifiedPayroll,
   notes: p.notes || null,
+  default_rate: p.defaultRate !== null && p.defaultRate !== undefined && p.defaultRate !== "" ? Number(p.defaultRate) : null,
+  minimum_hours: p.minimumHours !== null && p.minimumHours !== undefined && p.minimumHours !== "" ? Number(p.minimumHours) : null,
 });
 
 export const fetchProjects = async () => {
