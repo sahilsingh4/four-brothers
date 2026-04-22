@@ -1033,6 +1033,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
 const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   const [activeDispatch, setActiveDispatch] = useState(null);
+  const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
 
   // Jump to dispatch when notification clicked
   useEffect(() => {
@@ -1457,6 +1458,78 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         </div>
       )}
 
+      {/* Text queue modal */}
+      {textQueue && (
+        <div className="modal-bg" onClick={() => setTextQueue(null)}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>TEXT QUEUE</div>
+                <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>SEND {textQueue.list.length} TEXT{textQueue.list.length !== 1 ? "S" : ""}</h3>
+              </div>
+              <button onClick={() => setTextQueue(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 12, lineHeight: 1.5 }}>
+                ▸ TAP EACH BUTTON BELOW TO OPEN THAT TEXT. YOUR PHONE WILL PRE-FILL THE MESSAGE — JUST HIT SEND AND COME BACK HERE.
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {textQueue.list.map((item, idx) => {
+                  const isSent = textQueue.sent[idx];
+                  return (
+                    <a
+                      key={idx}
+                      href={item.smsLink}
+                      onClick={() => {
+                        setTextQueue((q) => {
+                          if (!q) return q;
+                          const newSent = [...q.sent];
+                          newSent[idx] = true;
+                          return { ...q, sent: newSent };
+                        });
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "12px 14px",
+                        background: isSent ? "#F0FDF4" : "var(--cream)",
+                        border: "2px solid " + (isSent ? "var(--good)" : "var(--steel)"),
+                        textDecoration: "none",
+                        color: "var(--steel)",
+                        fontSize: 13,
+                        fontFamily: "JetBrains Mono, monospace",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700 }}>
+                          {isSent && <CheckCircle2 size={13} style={{ color: "var(--good)", marginRight: 6, verticalAlign: "middle" }} />}
+                          {item.name}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>{item.phone}</div>
+                      </div>
+                      <div style={{ background: isSent ? "var(--good)" : "var(--hazard)", color: isSent ? "#FFF" : "var(--steel)", padding: "6px 10px", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em" }}>
+                        {isSent ? "SENT ✓" : <><MessageSquare size={11} style={{ marginRight: 4, verticalAlign: "middle" }} /> TAP TO SEND</>}
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+              <div style={{ marginTop: 14, display: "flex", gap: 8, justifyContent: "space-between" }}>
+                <button
+                  onClick={() => setTextQueue((q) => q ? { ...q, sent: q.sent.map(() => false) } : q)}
+                  className="btn-ghost"
+                  style={{ fontSize: 10, padding: "6px 12px" }}
+                >
+                  <RefreshCw size={11} style={{ marginRight: 3 }} /> RESET
+                </button>
+                <button onClick={() => setTextQueue(null)} className="btn-primary" style={{ fontSize: 11 }}>
+                  DONE
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeDispatch && (() => {
         const d = dispatches.find((x) => x.id === activeDispatch);
         if (!d) return null;
@@ -1524,15 +1597,15 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                           className="btn-ghost"
                           style={{ padding: "6px 12px", fontSize: 10 }}
                           onClick={() => {
-                            const textable = assignmentRows.filter((r) => r.smsLink);
+                            const textable = assignmentRows.filter((r) => r.smsLink).map((r) => ({
+                              name: r.a.name,
+                              smsLink: r.smsLink,
+                              phone: r.contact?.phone || "",
+                            }));
                             if (textable.length === 0) { onToast("NO CONTACTS HAVE PHONE NUMBERS"); return; }
-                            if (!confirm(`Open ${textable.length} text message${textable.length !== 1 ? "s" : ""} one by one?`)) return;
-                            // Open each in sequence with a small delay
-                            textable.forEach((r, i) => {
-                              setTimeout(() => { window.location.href = r.smsLink; }, i * 600);
-                            });
+                            setTextQueue({ list: textable, sent: textable.map(() => false) });
                           }}
-                          title="Send each sublink by text one at a time"
+                          title="Open a queue to text each sublink one tap at a time"
                         >
                           <MessageSquare size={12} style={{ marginRight: 4 }} /> TEXT ALL
                         </button>
@@ -5107,7 +5180,429 @@ const downloadReportCSV = (report) => {
 };
 
 // ========== REPORTS TAB ==========
-const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries, contacts, company, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
+// ========== FREIGHT BILL SEARCH PANEL ==========
+const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreightBill, onToast, company }) => {
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [editing, setEditing] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const [expanded, setExpanded] = useState(true);
+
+  const customers = contacts.filter((c) => c.type === "customer");
+
+  // Projects filtered by selected customer
+  const availableProjects = useMemo(() => {
+    if (!customerId) return projects;
+    return projects.filter((p) => String(p.customerId) === String(customerId));
+  }, [projects, customerId]);
+
+  // If customer changes, reset project if it doesn't belong
+  useEffect(() => {
+    if (customerId && projectId) {
+      const match = availableProjects.find((p) => String(p.id) === String(projectId));
+      if (!match) setProjectId("");
+    }
+  }, [customerId, projectId, availableProjects]);
+
+  const hasAnyFilter = search.trim() || fromDate || toDate || customerId || projectId || statusFilter !== "all";
+
+  const results = useMemo(() => {
+    if (!hasAnyFilter) return [];
+    let list = freightBills.slice();
+
+    // Status filter
+    if (statusFilter !== "all") list = list.filter((fb) => (fb.status || "pending") === statusFilter);
+
+    // Date range — on submitted_at
+    if (fromDate) list = list.filter((fb) => (fb.submittedAt || "").slice(0, 10) >= fromDate);
+    if (toDate) list = list.filter((fb) => (fb.submittedAt || "").slice(0, 10) <= toDate);
+
+    // Customer / project filter — via the linked order
+    if (customerId || projectId) {
+      list = list.filter((fb) => {
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        if (!d) return false;
+        if (customerId && String(d.clientId) !== String(customerId)) return false;
+        if (projectId && String(d.projectId) !== String(projectId)) return false;
+        return true;
+      });
+    }
+
+    // Text search — FB#, driver name, truck #, job name, order code
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter((fb) => {
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        const hay = `${fb.freightBillNumber || ""} ${fb.driverName || ""} ${fb.truckNumber || ""} ${fb.material || ""} ${fb.description || ""} ${fb.notes || ""} ${fb.adminNotes || ""} ${d?.jobName || ""} ${d?.code || ""} ${d?.clientName || ""}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+
+    return list.sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  }, [hasAnyFilter, freightBills, dispatches, search, fromDate, toDate, customerId, projectId, statusFilter]);
+
+  const resetFilters = () => {
+    setSearch(""); setFromDate(""); setToDate("");
+    setCustomerId(""); setProjectId(""); setStatusFilter("all");
+  };
+
+  // Quick date presets
+  const setPreset = (days) => {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    setFromDate(from.toISOString().slice(0, 10));
+    setToDate(to.toISOString().slice(0, 10));
+  };
+
+  // CSV export
+  const exportCSV = () => {
+    if (results.length === 0) { onToast("NO RESULTS TO EXPORT"); return; }
+    const rows = [
+      ["FB #", "Submitted", "Status", "Driver", "Truck", "Material", "Tonnage", "Loads", "Hours", "Order #", "Job", "Customer", "Description"],
+    ];
+    results.forEach((fb) => {
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const customer = contacts.find((c) => c.id === d?.clientId);
+      rows.push([
+        fb.freightBillNumber || "",
+        fb.submittedAt ? new Date(fb.submittedAt).toLocaleString() : "",
+        fb.status || "pending",
+        fb.driverName || "",
+        fb.truckNumber || "",
+        fb.material || "",
+        fb.tonnage || "",
+        fb.loadCount || "",
+        fb.hoursBilled || "",
+        d?.code || "",
+        d?.jobName || "",
+        customer?.companyName || d?.clientName || "",
+        fb.description || "",
+      ]);
+    });
+    const csv = rows.map((r) => r.map((v) => {
+      const s = String(v).replace(/"/g, '""');
+      return /[,"\n]/.test(s) ? `"${s}"` : s;
+    }).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `fb-search-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onToast(`EXPORTED ${results.length} ROWS`);
+  };
+
+  // Print-to-PDF view (opens new window)
+  const printReport = () => {
+    if (results.length === 0) { onToast("NO RESULTS TO PRINT"); return; }
+    const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const now = new Date().toLocaleString();
+    const totalTons = results.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+    const totalHours = results.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0);
+    const totalLoads = results.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
+
+    const rows = results.map((fb) => {
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const customer = contacts.find((c) => c.id === d?.clientId);
+      const photos = (fb.photos || []).slice(0, 3).map((p) => `<img src="${p.dataUrl}" style="width:60px;height:60px;object-fit:cover;border:1px solid #ccc;margin-right:3px;" />`).join("");
+      return `
+        <tr>
+          <td>${esc(fb.freightBillNumber)}</td>
+          <td>${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}</td>
+          <td>${esc(fb.status)}</td>
+          <td>${esc(fb.driverName)}</td>
+          <td>${esc(fb.truckNumber)}</td>
+          <td>${esc(d?.code)}</td>
+          <td>${esc(d?.jobName)}</td>
+          <td>${esc(customer?.companyName || d?.clientName)}</td>
+          <td style="text-align:right;">${fb.tonnage || ""}</td>
+          <td style="text-align:right;">${fb.hoursBilled || ""}</td>
+          <td>${photos}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const html = `<!doctype html><html><head><title>Freight Bill Search Report</title>
+      <style>
+        body{font-family:Arial,sans-serif;margin:20px;color:#1C1917;}
+        h1{font-size:18px;margin:0 0 6px;}
+        .sub{color:#666;font-size:11px;margin-bottom:14px;}
+        table{width:100%;border-collapse:collapse;font-size:11px;}
+        th,td{border:1px solid #ccc;padding:5px 6px;text-align:left;vertical-align:top;}
+        th{background:#1C1917;color:#FAFAF9;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;}
+        tr:nth-child(even) td{background:#F5F5F4;}
+        .totals{margin-top:12px;padding:10px;background:#FEF3C7;border:2px solid #F59E0B;font-size:12px;}
+        .filters{margin-bottom:12px;padding:8px;background:#F5F5F4;font-size:11px;}
+        @media print{body{margin:10px;} th{background:#333;}}
+      </style></head><body>
+      <h1>${esc(company?.name || "4 Brothers Trucking, LLC")} — Freight Bill Report</h1>
+      <div class="sub">Generated ${now} · ${results.length} records</div>
+      <div class="filters">
+        <strong>Filters:</strong>
+        ${search ? ` Search="${esc(search)}"` : ""}
+        ${fromDate ? ` From=${esc(fromDate)}` : ""}
+        ${toDate ? ` To=${esc(toDate)}` : ""}
+        ${customerId ? ` Customer=${esc(customers.find(c => String(c.id) === String(customerId))?.companyName || "")}` : ""}
+        ${projectId ? ` Project=${esc(projects.find(p => String(p.id) === String(projectId))?.name || "")}` : ""}
+        ${statusFilter !== "all" ? ` Status=${esc(statusFilter)}` : ""}
+      </div>
+      <table>
+        <thead>
+          <tr><th>FB #</th><th>Date</th><th>Status</th><th>Driver</th><th>Truck</th><th>Order</th><th>Job</th><th>Customer</th><th>Tons</th><th>Hrs</th><th>Photos</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="totals">
+        <strong>Totals:</strong> ${results.length} freight bills · ${totalTons.toFixed(2)} tons · ${totalHours.toFixed(2)} hours · ${totalLoads} loads
+      </div>
+      </body></html>`;
+    const w = window.open("", "_blank", "width=1000,height=800");
+    if (!w) { onToast("POP-UP BLOCKED"); return; }
+    w.document.write(html);
+    w.document.close();
+    onToast("REPORT OPENED — PRINT OR SAVE AS PDF");
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
+      {editing && (
+        <FBEditModal
+          fb={editing}
+          dispatches={dispatches}
+          contacts={contacts}
+          editFreightBill={editFreightBill}
+          onClose={() => setEditing(null)}
+          onToast={onToast}
+          currentUser="admin"
+        />
+      )}
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, cursor: "zoom-out" }}>
+          <img src={lightbox} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} alt="" />
+        </div>
+      )}
+
+      {/* Header */}
+      <div
+        style={{
+          padding: "14px 20px", background: "var(--steel)", color: "var(--cream)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          cursor: "pointer",
+        }}
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Search size={18} />
+          <div>
+            <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1 }}>SEARCH FREIGHT BILLS</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", marginTop: 2, letterSpacing: "0.1em" }}>
+              ▸ BY FB# · DATE · CUSTOMER · PROJECT · STATUS — WITH PHOTOS
+            </div>
+          </div>
+        </div>
+        <ChevronDown size={18} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+      </div>
+
+      {expanded && (
+        <div style={{ padding: 20 }}>
+          {/* Filters */}
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ position: "relative" }}>
+              <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
+              <input
+                className="fbt-input"
+                style={{ paddingLeft: 38 }}
+                placeholder="Search FB#, driver, truck, job name, order code, description…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+              <div>
+                <label className="fbt-label">From</label>
+                <input className="fbt-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="fbt-label">To</label>
+                <input className="fbt-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="fbt-label">Customer</label>
+                <select className="fbt-select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                  <option value="">— All —</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="fbt-label">Project</label>
+                <select className="fbt-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                  <option value="">— All —</option>
+                  {availableProjects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="fbt-label">Status</label>
+                <select className="fbt-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="all">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Quick presets */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>QUICK:</span>
+              <button onClick={() => setPreset(7)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>LAST 7D</button>
+              <button onClick={() => setPreset(14)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>LAST 14D</button>
+              <button onClick={() => setPreset(30)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>LAST 30D</button>
+              <button onClick={() => setPreset(90)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>LAST 90D</button>
+              {hasAnyFilter && (
+                <button onClick={resetFilters} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10, marginLeft: "auto", color: "var(--safety)" }}>
+                  <X size={11} style={{ marginRight: 3 }} /> CLEAR ALL
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Results */}
+          {!hasAnyFilter ? (
+            <div style={{ marginTop: 20, padding: 32, textAlign: "center", background: "#F5F5F4", border: "2px dashed var(--concrete)" }}>
+              <Search size={32} style={{ opacity: 0.4, marginBottom: 8, color: "var(--concrete)" }} />
+              <div className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)" }}>
+                ENTER A SEARCH TERM OR PICK A FILTER TO SEE RESULTS
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Result summary + exports */}
+              <div style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, padding: "10px 14px", background: "var(--hazard)", color: "var(--steel)" }}>
+                <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>
+                  ▸ {results.length} FREIGHT BILL{results.length !== 1 ? "S" : ""}
+                  {results.length > 0 && ` · ${results.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0).toFixed(1)}T · ${results.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0).toFixed(1)}HRS`}
+                </div>
+                {results.length > 0 && (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={exportCSV} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, background: "var(--steel)", color: "var(--cream)", borderColor: "var(--steel)" }}>
+                      <Download size={11} style={{ marginRight: 3 }} /> CSV
+                    </button>
+                    <button onClick={printReport} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, background: "var(--steel)", color: "var(--cream)", borderColor: "var(--steel)" }}>
+                      <Printer size={11} style={{ marginRight: 3 }} /> PRINT / PDF
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {results.length === 0 ? (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--concrete)", background: "#F5F5F4" }}>
+                  <div className="fbt-mono" style={{ fontSize: 12 }}>NO FREIGHT BILLS MATCH YOUR FILTERS</div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {results.map((fb) => {
+                    const d = dispatches.find((x) => x.id === fb.dispatchId);
+                    const customer = contacts.find((c) => c.id === d?.clientId);
+                    const status = fb.status || "pending";
+                    const statusBg = status === "approved" ? "var(--good)" : status === "rejected" ? "var(--safety)" : "var(--hazard)";
+                    const photos = fb.photos || [];
+                    return (
+                      <div
+                        key={fb.id}
+                        style={{
+                          padding: 12, border: "1.5px solid var(--steel)", background: "#FFF",
+                          borderLeft: `4px solid ${statusBg}`,
+                          display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap",
+                        }}
+                      >
+                        <div
+                          style={{ flex: 1, minWidth: 200, cursor: "pointer" }}
+                          onClick={() => setEditing(fb)}
+                        >
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                            <span className="chip" style={{ background: statusBg, color: "#FFF", fontSize: 9, padding: "2px 7px" }}>
+                              {status.toUpperCase()}
+                            </span>
+                            <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 7px" }}>
+                              FB #{fb.freightBillNumber || "—"}
+                            </span>
+                            {d && <span className="chip" style={{ background: "#FFF", fontSize: 9, padding: "2px 7px" }}>ORDER #{d.code}</span>}
+                            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                              {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}
+                            </span>
+                          </div>
+                          <div className="fbt-display" style={{ fontSize: 14, lineHeight: 1.2 }}>
+                            {fb.driverName || "—"} · Truck {fb.truckNumber || "—"}
+                          </div>
+                          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>
+                            {d?.jobName || ""}
+                            {customer && ` · ${customer.companyName}`}
+                          </div>
+                          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", marginTop: 3, fontWeight: 700 }}>
+                            {fb.tonnage ? `${fb.tonnage}T` : ""}
+                            {fb.loadCount ? ` · ${fb.loadCount} LOAD${fb.loadCount !== 1 ? "S" : ""}` : ""}
+                            {fb.hoursBilled ? ` · ${fb.hoursBilled}HRS` : fb.pickupTime && fb.dropoffTime ? ` · ${fb.pickupTime}→${fb.dropoffTime}` : ""}
+                            {fb.material ? ` · ${fb.material}` : ""}
+                          </div>
+                          {fb.description && (
+                            <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 4, fontStyle: "italic" }}>"{fb.description}"</div>
+                          )}
+                        </div>
+
+                        {/* Photo thumbnails */}
+                        {photos.length > 0 && (
+                          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+                            {photos.slice(0, 4).map((p, idx) => (
+                              <img
+                                key={p.id || idx}
+                                src={p.dataUrl}
+                                alt=""
+                                style={{ width: 56, height: 56, objectFit: "cover", border: "1px solid var(--steel)", cursor: "pointer" }}
+                                onClick={(e) => { e.stopPropagation(); setLightbox(p.dataUrl); }}
+                              />
+                            ))}
+                            {photos.length > 4 && (
+                              <div
+                                style={{
+                                  width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center",
+                                  background: "var(--steel)", color: "var(--cream)", fontSize: 12, fontWeight: 700,
+                                  cursor: "pointer", fontFamily: "JetBrains Mono, monospace",
+                                }}
+                                onClick={() => setEditing(fb)}
+                                title="Open to see all photos"
+                              >
+                                +{photos.length - 4}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ========== REPORTS TAB ==========
+const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -5155,6 +5650,17 @@ const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {/* FB Search Panel at top */}
+      <FBSearchPanel
+        freightBills={freightBills}
+        dispatches={dispatches}
+        contacts={contacts}
+        projects={projects}
+        editFreightBill={editFreightBill}
+        onToast={onToast}
+        company={company}
+      />
+
       {mondayPending && (
         <div className="fbt-card" style={{ padding: 18, background: "var(--hazard)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <Calendar size={28} />
@@ -6084,7 +6590,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} onToast={onToast} />}
         {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
-        {tab === "reports" && <ReportsTab dispatches={dispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} company={company} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
+        {tab === "reports" && <ReportsTab dispatches={dispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
       </div>
     </div>
