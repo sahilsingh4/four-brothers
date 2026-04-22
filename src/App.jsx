@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects } from "./db";
-import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap, Briefcase, Hash } from "lucide-react";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
+import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -842,11 +842,22 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
               <label className="fbt-label">Scale Tickets / Freight Bill Photos</label>
               <div style={{ border: "2px dashed var(--steel)", padding: 20, textAlign: "center", background: "#FFF" }}>
                 <Camera size={32} style={{ color: "var(--hazard-deep)", marginBottom: 8 }} />
-                <div style={{ fontSize: 13, color: "var(--concrete)", marginBottom: 12, fontFamily: "JetBrains Mono, monospace" }}>{uploading ? "PROCESSING…" : "TAP TO TAKE PHOTO OR UPLOAD"}</div>
-                <label className="btn-primary" style={{ cursor: "pointer", display: "inline-flex" }}>
-                  <Upload size={16} /> {photos.length > 0 ? `ADD MORE (${photos.length})` : "SELECT PHOTOS"}
-                  <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
-                </label>
+                <div style={{ fontSize: 13, color: "var(--concrete)", marginBottom: 12, fontFamily: "JetBrains Mono, monospace" }}>{uploading ? "PROCESSING…" : "TAKE PHOTO OR PICK FROM GALLERY"}</div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                  <label className="btn-primary" style={{ cursor: "pointer", display: "inline-flex", padding: "10px 16px" }}>
+                    <Camera size={16} /> {photos.length > 0 ? `CAMERA` : "TAKE PHOTO"}
+                    <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+                  </label>
+                  <label className="btn-ghost" style={{ cursor: "pointer", display: "inline-flex", padding: "10px 16px" }}>
+                    <Upload size={16} /> {photos.length > 0 ? `ADD FROM GALLERY` : "FROM GALLERY"}
+                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+                  </label>
+                </div>
+                {photos.length > 0 && (
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8 }}>
+                    {photos.length} PHOTO{photos.length !== 1 ? "S" : ""} ATTACHED
+                  </div>
+                )}
               </div>
               {photos.length > 0 && (
                 <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -3036,7 +3047,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
 };
 
 // ========== CONTACT DETAIL MODAL ==========
-const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit, onDelete, onClose, onToast }) => {
+const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
   const history = useMemo(() => {
     return dispatches.filter((d) => d.subContractorId === contact.id || (d.subContractor && contact.companyName && d.subContractor.toLowerCase() === contact.companyName.toLowerCase()));
   }, [dispatches, contact]);
@@ -3049,6 +3060,39 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
   const copyPhoneText = () => {
     if (contact.phone) { navigator.clipboard?.writeText(contact.phone); onToast("PHONE COPIED"); }
   };
+
+  // Portal link generation for customer contacts
+  const generateToken = () => {
+    // Browser-safe hex token (48 chars)
+    const arr = new Uint8Array(24);
+    (crypto && crypto.getRandomValues) ? crypto.getRandomValues(arr) : arr.forEach((_, i) => arr[i] = Math.floor(Math.random() * 256));
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const enablePortal = async () => {
+    if (!onSaveContact) return;
+    const token = contact.portalToken || generateToken();
+    await onSaveContact({ ...contact, portalToken: token, portalEnabled: true });
+    onToast("PORTAL ENABLED — LINK READY");
+  };
+
+  const disablePortal = async () => {
+    if (!onSaveContact) return;
+    if (!confirm("Disable customer portal access? Their link will stop working.")) return;
+    await onSaveContact({ ...contact, portalEnabled: false });
+    onToast("PORTAL DISABLED");
+  };
+
+  const regenerateToken = async () => {
+    if (!onSaveContact) return;
+    if (!confirm("Regenerate portal token? Their CURRENT link will stop working and you'll need to send the new one.")) return;
+    await onSaveContact({ ...contact, portalToken: generateToken(), portalEnabled: true });
+    onToast("NEW LINK GENERATED");
+  };
+
+  const portalUrl = contact.portalToken
+    ? `${window.location.origin}${window.location.pathname}#/customer/${contact.portalToken}`
+    : null;
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -3103,6 +3147,72 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
               <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ NOTES</div>
               <div style={{ padding: 12, background: "#FEF3C7", borderLeft: "3px solid var(--hazard)", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>
                 {contact.notes}
+              </div>
+            </>
+          )}
+
+          {/* Customer Portal (only for type=customer) */}
+          {contact.type === "customer" && onSaveContact && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ CUSTOMER PORTAL ACCESS</div>
+              <div style={{ padding: 14, background: contact.portalEnabled ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (contact.portalEnabled ? "var(--good)" : "var(--concrete)"), marginBottom: 20 }}>
+                {!contact.portalEnabled ? (
+                  <>
+                    <div className="fbt-mono" style={{ fontSize: 11, marginBottom: 10 }}>PORTAL DISABLED</div>
+                    <p style={{ fontSize: 12, color: "var(--concrete)", margin: "0 0 10px" }}>
+                      Enable a view-only portal link that lets this customer see their approved freight bills, scale tickets, and orders.
+                    </p>
+                    <button onClick={enablePortal} className="btn-primary" style={{ fontSize: 11 }}>
+                      <ShieldCheck size={14} /> ENABLE PORTAL
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                      <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>● ACTIVE</span>
+                      <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>VIEW-ONLY · APPROVED FBs ONLY</span>
+                    </div>
+                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 10 }}>
+                      {portalUrl}
+                    </code>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: 10, padding: "6px 10px" }}
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(portalUrl); onToast("PORTAL LINK COPIED"); }
+                          catch { onToast("COPY FAILED"); }
+                        }}
+                      >
+                        <Link2 size={11} style={{ marginRight: 3 }} /> COPY LINK
+                      </button>
+                      {contact.phone && (
+                        <a
+                          href={buildSMSLink(contact.phone, `Hi ${contact.contactName || contact.companyName} — here's your 4 Brothers Trucking portal link to view your freight bills and scale tickets: ${portalUrl}`) || "#"}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: "6px 10px", textDecoration: "none" }}
+                        >
+                          <MessageSquare size={11} style={{ marginRight: 3 }} /> TEXT
+                        </a>
+                      )}
+                      {contact.email && (
+                        <a
+                          href={buildEmailLink(contact.email, `Your 4 Brothers Trucking Portal Access`, `Hi ${contact.contactName || contact.companyName},\n\nYou can now view your freight bills and scale tickets any time at this link:\n\n${portalUrl}\n\nThanks,\n4 Brothers Trucking, LLC`) || "#"}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: "6px 10px", textDecoration: "none" }}
+                        >
+                          <Mail size={11} style={{ marginRight: 3 }} /> EMAIL
+                        </a>
+                      )}
+                      <button className="btn-ghost" style={{ fontSize: 10, padding: "6px 10px" }} onClick={regenerateToken}>
+                        <RefreshCw size={11} style={{ marginRight: 3 }} /> NEW LINK
+                      </button>
+                      <button className="btn-danger" style={{ fontSize: 10, padding: "6px 10px" }} onClick={disablePortal}>
+                        <Lock size={11} style={{ marginRight: 3 }} /> DISABLE
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -3214,6 +3324,10 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
           onDelete={() => remove(viewing.id)}
           onClose={() => setViewing(null)}
           onToast={onToast}
+          onSaveContact={async (updated) => {
+            await save(updated);
+            setViewing(updated);  // refresh the modal with updated data
+          }}
         />
       )}
 
@@ -3688,6 +3802,405 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+// ========== FREIGHT BILL EDIT / APPROVE MODAL ==========
+const FBEditModal = ({ fb, dispatches, contacts, editFreightBill, onClose, onToast, currentUser }) => {
+  const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
+  const [draft, setDraft] = useState({
+    freightBillNumber: fb.freightBillNumber || "",
+    driverName: fb.driverName || "",
+    truckNumber: fb.truckNumber || "",
+    material: fb.material || "",
+    tonnage: fb.tonnage || "",
+    loadCount: fb.loadCount || 1,
+    pickupTime: fb.pickupTime || "",
+    dropoffTime: fb.dropoffTime || "",
+    hoursBilled: fb.hoursBilled || "",
+    jobNameOverride: fb.jobNameOverride || "",
+    description: fb.description || "",
+    notes: fb.notes || "",
+    adminNotes: fb.adminNotes || "",
+    photos: fb.photos || [],
+  });
+  const [saving, setSaving] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
+
+  // Auto-calc hours from pickup/dropoff if both present
+  const autoHours = useMemo(() => {
+    if (!draft.pickupTime || !draft.dropoffTime) return null;
+    const [h1, m1] = draft.pickupTime.split(":").map(Number);
+    const [h2, m2] = draft.dropoffTime.split(":").map(Number);
+    if (isNaN(h1) || isNaN(h2)) return null;
+    const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (mins <= 0) return null;
+    return (mins / 60).toFixed(2);
+  }, [draft.pickupTime, draft.dropoffTime]);
+
+  const save = async (andApprove = false) => {
+    setSaving(true);
+    try {
+      const patch = {
+        ...fb,
+        ...draft,
+        tonnage: draft.tonnage ? Number(draft.tonnage) : null,
+        loadCount: Number(draft.loadCount) || 1,
+        hoursBilled: draft.hoursBilled ? Number(draft.hoursBilled) : (autoHours ? Number(autoHours) : null),
+      };
+      if (andApprove) {
+        patch.status = "approved";
+        patch.approvedAt = new Date().toISOString();
+        patch.approvedBy = currentUser || "admin";
+      }
+      await editFreightBill(fb.id, patch);
+      onToast(andApprove ? "✓ FB APPROVED" : "FB UPDATED");
+      onClose();
+    } catch (e) {
+      console.error(e);
+      onToast("SAVE FAILED");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reject = async () => {
+    if (!confirm("Reject this freight bill? It will be hidden from customer but kept for your records.")) return;
+    setSaving(true);
+    try {
+      await editFreightBill(fb.id, { ...fb, ...draft, status: "rejected" });
+      onToast("FB REJECTED");
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unapprove = async () => {
+    if (!confirm("Move back to pending? Customer will no longer see this FB.")) return;
+    setSaving(true);
+    try {
+      await editFreightBill(fb.id, { ...fb, ...draft, status: "pending", approvedAt: null, approvedBy: null });
+      onToast("MOVED TO PENDING");
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusColor = fb.status === "approved" ? "var(--good)" : fb.status === "rejected" ? "var(--safety)" : "var(--hazard)";
+  const statusLabel = (fb.status || "pending").toUpperCase();
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+        {lightbox && (
+          <div onClick={(e) => { e.stopPropagation(); setLightbox(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <img src={lightbox} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} alt="" />
+          </div>
+        )}
+        <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+              FREIGHT BILL · #{fb.freightBillNumber || "—"} · <span style={{ color: statusColor }}>● {statusLabel}</span>
+            </div>
+            <h3 className="fbt-display" style={{ fontSize: 20, margin: "4px 0 0" }}>{dispatch?.jobName || "—"}</h3>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "#D6D3D1", marginTop: 2 }}>
+              Submitted {fb.submittedAt ? new Date(fb.submittedAt).toLocaleString() : "—"}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 24, display: "grid", gap: 14 }}>
+          {/* Core IDs */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Freight Bill #</label>
+              <input className="fbt-input" value={draft.freightBillNumber} onChange={(e) => setDraft({ ...draft, freightBillNumber: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Truck #</label>
+              <input className="fbt-input" value={draft.truckNumber} onChange={(e) => setDraft({ ...draft, truckNumber: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Driver Name</label>
+              <input className="fbt-input" value={draft.driverName} onChange={(e) => setDraft({ ...draft, driverName: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Job info */}
+          <div>
+            <label className="fbt-label">Job Name Override (optional — leaves order's job name alone)</label>
+            <input className="fbt-input" value={draft.jobNameOverride} onChange={(e) => setDraft({ ...draft, jobNameOverride: e.target.value })} placeholder={dispatch?.jobName || "Uses order's job name by default"} />
+          </div>
+          <div>
+            <label className="fbt-label">Description of Work</label>
+            <textarea className="fbt-textarea" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="e.g. 3 loads hauled basalt from Vulcan Napa to Salinas job site" style={{ minHeight: 60 }} />
+          </div>
+
+          {/* Material / tonnage / loads */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
+            <div>
+              <label className="fbt-label">Material</label>
+              <input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Tonnage</label>
+              <input className="fbt-input" type="number" step="0.01" value={draft.tonnage} onChange={(e) => setDraft({ ...draft, tonnage: e.target.value })} />
+            </div>
+            <div>
+              <label className="fbt-label">Load Count</label>
+              <input className="fbt-input" type="number" min="1" value={draft.loadCount} onChange={(e) => setDraft({ ...draft, loadCount: e.target.value })} />
+            </div>
+          </div>
+
+          {/* Hours */}
+          <div style={{ padding: 12, background: "#FEF3C7", border: "1.5px solid var(--hazard)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", marginBottom: 8 }}>
+              ▸ HOURS (FOR BILLING)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
+              <div>
+                <label className="fbt-label">Pickup Time</label>
+                <input className="fbt-input" type="time" value={draft.pickupTime} onChange={(e) => setDraft({ ...draft, pickupTime: e.target.value })} />
+              </div>
+              <div>
+                <label className="fbt-label">Dropoff Time</label>
+                <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => setDraft({ ...draft, dropoffTime: e.target.value })} />
+              </div>
+              <div>
+                <label className="fbt-label">
+                  Hours Billed {autoHours && !draft.hoursBilled ? `(auto: ${autoHours})` : ""}
+                </label>
+                <input
+                  className="fbt-input"
+                  type="number" step="0.25"
+                  value={draft.hoursBilled}
+                  onChange={(e) => setDraft({ ...draft, hoursBilled: e.target.value })}
+                  placeholder={autoHours || "0.00"}
+                />
+              </div>
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
+              ▸ LEAVE HOURS BILLED BLANK TO AUTO-USE PICKUP→DROPOFF DIFFERENCE
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="fbt-label">Driver Notes (from submission)</label>
+            <textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} style={{ minHeight: 50 }} />
+          </div>
+          <div>
+            <label className="fbt-label">Admin Notes (internal, customer doesn't see)</label>
+            <textarea className="fbt-textarea" value={draft.adminNotes} onChange={(e) => setDraft({ ...draft, adminNotes: e.target.value })} placeholder="Why I corrected hours, any flags, etc." style={{ minHeight: 50, background: "#FEF3C7" }} />
+          </div>
+
+          {/* Photos */}
+          {draft.photos.length > 0 && (
+            <div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+                ▸ SCALE TICKETS ({draft.photos.length})
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {draft.photos.map((p, idx) => (
+                  <img
+                    key={p.id || idx}
+                    src={p.dataUrl}
+                    alt=""
+                    style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)", cursor: "pointer" }}
+                    onClick={() => setLightbox(p.dataUrl)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 14, borderTop: "2px solid var(--steel)" }}>
+            {fb.status !== "approved" && (
+              <button
+                onClick={() => save(true)}
+                disabled={saving}
+                className="btn-primary"
+                style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}
+              >
+                <ShieldCheck size={16} /> SAVE & APPROVE
+              </button>
+            )}
+            <button onClick={() => save(false)} disabled={saving} className="btn-ghost">
+              <Save size={16} /> SAVE ONLY
+            </button>
+            {fb.status === "approved" && (
+              <button onClick={unapprove} disabled={saving} className="btn-ghost">
+                <Clock size={16} /> MOVE TO PENDING
+              </button>
+            )}
+            {fb.status !== "rejected" && (
+              <button onClick={reject} disabled={saving} className="btn-danger">
+                <X size={16} /> REJECT
+              </button>
+            )}
+            <button onClick={onClose} className="btn-ghost" style={{ marginLeft: "auto" }}>CANCEL</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== REVIEW TAB (End-of-day approval screen) ==========
+const ReviewTab = ({ freightBills, dispatches, contacts, editFreightBill, onToast }) => {
+  const [filter, setFilter] = useState("pending");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+
+  const pendingCount = freightBills.filter((fb) => (fb.status || "pending") === "pending").length;
+  const approvedCount = freightBills.filter((fb) => fb.status === "approved").length;
+  const rejectedCount = freightBills.filter((fb) => fb.status === "rejected").length;
+
+  const filtered = useMemo(() => {
+    let list = freightBills;
+    if (filter !== "all") list = list.filter((fb) => (fb.status || "pending") === filter);
+    if (dateFrom) list = list.filter((fb) => (fb.submittedAt || "").slice(0, 10) >= dateFrom);
+    if (dateTo) list = list.filter((fb) => (fb.submittedAt || "").slice(0, 10) <= dateTo);
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter((fb) => {
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        const hay = `${fb.freightBillNumber} ${fb.driverName} ${fb.truckNumber} ${fb.material} ${d?.jobName || ""} ${d?.code || ""}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    return list.sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  }, [freightBills, filter, dateFrom, dateTo, search, dispatches]);
+
+  const approveAll = async () => {
+    const pending = filtered.filter((fb) => (fb.status || "pending") === "pending");
+    if (pending.length === 0) { onToast("NOTHING TO APPROVE"); return; }
+    if (!confirm(`Approve ${pending.length} pending freight bill${pending.length !== 1 ? "s" : ""}? Customers will be able to see them.`)) return;
+    try {
+      for (const fb of pending) {
+        await editFreightBill(fb.id, {
+          ...fb,
+          status: "approved",
+          approvedAt: new Date().toISOString(),
+          approvedBy: "admin",
+        });
+      }
+      onToast(`✓ ${pending.length} APPROVED`);
+    } catch (e) {
+      console.error(e);
+      onToast("BATCH APPROVE FAILED");
+    }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: 20 }}>
+      {editing && (
+        <FBEditModal
+          fb={editing}
+          dispatches={dispatches}
+          contacts={contacts}
+          editFreightBill={editFreightBill}
+          onClose={() => setEditing(null)}
+          onToast={onToast}
+          currentUser="admin"
+        />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+        <div className="fbt-card" style={{ padding: 18, background: "var(--hazard)", color: "var(--steel)" }}>
+          <div className="stat-num" style={{ color: "var(--steel)" }}>{pendingCount}</div>
+          <div className="stat-label">Pending Review</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 18, background: "var(--good)", color: "#FFF" }}>
+          <div className="stat-num" style={{ color: "#FFF" }}>{approvedCount}</div>
+          <div className="stat-label" style={{ color: "#FFF" }}>Approved</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 18 }}>
+          <div className="stat-num">{rejectedCount}</div>
+          <div className="stat-label">Rejected</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 18 }}>
+          <div className="stat-num">{freightBills.length}</div>
+          <div className="stat-label">Total</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+          <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
+          <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search FB#, driver, truck, job…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <select className="fbt-select" style={{ width: "auto" }} value={filter} onChange={(e) => setFilter(e.target.value)}>
+          <option value="pending">Pending Only</option>
+          <option value="approved">Approved Only</option>
+          <option value="rejected">Rejected Only</option>
+          <option value="all">All</option>
+        </select>
+        <input className="fbt-input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ width: "auto" }} title="From" />
+        <input className="fbt-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ width: "auto" }} title="To" />
+        {filter === "pending" && pendingCount > 0 && (
+          <button onClick={approveAll} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
+            <ShieldCheck size={14} /> APPROVE ALL ({filtered.filter(fb => (fb.status || "pending") === "pending").length})
+          </button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
+          <ShieldCheck size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+          <div className="fbt-mono" style={{ fontSize: 13 }}>
+            {filter === "pending" ? "NO PENDING FREIGHT BILLS — ALL CAUGHT UP" : "NO MATCHES"}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {filtered.map((fb) => {
+            const d = dispatches.find((x) => x.id === fb.dispatchId);
+            const status = fb.status || "pending";
+            const bg = status === "approved" ? "#F0FDF4" : status === "rejected" ? "#FEF2F2" : "#FEF3C7";
+            const border = status === "approved" ? "var(--good)" : status === "rejected" ? "var(--safety)" : "var(--hazard)";
+            const photos = fb.photos || [];
+            return (
+              <div key={fb.id} className="fbt-card" style={{ padding: 14, background: bg, borderLeft: `4px solid ${border}`, cursor: "pointer" }} onClick={() => setEditing(fb)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                      <span className="chip" style={{ background: border, color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                        {status.toUpperCase()}
+                      </span>
+                      <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 8px" }}>FB #{fb.freightBillNumber || "—"}</span>
+                      {d && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>Order #{d.code}</span>}
+                      {photos.length > 0 && (
+                        <span className="chip" style={{ background: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                          <Camera size={10} style={{ marginRight: 3 }} /> {photos.length}
+                        </span>
+                      )}
+                    </div>
+                    <div className="fbt-display" style={{ fontSize: 15, lineHeight: 1.2 }}>
+                      {fb.driverName || "Unknown driver"} · Truck {fb.truckNumber || "—"}
+                    </div>
+                    <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
+                      {d?.jobName || "—"} · {fb.tonnage ? `${fb.tonnage}T` : ""}{fb.hoursBilled ? ` · ${fb.hoursBilled}hrs` : fb.pickupTime && fb.dropoffTime ? ` · ${fb.pickupTime}→${fb.dropoffTime}` : ""}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {photos.slice(0, 3).map((p, idx) => (
+                      <img key={idx} src={p.dataUrl} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--steel)" }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -5234,13 +5747,287 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
   );
 };
 
+// ========== CUSTOMER PORTAL (public, token-based access) ==========
+const CustomerPortal = ({ token, onBack }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [selectedFB, setSelectedFB] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+  const [orderFilter, setOrderFilter] = useState("all");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await fetchCustomerByToken(token);
+        if (!result) { setError("Invalid or expired portal link"); }
+        else { setData(result); }
+      } catch (e) {
+        setError("Failed to load portal — please try again");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <GlobalStyles />
+        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em" }}>▸ LOADING YOUR PORTAL…</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+        <GlobalStyles />
+        <div className="fbt-card" style={{ padding: 40, textAlign: "center", maxWidth: 440 }}>
+          <AlertCircle size={48} style={{ color: "var(--safety)", marginBottom: 16 }} />
+          <h2 className="fbt-display" style={{ fontSize: 22, margin: "0 0 10px" }}>ACCESS DENIED</h2>
+          <p style={{ color: "var(--concrete)", margin: "0 0 16px" }}>
+            {error || "This portal link is not valid."} Please contact 4 Brothers Trucking for a new link.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const { customer, orders, freightBills, projects } = data;
+
+  // Filter orders
+  const filteredOrders = useMemo(() => {
+    let list = orders;
+    if (orderFilter !== "all") list = list.filter((o) => {
+      if (orderFilter === "open") return o.status === "open";
+      if (orderFilter === "closed") return o.status === "closed";
+      if (orderFilter !== "all") return o.projectId === Number(orderFilter);
+      return true;
+    });
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter((o) => {
+        const fbs = freightBills.filter((fb) => fb.dispatchId === o.id);
+        const hay = `${o.jobName} ${o.code} ${fbs.map((fb) => `${fb.freightBillNumber} ${fb.driverName}`).join(" ")}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [orders, orderFilter, search, freightBills]);
+
+  // Metrics
+  const totalTons = freightBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+  const totalLoads = freightBills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
+  const totalHours = freightBills.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0);
+
+  return (
+    <div className="fbt-root" style={{ minHeight: "100vh", background: "#F5F5F4" }}>
+      <GlobalStyles />
+      {selectedFB && (
+        <div className="modal-bg" onClick={() => setSelectedFB(null)}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
+            <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>FREIGHT BILL</div>
+                <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>#{selectedFB.freightBillNumber || "—"}</h3>
+              </div>
+              <button onClick={() => setSelectedFB(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+            </div>
+            <div style={{ padding: 22 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 13, fontFamily: "JetBrains Mono, monospace", marginBottom: 16 }}>
+                <div><strong>DRIVER:</strong> {selectedFB.driverName || "—"}</div>
+                <div><strong>TRUCK:</strong> {selectedFB.truckNumber || "—"}</div>
+                <div><strong>MATERIAL:</strong> {selectedFB.material || "—"}</div>
+                <div><strong>TONNAGE:</strong> {selectedFB.tonnage ? `${selectedFB.tonnage}T` : "—"}</div>
+                <div><strong>LOADS:</strong> {selectedFB.loadCount || "—"}</div>
+                <div><strong>HOURS:</strong> {selectedFB.hoursBilled || "—"}</div>
+                {selectedFB.pickupTime && <div><strong>PICKUP:</strong> {selectedFB.pickupTime}</div>}
+                {selectedFB.dropoffTime && <div><strong>DROPOFF:</strong> {selectedFB.dropoffTime}</div>}
+              </div>
+              {selectedFB.description && (
+                <div style={{ padding: 10, background: "#F5F5F4", fontSize: 13, marginBottom: 16 }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 4 }}>▸ DESCRIPTION</div>
+                  {selectedFB.description}
+                </div>
+              )}
+              {selectedFB.photos && selectedFB.photos.length > 0 && (
+                <div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ SCALE TICKETS ({selectedFB.photos.length})</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {selectedFB.photos.map((p, idx) => (
+                      <img
+                        key={p.id || idx}
+                        src={p.dataUrl}
+                        alt=""
+                        style={{ width: 120, height: 120, objectFit: "cover", border: "2px solid var(--steel)", cursor: "pointer" }}
+                        onClick={() => setLightbox(p.dataUrl)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div onClick={() => setLightbox(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, cursor: "zoom-out" }}>
+          <img src={lightbox} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} alt="" />
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ background: "var(--steel)", color: "var(--cream)", borderBottom: "3px solid var(--hazard)" }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 24px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <Logo size="sm" />
+          <div style={{ flex: 1 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em" }}>CUSTOMER PORTAL</div>
+            <div className="fbt-display" style={{ fontSize: 18 }}>{customer.companyName}</div>
+          </div>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1" }}>VIEW-ONLY ACCESS</div>
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 20px" }}>
+        {/* Stat cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <div className="fbt-card" style={{ padding: 16 }}>
+            <div className="stat-num">{orders.length}</div>
+            <div className="stat-label">Total Orders</div>
+          </div>
+          <div className="fbt-card" style={{ padding: 16, background: "var(--hazard)" }}>
+            <div className="stat-num">{freightBills.length}</div>
+            <div className="stat-label">Freight Bills</div>
+          </div>
+          <div className="fbt-card" style={{ padding: 16 }}>
+            <div className="stat-num">{totalTons.toFixed(1)}</div>
+            <div className="stat-label">Total Tons</div>
+          </div>
+          <div className="fbt-card" style={{ padding: 16 }}>
+            <div className="stat-num">{totalLoads}</div>
+            <div className="stat-label">Loads Hauled</div>
+          </div>
+          <div className="fbt-card" style={{ padding: 16 }}>
+            <div className="stat-num">{totalHours.toFixed(1)}</div>
+            <div className="stat-label">Hours Billed</div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+            <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
+            <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search job name, FB#, driver…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <select className="fbt-select" style={{ width: "auto" }} value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)}>
+            <option value="all">All Orders</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            {projects.length > 0 && <option disabled>──── Projects ────</option>}
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Orders + FBs */}
+        {filteredOrders.length === 0 ? (
+          <div className="fbt-card" style={{ padding: 40, textAlign: "center", color: "var(--concrete)" }}>
+            <FileText size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+            <div className="fbt-mono" style={{ fontSize: 13 }}>NO ORDERS YET</div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 14 }}>
+            {filteredOrders.map((order) => {
+              const orderFBs = freightBills.filter((fb) => fb.dispatchId === order.id);
+              const orderTons = orderFBs.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+              const project = projects.find((p) => p.id === order.projectId);
+              return (
+                <div key={order.id} className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
+                  <div className="hazard-stripe-thin" style={{ height: 4 }} />
+                  <div style={{ padding: 18 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+                      <div style={{ flex: 1, minWidth: 200 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                          <span className="chip" style={{ background: order.status === "open" ? "var(--good)" : "var(--concrete)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                            ● {order.status || "open"}
+                          </span>
+                          <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 8px" }}>#{order.code}</span>
+                          <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>{order.date ? new Date(order.date).toLocaleDateString() : ""}</span>
+                          {project && <span className="chip" style={{ background: "#FFF", fontSize: 9, padding: "2px 8px" }}>{project.name}</span>}
+                        </div>
+                        <div className="fbt-display" style={{ fontSize: 17 }}>{order.jobName}</div>
+                        {(order.pickup || order.dropoff) && (
+                          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
+                            {order.pickup && `▸ ${order.pickup}`}{order.dropoff && ` → ${order.dropoff}`}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div className="fbt-display" style={{ fontSize: 20 }}>{orderFBs.length}</div>
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>FBs · {orderTons.toFixed(1)}T</div>
+                      </div>
+                    </div>
+
+                    {/* FB list */}
+                    {orderFBs.length > 0 && (
+                      <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
+                        {orderFBs.map((fb) => (
+                          <div
+                            key={fb.id}
+                            onClick={() => setSelectedFB(fb)}
+                            style={{
+                              padding: 10, border: "1px solid var(--steel)", background: "#FFF",
+                              display: "flex", justifyContent: "space-between", alignItems: "center",
+                              cursor: "pointer", gap: 10, flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 150, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                              <strong>FB #{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"} · Truck {fb.truckNumber || "—"}
+                              <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
+                                {fb.tonnage ? `${fb.tonnage}T` : ""}{fb.loadCount ? ` · ${fb.loadCount} load${fb.loadCount !== 1 ? "s" : ""}` : ""}{fb.hoursBilled ? ` · ${fb.hoursBilled}hrs` : ""}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                              {(fb.photos || []).slice(0, 3).map((p, idx) => (
+                                <img key={idx} src={p.dataUrl} alt="" style={{ width: 32, height: 32, objectFit: "cover", border: "1px solid var(--steel)" }} />
+                              ))}
+                              {(fb.photos || []).length > 3 && (
+                                <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>+{fb.photos.length - 3}</span>
+                              )}
+                              <Eye size={14} style={{ color: "var(--concrete)", marginLeft: 6 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ textAlign: "center", padding: "30px 0 20px", color: "var(--concrete)", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+          ▸ 4 BROTHERS TRUCKING, LLC · BAY POINT, CA · QUESTIONS? CONTACT YOUR DISPATCHER
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("dispatches");
   const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects } = setters;
+  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const tabs = [
     { k: "dispatches", l: "Orders", ico: <ClipboardList size={16} /> },
+    { k: "review", l: "Review", ico: <ShieldCheck size={16} /> },
     { k: "projects", l: "Projects", ico: <Briefcase size={16} /> },
     { k: "invoices", l: "Invoices", ico: <Receipt size={16} /> },
     { k: "contacts", l: "Contacts", ico: <Users size={16} /> },
@@ -5289,6 +6076,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 80px" }}>
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
+        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
@@ -5703,11 +6491,24 @@ export default function App() {
   };
 
   const handleQuoteSubmit = async (quote) => { const next = [quote, ...quotes]; setQuotes(next); await storageSet("fbt:quotes", next); };
+
+  // Admin edits/approves an FB
+  const editFreightBill = async (id, patch) => {
+    try {
+      const updated = await updateFreightBill(id, patch);
+      setFreightBills((prev) => prev.map((x) => x.id === id ? updated : x));
+      return updated;
+    } catch (e) {
+      console.error("editFreightBill failed:", e);
+      throw e;
+    }
+  };
   // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
   const handleTruckSubmit = async (fb) => {
     try {
       const { id: _drop, ...rest } = fb;
-      const newRow = await insertFreightBill(rest);
+      // Driver/sub-submitted FBs always start as "pending" — admin must approve
+      const newRow = await insertFreightBill({ ...rest, status: "pending" });
       // Realtime subscription will pick this up on dispatcher's devices, but also update our own state
       setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
     } catch (e) {
@@ -5739,6 +6540,7 @@ export default function App() {
 
   const submitMatch = route.match(/^#\/submit\/([A-Z0-9]+)(?:\/a\/([A-Za-z0-9]+))?/i);
   const trackMatch = route.match(/^#\/track\/([A-Z0-9]+)/i);
+  const customerMatch = route.match(/^#\/customer\/([a-f0-9]+)/i);
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]+)/i);
 
   if (!loaded) {
@@ -5824,6 +6626,12 @@ export default function App() {
     );
   }
 
+  // Customer portal — token-based, public, view-only
+  if (customerMatch) {
+    const token = customerMatch[1];
+    return <CustomerPortal token={token} onBack={() => { window.location.hash = ""; }} />;
+  }
+
   // Client-wide tracking page — public
   if (clientMatch) {
     const token = clientMatch[1].toUpperCase();
@@ -5864,7 +6672,7 @@ export default function App() {
         <>
           <Dashboard
             state={{ logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects }}
+            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
             onToast={showToast}
             onExit={() => setView("public")}
             onLogout={handleLogout}

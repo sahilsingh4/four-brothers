@@ -99,6 +99,13 @@ const fbFromDB = (row) => ({
   notes: row.notes,
   photos: row.photos || [],
   submittedAt: row.submitted_at,
+  status: row.status || "pending",
+  adminNotes: row.admin_notes || "",
+  approvedAt: row.approved_at,
+  approvedBy: row.approved_by || "",
+  jobNameOverride: row.job_name_override || "",
+  description: row.description || "",
+  hoursBilled: row.hours_billed,
 });
 
 const fbToDB = (fb) => ({
@@ -115,6 +122,13 @@ const fbToDB = (fb) => ({
   dropoff_time: fb.dropoffTime || null,
   notes: fb.notes || null,
   photos: fb.photos || [],
+  status: fb.status || "pending",
+  admin_notes: fb.adminNotes || null,
+  approved_at: fb.approvedAt || null,
+  approved_by: fb.approvedBy || null,
+  job_name_override: fb.jobNameOverride || null,
+  description: fb.description || null,
+  hours_billed: fb.hoursBilled ? Number(fb.hoursBilled) : null,
 });
 
 export const fetchFreightBills = async () => {
@@ -126,6 +140,17 @@ export const fetchFreightBills = async () => {
 export const insertFreightBill = async (fb) => {
   const { data, error } = await supabase.from("freight_bills").insert(fbToDB(fb)).select().single();
   if (error) { console.error("insertFreightBill:", error); throw error; }
+  return fbFromDB(data);
+};
+
+export const updateFreightBill = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("freight_bills")
+    .update(fbToDB(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateFreightBill:", error); throw error; }
   return fbFromDB(data);
 };
 
@@ -151,6 +176,8 @@ const contactFromDB = (row) => ({
   notes: row.notes || "",
   favorite: !!row.favorite,
   drivesForId: row.drives_for_id || null,
+  portalToken: row.portal_token || "",
+  portalEnabled: !!row.portal_enabled,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -170,6 +197,8 @@ const contactToDB = (c) => ({
   notes: c.notes || null,
   favorite: !!c.favorite,
   drives_for_id: c.drivesForId ? Number(c.drivesForId) : null,
+  portal_token: c.portalToken || null,
+  portal_enabled: !!c.portalEnabled,
 });
 
 export const fetchContacts = async () => {
@@ -198,6 +227,54 @@ export const updateContact = async (id, patch) => {
 export const deleteContact = async (id) => {
   const { error } = await supabase.from("contacts").delete().eq("id", id);
   if (error) { console.error("deleteContact:", error); throw error; }
+};
+
+// ========== CUSTOMER PORTAL LOOKUP ==========
+// Public read by portal_token. Returns customer + their approved FBs only.
+export const fetchCustomerByToken = async (token) => {
+  const { data: cust, error: e1 } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("portal_token", token)
+    .eq("portal_enabled", true)
+    .eq("type", "customer")
+    .maybeSingle();
+  if (e1) { console.error("fetchCustomerByToken:", e1); return null; }
+  if (!cust) return null;
+  const customer = contactFromDB(cust);
+
+  // Fetch their orders
+  const { data: orders } = await supabase
+    .from("dispatches")
+    .select("*")
+    .eq("client_id", customer.id)
+    .order("date", { ascending: false });
+
+  // Fetch approved freight bills for those orders
+  const orderIds = (orders || []).map((o) => o.id);
+  let approvedFbs = [];
+  if (orderIds.length > 0) {
+    const { data: fbs } = await supabase
+      .from("freight_bills")
+      .select("*")
+      .in("dispatch_id", orderIds)
+      .eq("status", "approved")
+      .order("submitted_at", { ascending: false });
+    approvedFbs = (fbs || []).map(fbFromDB);
+  }
+
+  // Fetch their projects
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("customer_id", customer.id);
+
+  return {
+    customer,
+    orders: (orders || []).map(dispatchFromDB),
+    freightBills: approvedFbs,
+    projects: projects || [],
+  };
 };
 
 // ========== QUARRIES ==========
