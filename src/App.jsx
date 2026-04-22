@@ -5147,6 +5147,118 @@ const ReviewTab = ({ freightBills, dispatches, contacts, editFreightBill, onToas
   );
 };
 
+// ========== FB TRACEABILITY MODAL ==========
+// Shows the full audit trail: dispatch → FB → invoice → customer payment → sub payment
+const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
+  const fb = entry.fb;
+  const invoice = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
+  const customer = invoice?.billToId ? contacts.find((c) => c.id === invoice.billToId) : null;
+  const custHistory = (invoice?.paymentHistory || []).filter((p) => !p.fbIds || p.fbIds.includes(fb.id));
+  const methodLabel = { check: "Check", ach: "ACH", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+        <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>FB TRACE</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>FB#{fb.freightBillNumber || "—"}</h3>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
+              {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""} · {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ padding: 22, display: "grid", gap: 14 }}>
+
+          {/* Step 1: FB details */}
+          <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ FREIGHT BILL</div>
+            <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+              <div><strong>Order:</strong> #{entry.dispatch?.code} — {entry.dispatch?.jobName || "—"}</div>
+              <div><strong>Qty:</strong> {entry.qty.toFixed(2)} {entry.method} × ${entry.rate.toFixed(2)} (sub rate)</div>
+              <div><strong>Sub Gross (agreed):</strong> <span style={{ color: "var(--steel)", fontWeight: 700 }}>{fmt$(entry.gross)}</span></div>
+            </div>
+          </div>
+
+          {/* Step 2: Invoice */}
+          {invoice ? (
+            <div style={{ padding: 12, background: "#FEF3C7", border: "1.5px solid var(--hazard)" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ CUSTOMER INVOICE</div>
+              <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+                <div><strong>Invoice #:</strong> {invoice.invoiceNumber} · {invoice.invoiceDate}</div>
+                <div><strong>Billed to:</strong> {customer?.companyName || invoice.billToName || "—"}</div>
+                <div><strong>Pricing:</strong> {invoice.pricingMethod} @ ${Number(invoice.rate).toFixed(2)}/{invoice.pricingMethod}</div>
+                <div><strong>Est. charged for this FB:</strong> <span style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{fmt$(entry.customerBilled)}</span></div>
+                <div><strong>Invoice Total:</strong> {fmt$(invoice.total)}{invoice.amountPaid > 0 && ` · Paid ${fmt$(invoice.amountPaid)}`}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: 12, background: "#FEE2E2", border: "1.5px solid var(--safety)" }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700 }}>▸ NOT ON ANY INVOICE YET</div>
+              <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>Create an invoice including this FB to start tracking customer payment.</div>
+            </div>
+          )}
+
+          {/* Step 3: Customer Payment */}
+          {invoice && (
+            entry.custStatus === "paid" || entry.custStatus === "short" ? (
+              <div style={{ padding: 12, background: entry.custStatus === "paid" ? "#F0FDF4" : "#FEF3C7", border: "1.5px solid " + (entry.custStatus === "paid" ? "var(--good)" : "var(--hazard)") }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ CUSTOMER PAYMENT</div>
+                <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+                  <div><strong>Status:</strong> {entry.custStatus === "paid" ? "✓ PAID IN FULL" : `⚠ SHORT-PAID ${Math.round(entry.customerRatio * 100)}%`}</div>
+                  <div><strong>Amount received:</strong> {fmt$(entry.customerPaid)} of {fmt$(entry.customerBilled)} billed</div>
+                  <div><strong>Paid on:</strong> {fb.customerPaidAt ? new Date(fb.customerPaidAt).toLocaleDateString() : "—"}</div>
+                  {custHistory.length > 0 && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--steel)" }}>
+                      <div style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 4 }}>PAYMENT HISTORY:</div>
+                      {custHistory.map((p, idx) => (
+                        <div key={idx} style={{ fontSize: 11 }}>
+                          • {fmt$(p.amount)} · {p.method?.toUpperCase()}{p.reference ? ` #${p.reference}` : ""} · {p.date ? new Date(p.date).toLocaleDateString() : "—"}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: 12, background: "#FEE2E2", border: "1.5px solid var(--safety)" }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700 }}>▸ CUSTOMER NOT PAID YET</div>
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
+                  Invoice {invoice.invoiceNumber} shows this FB as unpaid. Record payment from the Invoices tab.
+                </div>
+              </div>
+            )
+          )}
+
+          {/* Step 4: Sub Payment */}
+          {fb.paidAt ? (
+            <div style={{ padding: 12, background: "#F0FDF4", border: "1.5px solid var(--good)" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ SUB / DRIVER PAYMENT</div>
+              <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+                <div><strong>Status:</strong> ✓ PAID TO {entry.dispatch ? (entry.dispatch.assignments?.find(a => a.aid === fb.assignmentId)?.name || "SUB") : "SUB"}</div>
+                <div><strong>Amount:</strong> {fmt$(fb.paidAmount || 0)}</div>
+                <div><strong>Method:</strong> {methodLabel[fb.paidMethod] || "—"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""}</div>
+                <div><strong>Date:</strong> {fb.paidAt ? new Date(fb.paidAt).toLocaleDateString() : "—"}</div>
+                {fb.paidNotes && <div style={{ marginTop: 4, fontStyle: "italic", color: "var(--concrete)" }}>"{fb.paidNotes}"</div>}
+              </div>
+            </div>
+          ) : (
+            <div style={{ padding: 12, background: "#FEF3C7", border: "1.5px dashed var(--hazard)" }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>▸ SUB NOT PAID YET · {fmt$(entry.adjustedGross)} NET DUE</div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button onClick={onClose} className="btn-ghost">CLOSE</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ========== PAYROLL: MARK PAID MODAL ==========
 const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser }) => {
   // target = { projectName, subName, subId, gross, brokeragePct, brokerageAmt, net, fbs }
@@ -5176,7 +5288,7 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser
       };
 
       // Distribute the amount across each FB proportionally to its gross
-      const grossByFb = fbs.map((x) => x.gross);
+      const grossByFb = fbs.map((x) => x.adjustedGross !== undefined ? x.adjustedGross : x.gross);
       const grossSum = grossByFb.reduce((s, v) => s + v, 0) || 1;
       const totalAmt = Number(form.amount);
 
@@ -5214,10 +5326,28 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser
         </div>
         <div style={{ padding: 22, display: "grid", gap: 12 }}>
 
+          {/* Advance-pay warning */}
+          {target.includeAdvance && target.hasAdvance && (
+            <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
+              ⚠ <strong>ADVANCE PAY WARNING:</strong> Some FBs here haven't been paid by customer yet. You're fronting the cash.
+            </div>
+          )}
+
+          {/* Short-pay notice */}
+          {(() => {
+            const shortFbs = fbs.filter((x) => x.custStatus === "short");
+            if (shortFbs.length === 0) return null;
+            return (
+              <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+                ⚠ <strong>{shortFbs.length} SHORT-PAID FB{shortFbs.length !== 1 ? "S" : ""}:</strong> Sub will be paid proportionally to what customer paid.
+              </div>
+            );
+          })()}
+
           {/* Breakdown */}
           <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-              <span>GROSS:</span><strong>{fmt$(target.gross)}</strong>
+              <span>GROSS (adjusted for short-pay):</span><strong>{fmt$(target.gross)}</strong>
             </div>
             {target.brokerageAmt > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "var(--hazard-deep)" }}>
@@ -5277,7 +5407,7 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser
 };
 
 // ========== PAYROLL TAB ==========
-const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightBill, company, onToast }) => {
+const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [], editFreightBill, company, onToast }) => {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [paidFilter, setPaidFilter] = useState("unpaid"); // unpaid | paid | all
@@ -5286,6 +5416,8 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
   const [expanded, setExpanded] = useState({});
   const [payTarget, setPayTarget] = useState(null);
   const [editingFB, setEditingFB] = useState(null);
+  const [customerPaidOnly, setCustomerPaidOnly] = useState(true); // NEW: default ON (safer)
+  const [traceFB, setTraceFB] = useState(null); // NEW: for traceability modal
 
   // helper: approved + within date range + filters
   const filteredFbs = useMemo(() => {
@@ -5323,6 +5455,47 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
     return { gross: qty * rate, qty, method, rate, assignment };
   };
 
+  // Helper: compute what customer WAS billed for this FB on its invoice (estimated)
+  const fbInvoiceBilled = (fb) => {
+    const invoice = invoices.find((inv) => inv.id === fb.invoiceId);
+    if (!invoice) return 0;
+    const method = invoice.pricingMethod || "ton";
+    const rate = Number(invoice.rate) || 0;
+    let qty = 0;
+    if (method === "ton") qty = Number(fb.tonnage) || 0;
+    else if (method === "load") qty = Number(fb.loadCount) || 1;
+    else if (method === "hour") {
+      if (fb.hoursBilled) qty = Number(fb.hoursBilled);
+      else if (fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        if (!isNaN(h1) && !isNaN(h2)) {
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) qty = mins / 60;
+        }
+      }
+    }
+    return qty * rate;
+  };
+
+  // Customer payment ratio (1.0 = paid in full, 0.85 = 85% paid, 0 = unpaid)
+  const customerPaidRatio = (fb) => {
+    if (!fb.customerPaidAt) return 0;
+    const billed = fbInvoiceBilled(fb);
+    const paid = Number(fb.customerPaidAmount) || 0;
+    if (billed <= 0) return paid > 0 ? 1 : 0;
+    return Math.min(1, paid / billed);
+  };
+
+  // Returns customer payment status: 'paid' | 'short' | 'unpaid' | 'no_invoice'
+  const customerPayStatus = (fb) => {
+    if (!fb.invoiceId) return "no_invoice";
+    if (!fb.customerPaidAt) return "unpaid";
+    const ratio = customerPaidRatio(fb);
+    if (ratio >= 0.999) return "paid";
+    return "short";
+  };
+
   // Build grouped data: project -> sub/driver -> [fbs with calcs]
   const grouped = useMemo(() => {
     const byProject = new Map(); // projectKey -> { projectName, projectId, subs: Map<subKey, {subName, subId, type, fbs, gross, ...}> }
@@ -5335,6 +5508,11 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
       // Apply filters
       if (projectFilter && String(d.projectId || "none") !== projectFilter) return;
       if (subFilter && String(calc.assignment.contactId) !== subFilter) return;
+
+      // Customer-paid filter: if ON, only show FBs where customer has paid (safe to pay subs)
+      const custStatus = customerPayStatus(fb);
+      // If "customerPaidOnly" is on, we hide unpaid-by-customer FBs UNLESS they're already paid to sub
+      if (customerPaidOnly && !fb.paidAt && custStatus !== "paid" && custStatus !== "short") return;
 
       const project = projects.find((p) => p.id === d.projectId);
       const projectKey = d.projectId || "none";
@@ -5364,15 +5542,50 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
         });
       }
       const subData = projectData.subs.get(subKey);
-      subData.fbs.push({ fb, gross: calc.gross, qty: calc.qty, method: calc.method, rate: calc.rate, dispatch: d });
-      subData.gross += calc.gross;
+
+      // Compute proportional gross for short-pay handling
+      const ratio = customerPaidRatio(fb);
+      const billed = fbInvoiceBilled(fb);
+      const customerPaidAmt = Number(fb.customerPaidAmount) || 0;
+      const adjustedGross = custStatus === "short" ? calc.gross * ratio : calc.gross;
+
+      subData.fbs.push({
+        fb,
+        gross: calc.gross,              // full gross based on agreement
+        adjustedGross,                  // what we'll actually pay (proportional for short-pay)
+        qty: calc.qty,
+        method: calc.method,
+        rate: calc.rate,
+        dispatch: d,
+        custStatus,                     // paid | short | unpaid | no_invoice
+        customerRatio: ratio,
+        customerBilled: billed,
+        customerPaid: customerPaidAmt,
+      });
+      subData.gross += adjustedGross;
       if (fb.paidAmount) subData.paidSum += Number(fb.paidAmount);
     });
-    // Compute net, brokerage
+    // Compute net, brokerage + ready/advance splits per sub
     const asArray = Array.from(byProject.values()).map((pd) => {
       const subs = Array.from(pd.subs.values()).map((s) => {
         const brokerageAmt = s.brokerageApplies ? s.gross * (s.brokeragePct / 100) : 0;
-        return { ...s, brokerageAmt, net: s.gross - brokerageAmt };
+
+        // Split: ready-to-pay vs advance-risk
+        const unpaidEntries = s.fbs.filter((x) => !x.fb.paidAt);
+        const readyEntries = unpaidEntries.filter((x) => x.custStatus === "paid" || x.custStatus === "short");
+        const advanceEntries = unpaidEntries.filter((x) => x.custStatus !== "paid" && x.custStatus !== "short");
+        const readyGross = readyEntries.reduce((sum, x) => sum + x.adjustedGross, 0);
+        const advanceGross = advanceEntries.reduce((sum, x) => sum + x.adjustedGross, 0);
+        const readyBrok = s.brokerageApplies ? readyGross * (s.brokeragePct / 100) : 0;
+        const advanceBrok = s.brokerageApplies ? advanceGross * (s.brokeragePct / 100) : 0;
+
+        return {
+          ...s,
+          brokerageAmt,
+          net: s.gross - brokerageAmt,
+          readyGross, readyNet: readyGross - readyBrok, readyCount: readyEntries.length,
+          advanceGross, advanceNet: advanceGross - advanceBrok, advanceCount: advanceEntries.length,
+        };
       }).sort((a, b) => a.subName.localeCompare(b.subName));
       const projGross = subs.reduce((s, x) => s + x.gross, 0);
       const projNet = subs.reduce((s, x) => s + x.net, 0);
@@ -5386,7 +5599,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
       return a.projectName.localeCompare(b.projectName);
     });
     return asArray;
-  }, [filteredFbs, dispatches, projects, contacts, projectFilter, subFilter]);
+  }, [filteredFbs, dispatches, projects, contacts, projectFilter, subFilter, customerPaidOnly, invoices]);
 
   const allUnpaidSubs = useMemo(() => grouped.flatMap((p) => p.subs.filter((s) => s.fbs.some((x) => !x.fb.paidAt))), [grouped]);
   const totalUnpaidGross = grouped.reduce((s, p) => s + p.subs.reduce((ss, sub) => ss + sub.fbs.filter((x) => !x.fb.paidAt).reduce((sss, x) => sss + x.gross, 0), 0), 0);
@@ -5401,17 +5614,28 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
   const toggleSub = (pkey, skey) => setExpanded((e) => ({ ...e, [`s_${pkey}_${skey}`]: !e[`s_${pkey}_${skey}`] }));
 
   // Bulk pay all subs on a project
-  const openPaySub = (pd, sub) => {
+  const openPaySub = (pd, sub, includeAdvance = false) => {
     const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
     if (unpaidFbs.length === 0) { onToast("ALL PAID"); return; }
-    const gross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
+    // Default: only pay ready FBs (customer has paid). If includeAdvance, include all.
+    const fbsToPay = includeAdvance
+      ? unpaidFbs
+      : unpaidFbs.filter((x) => x.custStatus === "paid" || x.custStatus === "short");
+    if (fbsToPay.length === 0) {
+      onToast("NO CUSTOMER-PAID FBs — ENABLE ADVANCE PAY TO PAY ANYWAY");
+      return;
+    }
+    const gross = fbsToPay.reduce((s, x) => s + x.adjustedGross, 0);
     const brokerageAmt = sub.brokerageApplies ? gross * (sub.brokeragePct / 100) : 0;
     setPayTarget({
       projectName: pd.projectName,
       subName: sub.subName,
       subId: sub.subId,
       gross, brokeragePct: sub.brokeragePct, brokerageAmt, net: gross - brokerageAmt,
-      fbs: unpaidFbs,
+      fbs: fbsToPay,
+      includeAdvance,
+      hasAdvance: unpaidFbs.some((x) => x.custStatus !== "paid" && x.custStatus !== "short"),
+      advanceAvailable: unpaidFbs.filter((x) => x.custStatus !== "paid" && x.custStatus !== "short").length,
     });
   };
 
@@ -5494,6 +5718,14 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
           currentUser="admin"
         />
       )}
+      {traceFB && (
+        <FBTraceModal
+          entry={traceFB}
+          invoices={invoices}
+          contacts={contacts}
+          onClose={() => setTraceFB(null)}
+        />
+      )}
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
@@ -5520,7 +5752,26 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
       </div>
 
       {/* Filters */}
-      <div className="fbt-card" style={{ padding: 16 }}>
+      <div className="fbt-card" style={{ padding: 16, display: "grid", gap: 12 }}>
+        {/* Customer-paid filter (prominent) */}
+        <div style={{ padding: 12, background: customerPaidOnly ? "#F0FDF4" : "#FEF2F2", border: "2px solid " + (customerPaidOnly ? "var(--good)" : "var(--safety)"), display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", flex: 1, minWidth: 240 }}>
+            <input
+              type="checkbox"
+              checked={customerPaidOnly}
+              onChange={(e) => setCustomerPaidOnly(e.target.checked)}
+              style={{ width: 18, height: 18, cursor: "pointer" }}
+            />
+            <Banknote size={16} style={{ color: customerPaidOnly ? "var(--good)" : "var(--safety)" }} />
+            <strong>{customerPaidOnly ? "PAY ONLY WHEN CUSTOMER PAID" : "⚠ ADVANCE PAY MODE — PAYING BEFORE CUSTOMER PAYS"}</strong>
+          </label>
+          {!customerPaidOnly && (
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em" }}>
+              RISK: YOUR CASH FIRST
+            </span>
+          )}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
           <div>
             <label className="fbt-label">Status</label>
@@ -5660,27 +5911,51 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
                             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                               {unpaidFbs.length > 0 ? (
                                 <>
-                                  <div style={{ textAlign: "right" }}>
-                                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>GROSS</div>
-                                    <div className="fbt-display" style={{ fontSize: 13 }}>{fmt$(unpaidGross)}</div>
-                                  </div>
-                                  {sub.brokerageApplies && (
-                                    <div style={{ textAlign: "right" }}>
-                                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>BROK</div>
-                                      <div className="fbt-display" style={{ fontSize: 13, color: "var(--hazard-deep)" }}>−{fmt$(unpaidBrok)}</div>
+                                  {/* Ready block */}
+                                  {sub.readyCount > 0 && (
+                                    <div style={{ textAlign: "right", padding: "4px 8px", background: "#F0FDF4", border: "1.5px solid var(--good)" }}>
+                                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", fontWeight: 700 }}>READY · {sub.readyCount} FB</div>
+                                      <div className="fbt-display" style={{ fontSize: 14, color: "var(--good)" }}>{fmt$(sub.readyNet)}</div>
                                     </div>
                                   )}
-                                  <div style={{ textAlign: "right" }}>
-                                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>NET DUE</div>
-                                    <div className="fbt-display" style={{ fontSize: 15, color: "var(--good)" }}>{fmt$(unpaidNet)}</div>
-                                  </div>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); openPaySub(pd, sub); }}
-                                    className="btn-primary"
-                                    style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)", padding: "6px 14px", fontSize: 11 }}
-                                  >
-                                    <DollarSign size={12} /> PAY
-                                  </button>
+                                  {/* Advance block */}
+                                  {sub.advanceCount > 0 && (
+                                    <div style={{ textAlign: "right", padding: "4px 8px", background: "#FEF2F2", border: "1.5px solid var(--safety)" }}>
+                                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", fontWeight: 700 }}>⚠ ADVANCE · {sub.advanceCount} FB</div>
+                                      <div className="fbt-display" style={{ fontSize: 14, color: "var(--safety)" }}>{fmt$(sub.advanceNet)}</div>
+                                    </div>
+                                  )}
+                                  {/* Smart PAY button */}
+                                  {sub.readyCount > 0 ? (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openPaySub(pd, sub, false); }}
+                                      className="btn-primary"
+                                      style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)", padding: "6px 14px", fontSize: 11 }}
+                                      title={`Pay ${sub.readyCount} FBs the customer already paid for`}
+                                    >
+                                      <DollarSign size={12} /> PAY READY
+                                    </button>
+                                  ) : sub.advanceCount > 0 ? (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); if (confirm("No customer payments received for these FBs yet.\n\nPay sub anyway (ADVANCE PAY — your cash at risk)?")) openPaySub(pd, sub, true); }}
+                                      className="btn-ghost"
+                                      style={{ background: "var(--safety)", color: "#FFF", borderColor: "var(--safety)", padding: "6px 14px", fontSize: 11 }}
+                                      title="Customer hasn't paid yet — advance pay is at your risk"
+                                    >
+                                      <AlertTriangle size={12} /> ADVANCE PAY
+                                    </button>
+                                  ) : null}
+                                  {/* If both ready AND advance — optional secondary button */}
+                                  {sub.readyCount > 0 && sub.advanceCount > 0 && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); if (confirm(`Pay all ${unpaidFbs.length} FBs including ${sub.advanceCount} advance (customer not paid)?`)) openPaySub(pd, sub, true); }}
+                                      className="btn-ghost"
+                                      style={{ padding: "6px 10px", fontSize: 10, color: "var(--safety)", borderColor: "var(--safety)" }}
+                                      title="Pay everything including advance-risk FBs"
+                                    >
+                                      +ADV
+                                    </button>
+                                  )}
                                 </>
                               ) : (
                                 <span className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
@@ -5701,8 +5976,8 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
                                     key={fb.id}
                                     style={{
                                       padding: 8, fontSize: 11, fontFamily: "JetBrains Mono, monospace",
-                                      background: isPaid ? "#F0FDF4" : "#FEF3C7",
-                                      borderLeft: `3px solid ${isPaid ? "var(--good)" : "var(--hazard)"}`,
+                                      background: isPaid ? "#F0FDF4" : (entry.custStatus === "paid" || entry.custStatus === "short" ? "#FEF3C7" : "#FEE2E2"),
+                                      borderLeft: `3px solid ${isPaid ? "var(--good)" : (entry.custStatus === "paid" || entry.custStatus === "short" ? "var(--hazard)" : "var(--safety)")}`,
                                       display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center",
                                     }}
                                   >
@@ -5714,6 +5989,42 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
                                         <span style={{ color: "var(--concrete)" }}>
                                           {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""} · Order #{entry.dispatch?.code}
                                         </span>
+                                        {/* Customer-pay status chip */}
+                                        {entry.custStatus === "paid" && (
+                                          <span
+                                            className="chip"
+                                            style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 6px", cursor: "pointer" }}
+                                            onClick={() => setTraceFB(entry)}
+                                            title="Click to trace invoice + customer payment"
+                                          >
+                                            ✓ CUST PAID
+                                          </span>
+                                        )}
+                                        {entry.custStatus === "short" && (
+                                          <span
+                                            className="chip"
+                                            style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 6px", cursor: "pointer" }}
+                                            onClick={() => setTraceFB(entry)}
+                                            title="Click to trace invoice + customer payment"
+                                          >
+                                            ⚠ SHORT-PAID {Math.round(entry.customerRatio * 100)}%
+                                          </span>
+                                        )}
+                                        {entry.custStatus === "unpaid" && (
+                                          <span
+                                            className="chip"
+                                            style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 6px", cursor: "pointer" }}
+                                            onClick={() => setTraceFB(entry)}
+                                            title="Click to trace invoice"
+                                          >
+                                            ○ CUST UNPAID
+                                          </span>
+                                        )}
+                                        {entry.custStatus === "no_invoice" && (
+                                          <span className="chip" style={{ background: "var(--concrete)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                                            NO INVOICE
+                                          </span>
+                                        )}
                                         {isPaid && (
                                           <span style={{ color: "var(--good)", fontWeight: 700 }}>
                                             ✓ {fb.paidAt.slice(0, 10)} · {methodLabel[fb.paidMethod] || "Paid"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""} · {fmt$(fb.paidAmount || 0)}
@@ -5722,9 +6033,19 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, editFreightB
                                       </div>
                                       <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
                                         {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""} · {entry.qty.toFixed(2)} {entry.method} × ${entry.rate.toFixed(2)} = <strong style={{ color: "var(--steel)" }}>{fmt$(entry.gross)}</strong>
+                                        {entry.custStatus === "short" && (
+                                          <span style={{ color: "var(--safety)", marginLeft: 8 }}>
+                                            → PAY {fmt$(entry.adjustedGross)} ({Math.round(entry.customerRatio * 100)}%)
+                                          </span>
+                                        )}
                                       </div>
                                     </div>
                                     <div style={{ display: "flex", gap: 4 }}>
+                                      {(entry.custStatus === "paid" || entry.custStatus === "short" || entry.custStatus === "unpaid") && (
+                                        <button onClick={() => setTraceFB(entry)} className="btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }} title="Trace to invoice / payment">
+                                          <Search size={10} />
+                                        </button>
+                                      )}
                                       <button onClick={() => setEditingFB(fb)} className="btn-ghost" style={{ padding: "3px 8px", fontSize: 10 }}>
                                         <Edit2 size={10} />
                                       </button>
@@ -8247,7 +8568,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} editFreightBill={editFreightBill} onToast={onToast} />}
-        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} company={company} onToast={onToast} />}
+        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
