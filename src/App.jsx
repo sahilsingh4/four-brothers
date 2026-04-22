@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
-import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save } from "lucide-react";
+import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Banknote, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -5558,7 +5558,309 @@ const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
 };
 
 // ========== PAYROLL: MARK PAID MODAL ==========
-const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser }) => {
+// ========== PAY STUB PDF GENERATOR ==========
+// Generates a one-page pay stub for a sub/driver covering a specific pay run (one check/payment)
+// Includes YTD summary + previous pay runs in current year
+const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokeragePct, brokerageApplies, allFreightBills, allDispatches, company, isHistorical = false }) => {
+  const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+  const methodLabel = { check: "Check", ach: "ACH / Bank Transfer", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
+
+  // Helper: compute gross for an FB (same logic as payroll)
+  const fbGross = (fb, dispatch) => {
+    const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
+    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, extrasSum: 0, baseGross: 0 };
+    const rate = Number(assignment.payRate) || 0;
+    const method = assignment.payMethod || "hour";
+    let qty = 0;
+    if (method === "hour") {
+      if (fb.hoursBilled) qty = Number(fb.hoursBilled);
+      else if (fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+        if (mins > 0) qty = mins / 60;
+      }
+    } else if (method === "ton") qty = Number(fb.tonnage) || 0;
+    else if (method === "load") qty = Number(fb.loadCount) || 1;
+    const baseGross = qty * rate;
+    const extrasSum = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    return { gross: baseGross + extrasSum, qty, method, rate, extrasSum, baseGross, extras: fb.extras || [] };
+  };
+
+  // Build FB rows for this pay run
+  const fbRows = fbs.map((fb) => {
+    const d = allDispatches.find((x) => x.id === fb.dispatchId);
+    const calc = fbGross(fb, d);
+    const extrasList = (calc.extras || []).filter((x) => Number(x.amount) > 0);
+    return { fb, dispatch: d, calc, extrasList };
+  });
+
+  const subtotal = fbRows.reduce((s, r) => s + r.calc.baseGross, 0);
+  const extrasTotal = fbRows.reduce((s, r) => s + r.calc.extrasSum, 0);
+  const gross = subtotal + extrasTotal;
+  const brokerageAmt = brokerageApplies ? gross * (brokeragePct / 100) : 0;
+  const netPay = gross - brokerageAmt;
+
+  // Year-to-date: find all other paid FBs for this sub in the current year (excluding THIS pay run)
+  const year = new Date().getFullYear();
+  const thisFbIds = new Set(fbs.map((x) => x.id));
+  const ytdFbs = (allFreightBills || []).filter((fb) => {
+    if (thisFbIds.has(fb.id)) return false; // exclude current pay run
+    if (!fb.paidAt) return false; // only paid FBs
+    const paidYear = new Date(fb.paidAt).getFullYear();
+    if (paidYear !== year) return false;
+    const d = allDispatches.find((x) => x.id === fb.dispatchId);
+    const assignment = (d?.assignments || []).find((a) => a.aid === fb.assignmentId);
+    if (!assignment) return false;
+    // Match by contactId (sub) or driver
+    return assignment.contactId === subId;
+  });
+
+  // Group YTD by payment date
+  const ytdByDate = new Map();
+  ytdFbs.forEach((fb) => {
+    const key = fb.paidAt ? fb.paidAt.slice(0, 10) : "unknown";
+    if (!ytdByDate.has(key)) ytdByDate.set(key, { date: key, fbs: [], paidAmt: 0, method: fb.paidMethod, checkNumber: fb.paidCheckNumber });
+    const entry = ytdByDate.get(key);
+    entry.fbs.push(fb);
+    entry.paidAmt += Number(fb.paidAmount) || 0;
+  });
+  const ytdRuns = Array.from(ytdByDate.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+  const ytdTotal = ytdFbs.reduce((s, fb) => s + (Number(fb.paidAmount) || 0), 0) + netPay;
+
+  // Pay period: min/max dates of this run's FBs
+  const fbDates = fbs.map((fb) => fb.submittedAt ? fb.submittedAt.slice(0, 10) : null).filter(Boolean).sort();
+  const payPeriod = fbDates.length > 0
+    ? (fbDates[0] === fbDates[fbDates.length - 1] ? fbDates[0] : `${fbDates[0]} to ${fbDates[fbDates.length - 1]}`)
+    : "—";
+
+  const payDate = payRecord?.paidAt ? new Date(payRecord.paidAt).toLocaleDateString() : new Date().toLocaleDateString();
+
+  const html = `<!doctype html><html><head><title>Pay Stub — ${esc(subName)} — ${payDate}</title>
+    <style>
+      @page { size: letter; margin: 0.5in; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #1C1917; font-size: 12px; line-height: 1.4; }
+      .letterhead { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #F59E0B; padding-bottom: 10px; margin-bottom: 16px; }
+      .letterhead h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+      .letterhead .sub { font-size: 10px; color: #666; margin-top: 4px; line-height: 1.5; }
+      .stub-title { font-size: 28px; font-weight: 700; margin: 0; color: #1C1917; letter-spacing: 0.05em; }
+      .stub-sub { font-size: 10px; color: #666; text-align: right; font-family: 'Courier New', monospace; }
+      .payee-block { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; padding: 10px 14px; background: #F5F5F4; border-left: 4px solid #1C1917; }
+      .payee-block .label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+      .payee-block .value { font-size: 13px; font-weight: 700; }
+      .payee-block .small { font-size: 11px; font-weight: 500; }
+
+      .section-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin: 16px 0 6px; border-bottom: 2px solid #1C1917; padding-bottom: 4px; }
+
+      table.fb-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px; }
+      table.fb-table th { background: #1C1917; color: #FAFAF9; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; }
+      table.fb-table td { padding: 6px 8px; border-bottom: 1px solid #E5E7EB; vertical-align: top; }
+      table.fb-table tr:nth-child(even) td { background: #FAFAF9; }
+      table.fb-table .r { text-align: right; }
+      .extra-line { background: #FEF3C7 !important; font-size: 10px; padding: 3px 8px !important; color: #92400E; }
+      .short-note { background: #FEE2E2 !important; font-size: 10px; padding: 3px 8px !important; color: #991B1B; font-style: italic; }
+
+      .totals { margin-top: 10px; border: 2px solid #1C1917; }
+      .totals-row { display: flex; justify-content: space-between; padding: 6px 14px; font-size: 12px; border-bottom: 1px solid #E5E7EB; }
+      .totals-row.deduct { color: #991B1B; }
+      .totals-row.net { background: #F59E0B; color: #1C1917; padding: 10px 14px; font-size: 18px; font-weight: 700; font-family: Arial; border-bottom: none; }
+
+      .payment-info { margin-top: 14px; padding: 10px 14px; background: #F0FDF4; border: 2px solid #16A34A; font-size: 11px; }
+      .payment-info strong { color: #16A34A; }
+
+      .ytd-box { margin-top: 16px; border: 2px solid #1C1917; padding: 12px 14px; background: #F5F5F4; }
+      .ytd-box .total { font-size: 16px; font-weight: 700; }
+      .ytd-list { margin-top: 8px; font-size: 10px; }
+      .ytd-list table { width: 100%; border-collapse: collapse; }
+      .ytd-list td { padding: 3px 6px; border-bottom: 1px dotted #ccc; }
+
+      .footer { margin-top: 16px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 9px; color: #666; text-align: center; text-transform: uppercase; letter-spacing: 0.05em; }
+
+      .print-btn, .dl-btn { position: fixed; top: 10px; padding: 8px 16px; border: 2px solid #1C1917; font-weight: 700; cursor: pointer; z-index: 100; font-size: 11px; font-family: Arial; }
+      .print-btn { right: 10px; background: #F59E0B; color: #1C1917; }
+      .dl-btn { right: 140px; background: #16A34A; color: #FFF; border-color: #16A34A; }
+      @media print { .print-btn, .dl-btn { display: none; } }
+      @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>
+    <button class="dl-btn" onclick="(function(){var a=document.createElement('a');a.href='data:text/html;charset=utf-8,'+encodeURIComponent(document.documentElement.outerHTML);a.download='PayStub_${esc(subName.replace(/[^a-z0-9]/gi,'_'))}_${payDate.replace(/[^0-9]/g,'-')}.html';a.click();})()">⬇ DOWNLOAD HTML</button>
+    <button class="print-btn" onclick="window.print()">🖨 PRINT / SAVE AS PDF</button>
+
+    <div class="letterhead">
+      <div>
+        <h1>${esc(company?.name || "4 Brothers Trucking, LLC")}</h1>
+        <div class="sub">
+          ${esc(company?.address || "Bay Point, CA 94565")}<br/>
+          ${company?.phone ? `${esc(company.phone)}<br/>` : ""}
+          ${company?.usdot ? `USDOT ${esc(company.usdot)}` : ""}${company?.mcNumber ? ` · MC ${esc(company.mcNumber)}` : ""}
+        </div>
+      </div>
+      <div style="text-align: right;">
+        <div class="stub-title">PAY STUB</div>
+        <div class="stub-sub">Issued ${esc(payDate)}</div>
+        ${isHistorical ? '<div class="stub-sub" style="color:#DC2626;">REPRINT</div>' : ""}
+      </div>
+    </div>
+
+    <div class="payee-block">
+      <div>
+        <div class="label">Pay To</div>
+        <div class="value">${esc(subName)}</div>
+        <div class="small">${subKind === "driver" ? "Driver" : "Sub-Contractor"}</div>
+      </div>
+      <div>
+        <div class="label">Pay Period</div>
+        <div class="value">${esc(payPeriod)}</div>
+        <div class="small">${fbs.length} freight bill${fbs.length !== 1 ? "s" : ""}</div>
+      </div>
+    </div>
+
+    <div class="section-h">Earnings Detail</div>
+    <table class="fb-table">
+      <thead>
+        <tr>
+          <th>FB #</th>
+          <th>Date</th>
+          <th>Order · Job</th>
+          <th class="r">Qty</th>
+          <th>Unit</th>
+          <th class="r">Rate</th>
+          <th class="r">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${fbRows.map((r) => {
+          const { fb, dispatch, calc, extrasList } = r;
+          const unit = calc.method === "hour" ? "hrs" : calc.method === "ton" ? "tons" : "loads";
+          return `
+            <tr>
+              <td><strong>${esc(fb.freightBillNumber || "—")}</strong></td>
+              <td>${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—"}</td>
+              <td>${esc(dispatch?.code || "—")} · ${esc(dispatch?.jobName || "—")}</td>
+              <td class="r">${calc.qty.toFixed(2)}</td>
+              <td>${unit}</td>
+              <td class="r">${money(calc.rate)}</td>
+              <td class="r"><strong>${money(calc.baseGross)}</strong></td>
+            </tr>
+            ${extrasList.filter((x) => x.reimbursable !== false).map((x) => `
+              <tr><td colspan="7" class="extra-line">+ ${esc(x.label || "Extra")}: ${money(x.amount)} (reimbursable)</td></tr>
+            `).join("")}
+          `;
+        }).join("")}
+      </tbody>
+    </table>
+
+    <div class="totals">
+      <div class="totals-row">
+        <span>Base Earnings (${fbs.length} FB${fbs.length !== 1 ? "s" : ""})</span>
+        <strong>${money(subtotal)}</strong>
+      </div>
+      ${extrasTotal > 0 ? `
+        <div class="totals-row">
+          <span>Reimbursable Extras (tolls / dump / fuel / etc)</span>
+          <strong>${money(extrasTotal)}</strong>
+        </div>
+      ` : ""}
+      <div class="totals-row">
+        <span><strong>GROSS PAY</strong></span>
+        <strong>${money(gross)}</strong>
+      </div>
+      ${brokerageApplies ? `
+        <div class="totals-row deduct">
+          <span>Brokerage Deduction (${brokeragePct}%)</span>
+          <strong>−${money(brokerageAmt)}</strong>
+        </div>
+      ` : ""}
+      <div class="totals-row net">
+        <span>NET PAY</span>
+        <span>${money(netPay)}</span>
+      </div>
+    </div>
+
+    ${payRecord ? `
+      <div class="payment-info">
+        <strong>✓ PAID</strong> on ${esc(payDate)}
+        · <strong>${esc(methodLabel[payRecord.paidMethod] || "Other")}</strong>${payRecord.paidCheckNumber ? ` · Check #${esc(payRecord.paidCheckNumber)}` : ""}
+        ${payRecord.paidNotes ? `<div style="margin-top: 4px; font-style: italic; color: #666;">"${esc(payRecord.paidNotes)}"</div>` : ""}
+      </div>
+    ` : `
+      <div class="payment-info" style="background: #FEF3C7; border-color: #F59E0B; color: #92400E;">
+        <strong>⚠ UNPAID</strong> — this is a preview stub. Payment record will appear here once marked paid.
+      </div>
+    `}
+
+    <div class="ytd-box">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.08em;">Year-to-Date (${year})</div>
+          <div class="total">${money(ytdTotal)}</div>
+          <div style="font-size: 10px; color: #666;">Total paid to ${esc(subName)} in ${year}${ytdRuns.length > 0 ? ` · ${ytdRuns.length} prior pay run${ytdRuns.length !== 1 ? "s" : ""}` : ""}</div>
+        </div>
+      </div>
+      ${ytdRuns.length > 0 ? `
+        <div class="ytd-list">
+          <div style="font-size: 10px; color: #666; margin-top: 8px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Previous Pay Runs:</div>
+          <table>
+            <tr><th style="text-align:left;">Date</th><th style="text-align:left;">Method</th><th style="text-align:left;">Ref</th><th style="text-align:right;">FBs</th><th style="text-align:right;">Amount</th></tr>
+            ${ytdRuns.map((r) => `
+              <tr>
+                <td>${esc(r.date)}</td>
+                <td>${esc(methodLabel[r.method] || r.method || "—")}</td>
+                <td>${esc(r.checkNumber || "—")}</td>
+                <td style="text-align:right;">${r.fbs.length}</td>
+                <td style="text-align:right;"><strong>${money(r.paidAmt)}</strong></td>
+              </tr>
+            `).join("")}
+          </table>
+        </div>
+      ` : '<div style="font-size: 10px; color: #999; margin-top: 6px;">No prior pay runs this year.</div>'}
+    </div>
+
+    <div class="footer">
+      ${esc(company?.name || "4 Brothers Trucking, LLC")} · Pay Stub · ${esc(subName)} · ${esc(payDate)}${payRecord?.paidCheckNumber ? ` · Check #${esc(payRecord.paidCheckNumber)}` : ""}
+    </div>
+    </body></html>`;
+
+  const w = window.open("", "_blank", "width=1000,height=1100");
+  if (!w) throw new Error("Popup blocked — please allow popups to generate pay stubs.");
+  w.document.write(html);
+  w.document.close();
+  return { opened: true };
+};
+
+// ========== PAY STUB MODAL (offered after marking paid) ==========
+const PayStubOfferModal = ({ target, fbs, payRecord, allFreightBills, allDispatches, company, onPrint, onClose }) => {
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+        <div style={{ padding: "18px 22px", background: "var(--good)", color: "#FFF" }}>
+          <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>PAYMENT RECORDED</div>
+          <h3 className="fbt-display" style={{ fontSize: 18, margin: "4px 0 0" }}>Print Pay Stub?</h3>
+        </div>
+        <div style={{ padding: 22 }}>
+          <p style={{ fontSize: 13, margin: "0 0 16px", lineHeight: 1.5 }}>
+            Payment to <strong>{target.subName}</strong> of <strong>{fmt$(target.net)}</strong> has been recorded.
+            Would you like to generate a pay stub now?
+          </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => { onPrint(); onClose(); }}
+              className="btn-primary"
+              style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}
+            >
+              <Printer size={16} /> PRINT STUB
+            </button>
+            <button onClick={onClose} className="btn-ghost">SKIP</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSuccess, currentUser }) => {
   // target = { projectName, subName, subId, gross, brokeragePct, brokerageAmt, net, fbs }
   const defaultAmt = target.net.toFixed(2);
   const [form, setForm] = useState({
@@ -5590,16 +5892,24 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, currentUser
       const grossSum = grossByFb.reduce((s, v) => s + v, 0) || 1;
       const totalAmt = Number(form.amount);
 
+      const paidFbs = [];
       for (let i = 0; i < fbs.length; i++) {
         const entry = fbs[i];
         const share = grossSum > 0 ? (entry.gross / grossSum) * totalAmt : totalAmt / fbs.length;
-        await editFreightBill(entry.fb.id, {
+        const updatedFb = {
           ...entry.fb,
           ...stamp,
           paidAmount: Number(share.toFixed(2)),
-        });
+        };
+        await editFreightBill(entry.fb.id, updatedFb);
+        paidFbs.push(updatedFb);
       }
       onToast(`✓ PAID ${target.subName} — ${fbs.length} FB${fbs.length !== 1 ? "S" : ""}`);
+
+      // Trigger stub offer BEFORE closing so parent can show the PayStubOfferModal
+      if (onPaidSuccess) {
+        onPaidSuccess({ paidFbs, payRecord: stamp });
+      }
       onClose();
     } catch (e) {
       console.error(e);
@@ -5716,6 +6026,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
   const [editingFB, setEditingFB] = useState(null);
   const [customerPaidOnly, setCustomerPaidOnly] = useState(true); // NEW: default ON (safer)
   const [traceFB, setTraceFB] = useState(null); // NEW: for traceability modal
+  const [stubOffer, setStubOffer] = useState(null); // {target, fbs, payRecord} for auto-offer after pay
 
   // helper: approved + within date range + filters
   const filteredFbs = useMemo(() => {
@@ -5939,6 +6250,8 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       projectName: pd.projectName,
       subName: sub.subName,
       subId: sub.subId,
+      subKind: sub.kind,
+      brokerageApplies: sub.brokerageApplies,
       gross, brokeragePct: sub.brokeragePct, brokerageAmt, net: gross - brokerageAmt,
       fbs: fbsToPay,
       includeAdvance,
@@ -6012,7 +6325,44 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
           editFreightBill={editFreightBill}
           onClose={() => setPayTarget(null)}
           onToast={onToast}
+          onPaidSuccess={({ paidFbs, payRecord }) => {
+            setStubOffer({
+              target: payTarget,
+              paidFbs,
+              payRecord,
+            });
+          }}
           currentUser="admin"
+        />
+      )}
+      {stubOffer && (
+        <PayStubOfferModal
+          target={stubOffer.target}
+          fbs={stubOffer.paidFbs}
+          payRecord={stubOffer.payRecord}
+          allFreightBills={freightBills}
+          allDispatches={dispatches}
+          company={company}
+          onPrint={() => {
+            try {
+              generatePayStubPDF({
+                subName: stubOffer.target.subName,
+                subKind: stubOffer.target.subKind,
+                subId: stubOffer.target.subId,
+                fbs: stubOffer.paidFbs,
+                payRecord: stubOffer.payRecord,
+                brokeragePct: stubOffer.target.brokeragePct || 8,
+                brokerageApplies: (stubOffer.target.brokerageAmt || 0) > 0,
+                allFreightBills: freightBills,
+                allDispatches: dispatches,
+                company,
+              });
+              onToast("STUB OPENED — PRINT / SAVE AS PDF");
+            } catch (e) {
+              onToast(e.message || "POPUP BLOCKED");
+            }
+          }}
+          onClose={() => setStubOffer(null)}
         />
       )}
       {editingFB && (
@@ -6270,6 +6620,54 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                                 <span className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
                                   ✓ ALL PAID
                                 </span>
+                              )}
+                              {/* Print Stub — visible when sub has any paid FBs */}
+                              {paidFbs.length > 0 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      // Group paid FBs by paidAt date to find the most recent pay run
+                                      const paidByDate = new Map();
+                                      paidFbs.forEach((x) => {
+                                        const key = x.fb.paidAt ? x.fb.paidAt.slice(0, 10) : "unknown";
+                                        if (!paidByDate.has(key)) paidByDate.set(key, []);
+                                        paidByDate.get(key).push(x.fb);
+                                      });
+                                      // Most recent pay run
+                                      const sortedDates = Array.from(paidByDate.keys()).sort().reverse();
+                                      const latestDate = sortedDates[0];
+                                      const latestRunFbs = paidByDate.get(latestDate);
+                                      const payRecord = {
+                                        paidAt: latestRunFbs[0].paidAt,
+                                        paidMethod: latestRunFbs[0].paidMethod,
+                                        paidCheckNumber: latestRunFbs[0].paidCheckNumber,
+                                        paidNotes: latestRunFbs[0].paidNotes,
+                                      };
+                                      generatePayStubPDF({
+                                        subName: sub.subName,
+                                        subKind: sub.kind,
+                                        subId: sub.subId,
+                                        fbs: latestRunFbs,
+                                        payRecord,
+                                        brokeragePct: sub.brokeragePct,
+                                        brokerageApplies: sub.brokerageApplies,
+                                        allFreightBills: freightBills,
+                                        allDispatches: dispatches,
+                                        company,
+                                        isHistorical: true,
+                                      });
+                                      onToast(`STUB FOR ${sub.subName} (${latestDate})`);
+                                    } catch (err) {
+                                      onToast(err.message || "POPUP BLOCKED");
+                                    }
+                                  }}
+                                  className="btn-ghost"
+                                  style={{ padding: "6px 10px", fontSize: 10, color: "var(--steel)" }}
+                                  title="Print pay stub for most recent pay run"
+                                >
+                                  <Printer size={11} style={{ marginRight: 3 }} /> STUB
+                                </button>
                               )}
                             </div>
                           </div>
