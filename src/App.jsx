@@ -666,8 +666,8 @@ const ClientTrackingPage = ({ token, dispatches, freightBills, company, onBack }
   );
 };
 
-const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack }) => {
-  const [form, setForm] = useState({ freightBillNumber: "", driverName: "", truckNumber: "", material: dispatch?.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "" });
+const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [] }) => {
+  const [form, setForm] = useState({ freightBillNumber: "", driverName: "", driverId: null, truckNumber: "", material: dispatch?.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "" });
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -756,7 +756,41 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack }) => {
               <input className="fbt-input" value={form.freightBillNumber} onChange={(e) => setForm({ ...form, freightBillNumber: e.target.value })} placeholder="e.g. 45821" style={{ fontSize: 16 }} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
-              <div><label className="fbt-label">Driver Name *</label><input className="fbt-input" value={form.driverName} onChange={(e) => setForm({ ...form, driverName: e.target.value })} placeholder="Your full name" /></div>
+              <div>
+                <label className="fbt-label">Driver Name *</label>
+                {availableDrivers.length > 0 ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <select
+                      className="fbt-select"
+                      style={{ flex: 1, minWidth: 140 }}
+                      value={form.driverId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) { setForm({ ...form, driverId: null, driverName: "" }); return; }
+                        const d = availableDrivers.find((x) => String(x.id) === id);
+                        if (d) setForm({ ...form, driverId: d.id, driverName: d.companyName || d.contactName });
+                      }}
+                    >
+                      <option value="">— Select driver —</option>
+                      {availableDrivers.map((d) => (
+                        <option key={d.id} value={d.id}>{d.companyName || d.contactName}</option>
+                      ))}
+                      <option value="other">— Other (type below) —</option>
+                    </select>
+                    {(!form.driverId || form.driverId === "other") && (
+                      <input
+                        className="fbt-input"
+                        style={{ flex: 1, minWidth: 140 }}
+                        value={form.driverName}
+                        onChange={(e) => setForm({ ...form, driverName: e.target.value, driverId: null })}
+                        placeholder="Your full name"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <input className="fbt-input" value={form.driverName} onChange={(e) => setForm({ ...form, driverName: e.target.value })} placeholder="Your full name" />
+                )}
+              </div>
               <div><label className="fbt-label">Truck # *</label><input className="fbt-input" value={form.truckNumber} onChange={(e) => setForm({ ...form, truckNumber: e.target.value })} placeholder="T-01 or plate" /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
@@ -973,22 +1007,35 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", subContractor: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "" });
+  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
 
   const createDispatch = async () => {
     if (!draft.jobName) { onToast("JOB NAME REQUIRED"); return; }
     const code = randomCode(6);
-    const d = { ...draft, id: "temp-" + Date.now(), code, trucksExpected: Number(draft.trucksExpected) || 1, createdAt: new Date().toISOString(), status: "open" };
+    // Look up driver names for the assigned IDs so they're embedded in the dispatch
+    const assignedIds = draft.assignedDriverIds || [];
+    const assignedNames = assignedIds.map((id) => {
+      const c = contacts.find((x) => x.id === id);
+      return c ? (c.companyName || c.contactName) : "";
+    }).filter(Boolean);
+    const d = {
+      ...draft,
+      id: "temp-" + Date.now(),
+      code,
+      trucksExpected: Number(draft.trucksExpected) || 1,
+      assignedDriverIds: assignedIds,
+      assignedDriverNames: assignedNames,
+      createdAt: new Date().toISOString(),
+      status: "open",
+    };
     const next = [d, ...dispatches];
     await setDispatches(next);
     setShowNew(false);
-    // Find the newly inserted dispatch (its ID is now the Supabase UUID)
-    // Small delay to let state settle then activate by code
     setTimeout(() => {
       const fresh = dispatches.find((x) => x.code === code);
       if (fresh) setActiveDispatch(fresh.id);
     }, 100);
-    setDraft({ date: todayISO(), jobName: "", clientName: "", subContractor: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "" });
+    setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", subContractor: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
     onToast("DISPATCH CREATED — COPY THE LINK");
   };
 
@@ -1067,8 +1114,43 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               </div>
               <div><label className="fbt-label">Job Name *</label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" /></div>
               <div>
-                <label className="fbt-label">Client (for tracking link)</label>
-                <input className="fbt-input" value={draft.clientName || ""} onChange={(e) => setDraft({ ...draft, clientName: e.target.value })} placeholder="e.g. Mountain Cascade, Inc. — jobs with same client share a tracking link" />
+                <label className="fbt-label">Customer (for tracking link & billing)</label>
+                {contacts.filter((c) => c.type === "customer").length > 0 ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <select
+                      className="fbt-select"
+                      style={{ flex: 1, minWidth: 180 }}
+                      value={draft.clientId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) { setDraft({ ...draft, clientId: "", clientName: "" }); return; }
+                        const c = contacts.find((x) => String(x.id) === id);
+                        if (c) setDraft({ ...draft, clientId: c.id, clientName: c.companyName || c.contactName });
+                      }}
+                    >
+                      <option value="">— Choose customer —</option>
+                      {contacts
+                        .filter((c) => c.type === "customer")
+                        .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
+                          </option>
+                        ))}
+                    </select>
+                    <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>OR</span>
+                    <input
+                      className="fbt-input"
+                      style={{ flex: 1, minWidth: 120 }}
+                      value={draft.clientId ? "" : (draft.clientName || "")}
+                      onChange={(e) => setDraft({ ...draft, clientName: e.target.value, clientId: "" })}
+                      placeholder="Type new name"
+                      disabled={!!draft.clientId}
+                    />
+                  </div>
+                ) : (
+                  <input className="fbt-input" value={draft.clientName || ""} onChange={(e) => setDraft({ ...draft, clientName: e.target.value })} placeholder="e.g. Mountain Cascade, Inc. — add as Customer in Contacts for dropdown" />
+                )}
               </div>
               <div>
                 <label className="fbt-label">Sub-Contractor / Crew</label>
@@ -1109,6 +1191,60 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   <input className="fbt-input" value={draft.subContractor || ""} onChange={(e) => setDraft({ ...draft, subContractor: e.target.value })} placeholder="Leave blank if internal · add contacts to see a picker" />
                 )}
               </div>
+
+              {/* Assigned Drivers (optional) — filtered by sub if selected */}
+              {contacts.filter((c) => c.type === "driver").length > 0 && (() => {
+                const availableDrivers = contacts.filter((c) => {
+                  if (c.type !== "driver") return false;
+                  // If a sub is selected, show drivers linked to that sub + unlinked (independent) drivers
+                  if (draft.subContractorId) {
+                    return c.drivesForId === draft.subContractorId || !c.drivesForId;
+                  }
+                  return true;
+                });
+                const assignedIds = draft.assignedDriverIds || [];
+                const toggleDriver = (id) => {
+                  const next = assignedIds.includes(id)
+                    ? assignedIds.filter((x) => x !== id)
+                    : [...assignedIds, id];
+                  setDraft({ ...draft, assignedDriverIds: next });
+                };
+                return (
+                  <div>
+                    <label className="fbt-label">
+                      Assigned Drivers (optional{draft.subContractorId && availableDrivers.length > 0 ? ` · showing ${availableDrivers.length} for this sub` : ""})
+                    </label>
+                    {availableDrivers.length === 0 ? (
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "8px 10px", border: "1px dashed var(--concrete)", background: "#F5F5F4" }}>
+                        NO DRIVERS {draft.subContractorId ? "LINKED TO THIS SUB" : "IN CONTACTS"}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: 8, border: "1px solid var(--steel)", background: "#FFF" }}>
+                        {availableDrivers.map((d) => {
+                          const on = assignedIds.includes(d.id);
+                          return (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onClick={() => toggleDriver(d.id)}
+                              className="btn-ghost"
+                              style={{
+                                padding: "6px 12px", fontSize: 11,
+                                background: on ? "var(--hazard)" : "transparent",
+                                color: on ? "var(--steel)" : "var(--steel)",
+                                borderColor: on ? "var(--hazard-deep)" : "var(--concrete)",
+                              }}
+                            >
+                              {on && <CheckCircle2 size={12} style={{ marginRight: 4 }} />}
+                              {d.companyName || d.contactName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Pickup</label><input className="fbt-input" value={draft.pickup} onChange={(e) => setDraft({ ...draft, pickup: e.target.value })} /></div>
                 <div><label className="fbt-label">Dropoff</label><input className="fbt-input" value={draft.dropoff} onChange={(e) => setDraft({ ...draft, dropoff: e.target.value })} /></div>
@@ -1927,14 +2063,14 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
 };
 
 // ========== INVOICES TAB ==========
-const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, onToast }) => {
+const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [pricingMethod, setPricingMethod] = useState("ton");
   const [rate, setRate] = useState("");
-  const [billTo, setBillTo] = useState({ name: "", address: "", contact: "" });
+  const [billTo, setBillTo] = useState({ id: "", name: "", address: "", contact: "" });
   const [jobRef, setJobRef] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [terms, setTerms] = useState("");
@@ -2009,6 +2145,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       billToName: billTo.name,
       billToAddress: billTo.address,
       billToContact: billTo.contact,
+      billToId: billTo.id || null,
       jobReference: jobRef,
       terms,
       notes,
@@ -2147,8 +2284,38 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         {/* Bill-to */}
         <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 03 / BILL TO</div>
         <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
+          {contacts.filter((c) => c.type === "customer").length > 0 && (
+            <div>
+              <label className="fbt-label">Choose Customer (auto-fills below)</label>
+              <select
+                className="fbt-select"
+                value={billTo.id || ""}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) { setBillTo({ id: "", name: "", contact: "", address: "" }); return; }
+                  const c = contacts.find((x) => String(x.id) === id);
+                  if (c) setBillTo({
+                    id: c.id,
+                    name: c.companyName || c.contactName,
+                    contact: c.contactName || "",
+                    address: c.address || "",
+                  });
+                }}
+              >
+                <option value="">— Manual entry —</option>
+                {contacts
+                  .filter((c) => c.type === "customer")
+                  .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-            <div><label className="fbt-label">Client Name *</label><input className="fbt-input" value={billTo.name} onChange={(e) => setBillTo({ ...billTo, name: e.target.value })} placeholder="Mountain Cascade, Inc." /></div>
+            <div><label className="fbt-label">Client Name *</label><input className="fbt-input" value={billTo.name} onChange={(e) => setBillTo({ ...billTo, name: e.target.value, id: "" })} placeholder="Mountain Cascade, Inc." /></div>
             <div><label className="fbt-label">Contact / Attn</label><input className="fbt-input" value={billTo.contact} onChange={(e) => setBillTo({ ...billTo, contact: e.target.value })} placeholder="Accounts Payable" /></div>
           </div>
           <div><label className="fbt-label">Address</label><input className="fbt-input" value={billTo.address} onChange={(e) => setBillTo({ ...billTo, address: e.target.value })} placeholder="Street, City, State ZIP" /></div>
@@ -2399,11 +2566,11 @@ const buildDispatchMessage = (dispatch, url, companyName) => {
 };
 
 // ========== CONTACT MODAL ==========
-const ContactModal = ({ contact, onSave, onClose, onToast }) => {
+const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(contact || {
     type: "sub", companyName: "", contactName: "", phone: "", phone2: "",
     email: "", address: "", typicalTrucks: "", rateNotes: "",
-    usdot: "", insurance: "", notes: "", favorite: false,
+    usdot: "", insurance: "", notes: "", favorite: false, drivesForId: null,
   });
 
   const save = async () => {
@@ -2421,12 +2588,22 @@ const ContactModal = ({ contact, onSave, onClose, onToast }) => {
     onClose();
   };
 
+  const typeLabel = { sub: "Sub-Contractor", driver: "Driver", customer: "Customer" }[draft.type] || "Contact";
+  const companyLabel = draft.type === "driver" ? "Full Name" : "Company Name";
+  const companyPlaceholder = {
+    sub: "ACME Trucking Inc.",
+    driver: "John Smith",
+    customer: "Mountain Cascade, Inc.",
+  }[draft.type];
+
+  const subContacts = contacts.filter((c) => c.type === "sub");
+
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()}>
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 className="fbt-display" style={{ fontSize: 20, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-            <Users size={18} /> {contact ? "EDIT CONTACT" : "NEW CONTACT"}
+            <Users size={18} /> {contact ? `EDIT ${typeLabel.toUpperCase()}` : `NEW ${typeLabel.toUpperCase()}`}
           </h3>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
         </div>
@@ -2437,11 +2614,12 @@ const ContactModal = ({ contact, onSave, onClose, onToast }) => {
               <select className="fbt-select" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
                 <option value="sub">Sub-Contractor</option>
                 <option value="driver">Driver</option>
+                <option value="customer">Customer</option>
               </select>
             </div>
             <div>
-              <label className="fbt-label">{draft.type === "sub" ? "Company Name" : "Full Name"}</label>
-              <input className="fbt-input" value={draft.companyName} onChange={(e) => setDraft({ ...draft, companyName: e.target.value })} placeholder={draft.type === "sub" ? "ACME Trucking Inc." : "John Smith"} />
+              <label className="fbt-label">{companyLabel}</label>
+              <input className="fbt-input" value={draft.companyName} onChange={(e) => setDraft({ ...draft, companyName: e.target.value })} placeholder={companyPlaceholder} />
             </div>
             <button
               onClick={() => setDraft({ ...draft, favorite: !draft.favorite })}
@@ -2453,10 +2631,26 @@ const ContactModal = ({ contact, onSave, onClose, onToast }) => {
             </button>
           </div>
 
-          {draft.type === "sub" && (
+          {(draft.type === "sub" || draft.type === "customer") && (
             <div>
               <label className="fbt-label">Primary Contact Person</label>
               <input className="fbt-input" value={draft.contactName} onChange={(e) => setDraft({ ...draft, contactName: e.target.value })} placeholder="Who to ask for" />
+            </div>
+          )}
+
+          {draft.type === "driver" && subContacts.length > 0 && (
+            <div>
+              <label className="fbt-label">Drives For (Sub-Contractor, optional)</label>
+              <select
+                className="fbt-select"
+                value={draft.drivesForId || ""}
+                onChange={(e) => setDraft({ ...draft, drivesForId: e.target.value || null })}
+              >
+                <option value="">— Independent / Not linked —</option>
+                {subContacts.map((s) => (
+                  <option key={s.id} value={s.id}>{s.companyName || s.contactName}</option>
+                ))}
+              </select>
             </div>
           )}
 
@@ -2477,38 +2671,43 @@ const ContactModal = ({ contact, onSave, onClose, onToast }) => {
           </div>
 
           <div>
-            <label className="fbt-label">Address / Office Location</label>
+            <label className="fbt-label">{draft.type === "customer" ? "Billing Address" : "Address / Office Location"}</label>
             <input className="fbt-input" value={draft.address} onChange={(e) => setDraft({ ...draft, address: e.target.value })} placeholder="Street, City, State ZIP" />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
-            <div>
-              <label className="fbt-label">Typical Truck Count</label>
-              <input className="fbt-input" type="number" min="0" value={draft.typicalTrucks} onChange={(e) => setDraft({ ...draft, typicalTrucks: e.target.value })} placeholder="e.g. 3" />
+          {draft.type === "sub" && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+              <div>
+                <label className="fbt-label">Typical Truck Count</label>
+                <input className="fbt-input" type="number" min="0" value={draft.typicalTrucks} onChange={(e) => setDraft({ ...draft, typicalTrucks: e.target.value })} placeholder="e.g. 3" />
+              </div>
+              <div>
+                <label className="fbt-label">Rate / Pricing Notes</label>
+                <input className="fbt-input" value={draft.rateNotes} onChange={(e) => setDraft({ ...draft, rateNotes: e.target.value })} placeholder="$135/hr, 8-hr min" />
+              </div>
             </div>
-            <div>
-              <label className="fbt-label">Rate / Pricing Notes</label>
-              <input className="fbt-input" value={draft.rateNotes} onChange={(e) => setDraft({ ...draft, rateNotes: e.target.value })} placeholder="$135/hr, 8-hr min" />
-            </div>
-          </div>
+          )}
 
-          <div>
-            <label className="fbt-label">USDOT / MC # / CA MCP</label>
-            <input className="fbt-input" value={draft.usdot} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="USDOT 1234567 · MC 000000" />
-          </div>
-
-          <div>
-            <label className="fbt-label">Insurance Info</label>
-            <input className="fbt-input" value={draft.insurance} onChange={(e) => setDraft({ ...draft, insurance: e.target.value })} placeholder="Carrier · Policy # · Expires" />
-          </div>
+          {(draft.type === "sub" || draft.type === "driver") && (
+            <>
+              <div>
+                <label className="fbt-label">USDOT / MC # / CA MCP</label>
+                <input className="fbt-input" value={draft.usdot} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="USDOT 1234567 · MC 000000" />
+              </div>
+              <div>
+                <label className="fbt-label">Insurance Info</label>
+                <input className="fbt-input" value={draft.insurance} onChange={(e) => setDraft({ ...draft, insurance: e.target.value })} placeholder="Carrier · Policy # · Expires" />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="fbt-label">Internal Notes</label>
-            <textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Reliability, strengths, quirks, when to call, when not to, equipment details..." />
+            <textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Reliability, strengths, quirks, preferences..." />
           </div>
 
           <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
-            <button onClick={save} className="btn-primary"><CheckCircle2 size={16} /> SAVE CONTACT</button>
+            <button onClick={save} className="btn-primary"><CheckCircle2 size={16} /> SAVE</button>
             <button onClick={onClose} className="btn-ghost">CANCEL</button>
           </div>
         </div>
@@ -2538,7 +2737,7 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
-              {contact.type === "sub" ? "SUB-CONTRACTOR" : "DRIVER"}{contact.favorite && " · ★ PREFERRED"}
+              {contact.type === "sub" ? "SUB-CONTRACTOR" : contact.type === "customer" ? "CUSTOMER" : "DRIVER"}{contact.favorite && " · ★ PREFERRED"}
             </div>
             <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{contact.companyName || contact.contactName}</h3>
             {contact.contactName && contact.companyName && (
@@ -2673,12 +2872,14 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
 
   const subsCount = contacts.filter((c) => c.type === "sub").length;
   const driversCount = contacts.filter((c) => c.type === "driver").length;
+  const customersCount = contacts.filter((c) => c.type === "customer").length;
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
       {showModal && (
         <ContactModal
           contact={editing}
+          contacts={contacts}
           onSave={save}
           onClose={() => { setShowModal(false); setEditing(null); }}
           onToast={onToast}
@@ -2697,10 +2898,14 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
         />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16 }}>
         <div className="fbt-card" style={{ padding: 20 }}>
           <div className="stat-num">{contacts.length}</div>
-          <div className="stat-label">Total Contacts</div>
+          <div className="stat-label">Total</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 20 }}>
+          <div className="stat-num">{customersCount}</div>
+          <div className="stat-label">Customers</div>
         </div>
         <div className="fbt-card" style={{ padding: 20 }}>
           <div className="stat-num">{subsCount}</div>
@@ -2723,6 +2928,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
         </div>
         <select className="fbt-select" style={{ width: "auto" }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
           <option value="all">All Types</option>
+          <option value="customer">Customers Only</option>
           <option value="sub">Subs Only</option>
           <option value="driver">Drivers Only</option>
         </select>
@@ -2749,8 +2955,12 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <span className="chip" style={{ background: c.type === "sub" ? "var(--hazard)" : "#FFF", fontSize: 9, padding: "2px 8px" }}>
-                          {c.type === "sub" ? "SUB" : "DRIVER"}
+                        <span className="chip" style={{
+                          background: c.type === "sub" ? "var(--hazard)" : c.type === "customer" ? "var(--good)" : "#FFF",
+                          color: c.type === "customer" ? "#FFF" : undefined,
+                          fontSize: 9, padding: "2px 8px"
+                        }}>
+                          {c.type === "sub" ? "SUB" : c.type === "customer" ? "CUSTOMER" : "DRIVER"}
                         </span>
                         {jobCount > 0 && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>{jobCount} job{jobCount !== 1 ? "s" : ""}</span>}
                       </div>
@@ -4323,7 +4533,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
       </div>
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "32px 24px 80px" }}>
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} onToast={onToast} />}
-        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} onToast={onToast} />}
+        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
@@ -4747,10 +4957,15 @@ export default function App() {
     const code = submitMatch[1].toUpperCase();
     const d = dispatches.find((x) => x.code.toUpperCase() === code);
     const enriched = d ? { ...d, submittedCount: freightBills.filter(fb => fb.dispatchId === d.id).length } : null;
+    // Build available drivers list from embedded names (public-safe — no private data leaked)
+    const availableDrivers = (d?.assignedDriverIds || []).map((id, idx) => ({
+      id,
+      companyName: (d.assignedDriverNames || [])[idx] || `Driver ${idx + 1}`,
+    }));
     return (
       <div className="fbt-root">
         <GlobalStyles />
-        <DriverUploadPage dispatch={enriched} onSubmitTruck={handleTruckSubmit} onBack={() => { window.location.hash = ""; }} />
+        <DriverUploadPage dispatch={enriched} onSubmitTruck={handleTruckSubmit} onBack={() => { window.location.hash = ""; }} availableDrivers={availableDrivers} />
       </div>
     );
   }
