@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { supabase } from "./supabase";
 import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Award, Zap } from "lucide-react";
 
 const GlobalStyles = () => (
@@ -115,21 +116,7 @@ const Lightbox = ({ src, onClose }) => (
   </div>
 );
 
-// ========== AUTH UTILITIES ==========
-const hashPassword = async (pw) => {
-  try {
-    const enc = new TextEncoder().encode("fbt-salt-v1:" + pw);
-    const buf = await crypto.subtle.digest("SHA-256", enc);
-    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  } catch {
-    // Fallback for older browsers — not cryptographically strong, but better than plaintext
-    let h = 0;
-    const s = "fbt-salt-v1:" + pw;
-    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
-    return "fb_" + h.toString(16);
-  }
-};
-
+// ========== AUTH UTILITIES (SUPABASE) ==========
 const validatePassword = (pw) => {
   if (pw.length < 6) return "Password must be at least 6 characters";
   if (!/[a-zA-Z]/.test(pw)) return "Password must contain at least one letter";
@@ -137,126 +124,63 @@ const validatePassword = (pw) => {
   return null;
 };
 
-// ========== NOTIFICATION HELPERS ==========
-// Web Audio API ding — no external file needed
-let _audioCtx = null;
-const playDing = () => {
-  try {
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _audioCtx;
-    if (ctx.state === "suspended") ctx.resume();
-    const now = ctx.currentTime;
-
-    // Two-tone chime: E5 (659Hz) then A5 (880Hz)
-    const tones = [
-      { freq: 659.25, start: 0, duration: 0.18 },
-      { freq: 880.00, start: 0.12, duration: 0.28 },
-    ];
-    tones.forEach(({ freq, start, duration }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, now + start);
-      gain.gain.linearRampToValueAtTime(0.15, now + start + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + start);
-      osc.stop(now + start + duration + 0.02);
-    });
-  } catch (e) { console.warn("ding failed", e); }
+const validateEmail = (e) => {
+  if (!e || !e.includes("@") || !e.includes(".")) return "Please enter a valid email";
+  return null;
 };
 
-const requestBrowserNotif = async () => {
-  if (!("Notification" in window)) return "unsupported";
-  if (Notification.permission === "granted") return "granted";
-  if (Notification.permission === "denied") return "denied";
-  try {
-    const result = await Notification.requestPermission();
-    return result;
-  } catch { return "error"; }
-};
-
-const fireBrowserNotif = (title, body, tag) => {
-  try {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    const n = new Notification(title, {
-      body,
-      tag: tag || "fbt-freightbill",
-      silent: true, // we play our own ding so the OS doesn't double up
-      icon: "data:image/svg+xml;base64," + btoa(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" fill="%23F59E0B"/><text x="24" y="32" font-family="Arial Black" font-size="24" text-anchor="middle" fill="%231C1917">4B</text></svg>'
-          .replace(/%23/g, "#")
-      ),
-    });
-    // Auto-close after 8 seconds
-    setTimeout(() => { try { n.close(); } catch {} }, 8000);
-    // Focus app window when notification clicked
-    n.onclick = () => { window.focus(); n.close(); };
-  } catch (e) { console.warn("notif failed", e); }
-};
-
-// ========== SETUP PASSWORD (first-time) ==========
-const SetupPasswordScreen = ({ onSetup, onCancel }) => {
+// ========== LOGIN (Supabase email/password) ==========
+const LoginScreen = ({ onSuccess, onCancel }) => {
+  const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState("");
-  const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    const v = validatePassword(pw);
-    if (v) { setErr(v); return; }
-    if (pw !== confirm) { setErr("Passwords don't match"); return; }
-    await onSetup(pw);
+    setErr("");
+    const ev = validateEmail(email);
+    if (ev) { setErr(ev); return; }
+    if (!pw) { setErr("Password is required"); return; }
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) {
+        setErr(error.message || "Login failed");
+        setLoading(false);
+        return;
+      }
+      onSuccess(data.user);
+    } catch (e) {
+      setErr(e.message || "Login failed — check your internet");
+      setLoading(false);
+    }
   };
 
   return (
     <div className="fbt-root texture-paper" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="fbt-card" style={{ padding: 0, maxWidth: 440, width: "100%", overflow: "hidden" }}>
-        <div className="hazard-stripe-thin" style={{ height: 6 }} />
-        <div style={{ padding: 32 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-            <div style={{ width: 64, height: 64, background: "var(--hazard)", border: "3px solid var(--steel)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <KeyRound size={30} strokeWidth={2.5} />
+      <div className="fbt-card" style={{ maxWidth: 440, width: "100%", padding: 0, overflow: "hidden" }}>
+        <div className="hazard-stripe" style={{ height: 10 }} />
+        <div style={{ padding: 36 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
+            <div style={{ width: 56, height: 56, background: "var(--hazard)", border: "3px solid var(--steel)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-3deg)", boxShadow: "4px 4px 0 var(--steel)" }}>
+              <Lock size={26} strokeWidth={2.5} color="var(--steel)" />
+            </div>
+            <div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em" }}>▸ STAFF SIGN IN</div>
+              <h2 className="fbt-display" style={{ fontSize: 24, margin: 0, lineHeight: 1 }}>SECURE LOGIN</h2>
             </div>
           </div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.2em", textAlign: "center", marginBottom: 8 }}>
-            ▸ FIRST-TIME SETUP
-          </div>
-          <h2 className="fbt-display" style={{ fontSize: 26, margin: "0 0 8px", textAlign: "center", lineHeight: 1.1 }}>
-            SET YOUR STAFF PASSWORD
-          </h2>
-          <p style={{ textAlign: "center", color: "var(--concrete)", fontSize: 14, margin: "0 0 24px" }}>
-            This locks the internal console. You can change it later from settings.
-          </p>
 
-          <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gap: 16 }}>
             <div>
-              <label className="fbt-label">New Password</label>
-              <input
-                className="fbt-input"
-                type={show ? "text" : "password"}
-                value={pw}
-                onChange={(e) => { setPw(e.target.value); setErr(""); }}
-                placeholder="At least 6 chars, letters + numbers"
-                autoFocus
-              />
+              <label className="fbt-label">Email</label>
+              <input className="fbt-input" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} autoFocus placeholder="you@example.com" />
             </div>
             <div>
-              <label className="fbt-label">Confirm Password</label>
-              <input
-                className="fbt-input"
-                type={show ? "text" : "password"}
-                value={confirm}
-                onChange={(e) => { setConfirm(e.target.value); setErr(""); }}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-              />
+              <label className="fbt-label">Password</label>
+              <input className="fbt-input" type="password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} />
             </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", cursor: "pointer" }}>
-              <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
-              SHOW PASSWORDS
-            </label>
 
             {err && (
               <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
@@ -264,14 +188,17 @@ const SetupPasswordScreen = ({ onSetup, onCancel }) => {
               </div>
             )}
 
-            <button onClick={submit} className="btn-primary" style={{ marginTop: 6 }}>
-              <Lock size={16} /> SET PASSWORD & CONTINUE
+            <button onClick={submit} className="btn-primary" disabled={loading} style={{ justifyContent: "center", padding: "14px" }}>
+              {loading ? "SIGNING IN…" : <>SIGN IN <ArrowRight size={14} style={{ marginLeft: 6 }} /></>}
             </button>
-            <button onClick={onCancel} className="btn-ghost">CANCEL</button>
-          </div>
 
-          <div style={{ marginTop: 20, padding: 12, background: "#FEF3C7", border: "1px solid var(--hazard-deep)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", lineHeight: 1.5 }}>
-            ▸ STORE THIS SOMEWHERE SAFE. THERE'S NO PASSWORD RECOVERY — IF YOU FORGET IT, YOU'LL NEED TO CLEAR THE APP'S STORAGE.
+            <button onClick={onCancel} className="btn-ghost" style={{ justifyContent: "center", padding: "10px" }}>
+              ← BACK TO PUBLIC SITE
+            </button>
+
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em", marginTop: 4 }}>
+              ▸ CLOUD LOGIN · SECURED BY SUPABASE
+            </div>
           </div>
         </div>
       </div>
@@ -279,92 +206,29 @@ const SetupPasswordScreen = ({ onSetup, onCancel }) => {
   );
 };
 
-// ========== LOGIN SCREEN ==========
-const LoginScreen = ({ storedHash, onSuccess, onCancel }) => {
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState("");
-  const [show, setShow] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-
-  const submit = async () => {
-    if (!pw) return;
-    const h = await hashPassword(pw);
-    if (h === storedHash) {
-      onSuccess();
-    } else {
-      setAttempts(attempts + 1);
-      setErr("Incorrect password");
-      setPw("");
-    }
-  };
-
-  return (
-    <div className="fbt-root texture-paper" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="fbt-card" style={{ padding: 0, maxWidth: 400, width: "100%", overflow: "hidden" }}>
-        <div className="hazard-stripe-thin" style={{ height: 6 }} />
-        <div style={{ padding: 32 }}>
-          <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-            <div style={{ width: 56, height: 56, background: "var(--steel)", border: "3px solid var(--hazard)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Lock size={26} strokeWidth={2.5} color="var(--hazard)" />
-            </div>
-          </div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.2em", textAlign: "center", marginBottom: 8 }}>
-            ▸ INTERNAL CONSOLE · RESTRICTED
-          </div>
-          <h2 className="fbt-display" style={{ fontSize: 24, margin: "0 0 24px", textAlign: "center" }}>
-            STAFF LOGIN
-          </h2>
-
-          <div style={{ display: "grid", gap: 14 }}>
-            <div>
-              <label className="fbt-label">Password</label>
-              <input
-                className="fbt-input"
-                type={show ? "text" : "password"}
-                value={pw}
-                onChange={(e) => { setPw(e.target.value); setErr(""); }}
-                onKeyDown={(e) => e.key === "Enter" && submit()}
-                autoFocus
-              />
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", cursor: "pointer" }}>
-              <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
-              SHOW PASSWORD
-            </label>
-
-            {err && (
-              <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} /> {err}{attempts > 2 ? ` (${attempts} attempts)` : ""}
-              </div>
-            )}
-
-            <button onClick={submit} className="btn-primary" disabled={!pw}>
-              <ArrowRight size={16} /> UNLOCK
-            </button>
-            <button onClick={onCancel} className="btn-ghost">← BACK TO PUBLIC SITE</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ========== CHANGE PASSWORD MODAL ==========
-const ChangePasswordModal = ({ storedHash, onSave, onClose, onToast }) => {
-  const [current, setCurrent] = useState("");
+// ========== CHANGE PASSWORD (Supabase) ==========
+const ChangePasswordModal = ({ onClose, onToast }) => {
   const [pw, setPw] = useState("");
   const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    const curHash = await hashPassword(current);
-    if (curHash !== storedHash) { setErr("Current password is incorrect"); return; }
+    setErr("");
     const v = validatePassword(pw);
     if (v) { setErr(v); return; }
-    if (pw !== confirm) { setErr("New passwords don't match"); return; }
-    await onSave(pw);
-    onToast("PASSWORD CHANGED");
-    onClose();
+    if (pw !== confirm) { setErr("Passwords don't match"); return; }
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw });
+      if (error) { setErr(error.message); setLoading(false); return; }
+      onToast("PASSWORD CHANGED");
+      onClose();
+    } catch (e) {
+      setErr(e.message || "Failed to change password");
+      setLoading(false);
+    }
   };
 
   return (
@@ -378,12 +242,8 @@ const ChangePasswordModal = ({ storedHash, onSave, onClose, onToast }) => {
         </div>
         <div style={{ padding: 24, display: "grid", gap: 14 }}>
           <div>
-            <label className="fbt-label">Current Password</label>
-            <input className="fbt-input" type="password" value={current} onChange={(e) => { setCurrent(e.target.value); setErr(""); }} autoFocus />
-          </div>
-          <div>
             <label className="fbt-label">New Password</label>
-            <input className="fbt-input" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="6+ chars, letters + numbers" />
+            <input className="fbt-input" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="6+ chars, letters + numbers" autoFocus />
           </div>
           <div>
             <label className="fbt-label">Confirm New Password</label>
@@ -397,7 +257,7 @@ const ChangePasswordModal = ({ storedHash, onSave, onClose, onToast }) => {
           )}
 
           <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            <button onClick={submit} className="btn-primary"><CheckCircle2 size={16} /> UPDATE PASSWORD</button>
+            <button onClick={submit} className="btn-primary" disabled={loading}><CheckCircle2 size={16} /> {loading ? "UPDATING…" : "UPDATE PASSWORD"}</button>
             <button onClick={onClose} className="btn-ghost">CANCEL</button>
           </div>
         </div>
@@ -4489,7 +4349,7 @@ export default function App() {
   const [route, setRoute] = useState(() => window.location.hash);
 
   // Auth state
-  const [passwordHash, setPasswordHash] = useState(null);
+  // Auth state (Supabase)
   const [authed, setAuthed] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
 
@@ -4508,29 +4368,43 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [l, q, f, d, fb, pwHash, session, inv, co, ct, seen, notifPrefs, qr, lvmr] = await Promise.all([
+      // Check Supabase session first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) setAuthed(true);
+
+      // Listen for auth changes (login/logout from other tabs)
+      supabase.auth.onAuthStateChange((event, sess) => {
+        if (event === "SIGNED_IN") setAuthed(true);
+        if (event === "SIGNED_OUT") setAuthed(false);
+      });
+
+      // Load local-cached preferences (these don't need cloud sync)
+      const [seen, notifPrefs, lvmr] = await Promise.all([
+        storageGet("fbt:seenFbIds"), storageGet("fbt:notifPrefs"),
+        storageGet("fbt:lastViewedMondayReport"),
+      ]);
+      if (seen) setSeenFbIds(seen);
+      if (notifPrefs) {
+        if (typeof notifPrefs.soundEnabled === "boolean") setSoundEnabled(notifPrefs.soundEnabled);
+        if (typeof notifPrefs.browserNotifsEnabled === "boolean") setBrowserNotifsEnabled(notifPrefs.browserNotifsEnabled);
+      }
+      if (lvmr) setLastViewedMondayReportState(lvmr);
+
+      // TODO (next session): load dispatches, freight bills, contacts, etc. from Supabase
+      // For now, fall back to local storage so nothing breaks
+      const [l, q, f, d, fb, inv, co, ct, qr] = await Promise.all([
         storageGet("fbt:logs"), storageGet("fbt:quotes"), storageGet("fbt:fleet"),
         storageGet("fbt:dispatches", true), storageGet("fbt:freightbills", true),
-        storageGet("fbt:authHash"), storageGet("fbt:authSession"),
         storageGet("fbt:invoices"), storageGet("fbt:company"), storageGet("fbt:contacts"),
-        storageGet("fbt:seenFbIds"), storageGet("fbt:notifPrefs"),
-        storageGet("fbt:quarries"), storageGet("fbt:lastViewedMondayReport"),
+        storageGet("fbt:quarries"),
       ]);
       if (l) setLogs(l); if (q) setQuotes(q); if (f) setFleet(f);
       if (d) setDispatches(d); if (fb) setFreightBills(fb);
       if (inv) setInvoices(inv);
       if (ct) setContacts(ct);
       if (qr) setQuarries(qr);
-      if (lvmr) setLastViewedMondayReportState(lvmr);
       if (co) setCompanyState((prev) => ({ ...prev, ...co }));
-      if (pwHash) setPasswordHash(pwHash);
-      if (session && pwHash && session === pwHash) setAuthed(true);
-      if (seen) setSeenFbIds(seen);
-      if (notifPrefs) {
-        if (typeof notifPrefs.soundEnabled === "boolean") setSoundEnabled(notifPrefs.soundEnabled);
-        if (typeof notifPrefs.browserNotifsEnabled === "boolean") setBrowserNotifsEnabled(notifPrefs.browserNotifsEnabled);
-      }
-      // Initialize prev set — on first load, everything is considered "already known"
+
       prevFbIdsRef.current = new Set((fb || []).map((x) => x.id));
       setLoaded(true);
     })();
@@ -4631,49 +4505,23 @@ export default function App() {
   const handleTruckSubmit = async (fb) => { const next = [fb, ...freightBills]; await setFreightBillsShared(next); };
 
   // Auth handlers
-  const handleSetupPassword = async (pw) => {
-    const h = await hashPassword(pw);
-    setPasswordHash(h);
+  const handleLoginSuccess = (user) => {
     setAuthed(true);
-    await storageSet("fbt:authHash", h);
-    await storageSet("fbt:authSession", h);
-    setView("dashboard");
-    showToast("PASSWORD SET · WELCOME");
-  };
-
-  const handleLoginSuccess = async () => {
-    setAuthed(true);
-    await storageSet("fbt:authSession", passwordHash);
     setView("dashboard");
     showToast("LOGGED IN");
   };
 
   const handleLogout = async () => {
-    // Auto-backup before logout (silent — skip if no data)
-    const totalItems = (dispatches?.length || 0) + (freightBills?.length || 0) + (invoices?.length || 0) + (logs?.length || 0);
-    if (totalItems > 0) {
-      try {
-        const state = { logs, quotes, fleet, dispatches, freightBills, invoices, company };
-        downloadJSONBackup(state, { includePhotos: true, filenameSuffix: "-logout" });
-        await storageSet("fbt:lastBackupAt", new Date().toISOString());
-      } catch (e) { console.warn("auto-backup on logout failed", e); }
-    }
+    try {
+      await supabase.auth.signOut();
+    } catch (e) { console.warn("logout failed", e); }
     setAuthed(false);
-    await storageSet("fbt:authSession", null);
     setView("public");
-    showToast(totalItems > 0 ? "BACKUP DOWNLOADED · LOGGED OUT" : "LOGGED OUT");
-  };
-
-  const handleChangePassword = async (newPw) => {
-    const h = await hashPassword(newPw);
-    setPasswordHash(h);
-    await storageSet("fbt:authHash", h);
-    await storageSet("fbt:authSession", h); // keep them logged in under new password
+    showToast("LOGGED OUT");
   };
 
   const tryEnterDashboard = () => {
-    if (!passwordHash) { setView("setup"); }
-    else if (authed) { setView("dashboard"); }
+    if (authed) { setView("dashboard"); }
     else { setView("login"); }
   };
 
@@ -4726,23 +4574,14 @@ export default function App() {
     );
   }
 
-  // Setup flow — first time
-  if (view === "setup") {
-    return (
-      <div className="fbt-root">
-        <GlobalStyles />
-        <SetupPasswordScreen onSetup={handleSetupPassword} onCancel={() => setView("public")} />
-        {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
-      </div>
-    );
-  }
+  // Setup flow removed — we now use Supabase user accounts created via dashboard
 
   // Login flow
   if (view === "login") {
     return (
       <div className="fbt-root">
         <GlobalStyles />
-        <LoginScreen storedHash={passwordHash} onSuccess={handleLoginSuccess} onCancel={() => setView("public")} />
+        <LoginScreen onSuccess={handleLoginSuccess} onCancel={() => setView("public")} />
         {toast && <Toast msg={toast} onClose={() => setToast(null)} />}
       </div>
     );
@@ -4754,7 +4593,7 @@ export default function App() {
       {view === "public" && (
         <div style={{ position: "fixed", top: 16, right: 16, zIndex: 50 }}>
           <button onClick={tryEnterDashboard} className="btn-primary" style={{ padding: "10px 18px", fontSize: 12 }}>
-            {passwordHash ? <Lock size={14} /> : <Menu size={14} />} STAFF LOGIN
+            <Lock size={14} /> STAFF LOGIN
           </button>
         </div>
       )}
@@ -4772,8 +4611,6 @@ export default function App() {
           />
           {showChangePw && (
             <ChangePasswordModal
-              storedHash={passwordHash}
-              onSave={handleChangePassword}
               onClose={() => setShowChangePw(false)}
               onToast={showToast}
             />
