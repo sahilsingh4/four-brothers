@@ -1408,62 +1408,122 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   ▸ USE THIS WHEN ONE ORDER HAS MULTIPLE SUBS OR INDIVIDUAL DRIVERS · DRIVER = 1 TRUCK · SUB = NUMBER YOU ENTER
                 </div>
                 {(draft.assignments || []).length > 0 && (
-                  <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+                  <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
                     {draft.assignments.map((a, idx) => {
                       const isDriver = a.kind === "driver";
                       const contactsOfKind = contacts.filter((c) => c.type === (isDriver ? "driver" : "sub"));
+                      const selectedContact = a.contactId ? contacts.find((c) => c.id === a.contactId) : null;
+                      const hasBrokerage = selectedContact?.brokerageApplies;
+                      const brokeragePct = selectedContact?.brokeragePercent ?? 8;
                       return (
-                        <div key={idx} style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px auto", gap: 8, padding: 8, border: "1.5px solid var(--steel)", background: "#FFF", alignItems: "center" }}>
-                          <select
-                            className="fbt-select"
-                            style={{ padding: "6px 8px", fontSize: 11 }}
-                            value={a.kind}
-                            onChange={(e) => {
-                              const next = [...draft.assignments];
-                              next[idx] = { ...next[idx], kind: e.target.value, contactId: null, name: "", trucks: e.target.value === "driver" ? 1 : next[idx].trucks || 1 };
-                              setDraft({ ...draft, assignments: next });
-                            }}
-                          >
-                            <option value="sub">Sub</option>
-                            <option value="driver">Driver</option>
-                          </select>
-                          <select
-                            className="fbt-select"
-                            style={{ padding: "6px 8px", fontSize: 12 }}
-                            value={a.contactId || ""}
-                            onChange={(e) => {
-                              const id = e.target.value;
-                              const c = contactsOfKind.find((x) => String(x.id) === id);
-                              const next = [...draft.assignments];
-                              next[idx] = { ...next[idx], contactId: c?.id || null, name: c ? (c.companyName || c.contactName) : "" };
-                              setDraft({ ...draft, assignments: next });
-                            }}
-                          >
-                            <option value="">— Choose {isDriver ? "driver" : "sub"} —</option>
-                            {contactsOfKind.map((c) => (
-                              <option key={c.id} value={c.id}>{c.favorite ? "★ " : ""}{c.companyName || c.contactName}</option>
-                            ))}
-                          </select>
-                          <input
-                            className="fbt-input"
-                            style={{ padding: "6px 8px", fontSize: 12 }}
-                            type="number" min="1"
-                            disabled={isDriver}
-                            value={a.trucks || 1}
-                            onChange={(e) => {
-                              const next = [...draft.assignments];
-                              next[idx] = { ...next[idx], trucks: Number(e.target.value) || 1 };
-                              setDraft({ ...draft, assignments: next });
-                            }}
-                            title={isDriver ? "Drivers always = 1 truck" : "Truck count for this sub"}
-                          />
-                          <button
-                            onClick={() => setDraft({ ...draft, assignments: draft.assignments.filter((_, i) => i !== idx) })}
-                            className="btn-danger"
-                            style={{ padding: "6px 10px", fontSize: 11 }}
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                        <div key={idx} style={{ padding: 10, border: "1.5px solid var(--steel)", background: "#FFF" }}>
+                          {/* Row 1: kind / contact / trucks / delete */}
+                          <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 80px auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                            <select
+                              className="fbt-select"
+                              style={{ padding: "6px 8px", fontSize: 11 }}
+                              value={a.kind}
+                              onChange={(e) => {
+                                const next = [...draft.assignments];
+                                next[idx] = { ...next[idx], kind: e.target.value, contactId: null, name: "", trucks: e.target.value === "driver" ? 1 : next[idx].trucks || 1 };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                            >
+                              <option value="sub">Sub</option>
+                              <option value="driver">Driver</option>
+                            </select>
+                            <select
+                              className="fbt-select"
+                              style={{ padding: "6px 8px", fontSize: 12 }}
+                              value={a.contactId || ""}
+                              onChange={(e) => {
+                                const id = e.target.value;
+                                const c = contactsOfKind.find((x) => String(x.id) === id);
+                                const next = [...draft.assignments];
+                                next[idx] = {
+                                  ...next[idx],
+                                  contactId: c?.id || null,
+                                  name: c ? (c.companyName || c.contactName) : "",
+                                };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                            >
+                              <option value="">— Choose {isDriver ? "driver" : "sub"} —</option>
+                              {contactsOfKind.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.favorite ? "★ " : ""}{c.companyName || c.contactName}{c.brokerageApplies ? ` (${c.brokeragePercent ?? 8}% brok)` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              className="fbt-input"
+                              style={{ padding: "6px 8px", fontSize: 12 }}
+                              type="number" min="1"
+                              disabled={isDriver}
+                              value={a.trucks || 1}
+                              onChange={(e) => {
+                                const next = [...draft.assignments];
+                                next[idx] = { ...next[idx], trucks: Number(e.target.value) || 1 };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                              title={isDriver ? "Drivers always = 1 truck" : "Truck count for this sub"}
+                            />
+                            <button
+                              onClick={() => setDraft({ ...draft, assignments: draft.assignments.filter((_, i) => i !== idx) })}
+                              className="btn-danger"
+                              style={{ padding: "6px 10px", fontSize: 11 }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+
+                          {/* Row 2: pay method + pay rate + brokerage indicator */}
+                          <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center" }}>
+                            <select
+                              className="fbt-select"
+                              style={{ padding: "5px 8px", fontSize: 11 }}
+                              value={a.payMethod || "hour"}
+                              onChange={(e) => {
+                                const next = [...draft.assignments];
+                                next[idx] = { ...next[idx], payMethod: e.target.value };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                              title="How you pay this sub/driver"
+                            >
+                              <option value="hour">PAY $/hr</option>
+                              <option value="ton">PAY $/ton</option>
+                              <option value="load">PAY $/load</option>
+                            </select>
+                            <input
+                              className="fbt-input"
+                              type="number"
+                              step="0.01"
+                              placeholder="Pay rate (e.g. 135)"
+                              style={{ padding: "5px 8px", fontSize: 12 }}
+                              value={a.payRate || ""}
+                              onChange={(e) => {
+                                const next = [...draft.assignments];
+                                next[idx] = { ...next[idx], payRate: e.target.value };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                            />
+                            {hasBrokerage ? (
+                              <span
+                                className="chip"
+                                style={{ background: "var(--hazard)", fontSize: 9, padding: "3px 8px", whiteSpace: "nowrap" }}
+                                title="Brokerage will be deducted when paying"
+                              >
+                                − {brokeragePct}% BROK
+                              </span>
+                            ) : (
+                              <span
+                                className="fbt-mono"
+                                style={{ fontSize: 9, color: "var(--concrete)", whiteSpace: "nowrap" }}
+                              >
+                                {selectedContact ? "NO BROK" : ""}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1472,7 +1532,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1 }] })}
+                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1, payMethod: "hour", payRate: "" }] })}
                   style={{ padding: "6px 12px", fontSize: 11 }}
                 >
                   <Plus size={12} style={{ marginRight: 4 }} /> ADD SUB / DRIVER
@@ -2381,6 +2441,7 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
 <table class="totals">
   <tbody>
     <tr><td class="label">SUBTOTAL</td><td class="val">${money(subtotal)}</td></tr>
+    ${(invoice.extras || []).filter((x) => Number(x.amount) !== 0).map((x) => `<tr><td class="label">${esc((x.label || "ADDITIONAL").toUpperCase())}</td><td class="val">${money(Number(x.amount) || 0)}</td></tr>`).join("")}
     ${extraFees !== 0 ? `<tr><td class="label">${esc(invoice.extraFeesLabel || "ADDITIONAL FEES")}</td><td class="val">${money(extraFees)}</td></tr>` : ""}
     ${discount !== 0 ? `<tr><td class="label">DISCOUNT</td><td class="val">-${money(discount)}</td></tr>` : ""}
     <tr class="total"><td class="label">TOTAL DUE</td><td class="val">${money(total)}</td></tr>
@@ -2512,6 +2573,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const [notes, setNotes] = useState("");
   const [extraFees, setExtraFees] = useState("");
   const [extraFeesLabel, setExtraFeesLabel] = useState("");
+  const [extras, setExtras] = useState([]); // [{label, amount}, ...]
   const [discount, setDiscount] = useState("");
   const [includePhotos, setIncludePhotos] = useState(true);
   const [hoursOverride, setHoursOverride] = useState({}); // fb.id -> hours for "per hour" pricing
@@ -2592,9 +2654,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       subtotal += qty * r;
     });
     const ef = Number(extraFees) || 0;
+    const extrasSum = (extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
     const d = Number(discount) || 0;
-    return { subtotal, total: subtotal + ef - d };
-  }, [matchedBills, rate, pricingMethod, hoursOverride, extraFees, discount]);
+    return { subtotal, extrasSum, total: subtotal + ef + extrasSum - d };
+  }, [matchedBills, rate, pricingMethod, hoursOverride, extraFees, discount, extras]);
 
   const makeInvoiceNumber = () => {
     const year = new Date().getFullYear();
@@ -2635,6 +2698,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       notes,
       extraFees,
       extraFeesLabel,
+      extras: (extras || []).filter((x) => (x.label || x.amount) && Number(x.amount) !== 0),
       discount,
       includePhotos,
       pricingMethod,
@@ -2882,9 +2946,102 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 04 / DETAILS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 14 }}>
           <div><label className="fbt-label">Due Date</label><input className="fbt-input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
-          <div><label className="fbt-label">Additional Fees $</label><input className="fbt-input" type="number" step="0.01" value={extraFees} onChange={(e) => setExtraFees(e.target.value)} /></div>
-          <div><label className="fbt-label">Fees Label</label><input className="fbt-input" value={extraFeesLabel} onChange={(e) => setExtraFeesLabel(e.target.value)} placeholder="Fuel Surcharge" /></div>
           <div><label className="fbt-label">Discount $</label><input className="fbt-input" type="number" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} /></div>
+        </div>
+
+        {/* Multi-row extras (tolls / dump fees / fuel surcharge / other) */}
+        <div style={{ marginBottom: 14, padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+            ▸ ADDITIONAL LINE ITEMS (TOLLS · DUMP FEES · FUEL · OTHER)
+          </div>
+          {(extras || []).length > 0 && (
+            <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
+              {extras.map((x, idx) => (
+                <div key={idx} style={{ display: "grid", gridTemplateColumns: "150px 1fr 110px auto", gap: 6, alignItems: "center" }}>
+                  <select
+                    className="fbt-select"
+                    style={{ padding: "6px 8px", fontSize: 11 }}
+                    value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      const next = [...extras];
+                      next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
+                      setExtras(next);
+                    }}
+                  >
+                    <option value="Tolls">Tolls</option>
+                    <option value="Dump Fees">Dump Fees</option>
+                    <option value="Fuel Surcharge">Fuel Surcharge</option>
+                    <option value="Other">Other (custom)</option>
+                  </select>
+                  <input
+                    className="fbt-input"
+                    style={{ padding: "6px 10px", fontSize: 12 }}
+                    placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? `Description for ${x.label}` : "Custom label (shows on invoice)"}
+                    value={x.label || ""}
+                    onChange={(e) => {
+                      const next = [...extras];
+                      next[idx] = { ...next[idx], label: e.target.value };
+                      setExtras(next);
+                    }}
+                  />
+                  <input
+                    className="fbt-input"
+                    type="number" step="0.01"
+                    placeholder="0.00"
+                    style={{ padding: "6px 10px", fontSize: 12 }}
+                    value={x.amount || ""}
+                    onChange={(e) => {
+                      const next = [...extras];
+                      next[idx] = { ...next[idx], amount: e.target.value };
+                      setExtras(next);
+                    }}
+                  />
+                  <button
+                    onClick={() => setExtras(extras.filter((_, i) => i !== idx))}
+                    className="btn-danger"
+                    style={{ padding: "6px 10px", fontSize: 11 }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setExtras([...(extras || []), { label: "Tolls", amount: "" }])}
+              style={{ padding: "5px 10px", fontSize: 10 }}
+            >
+              <Plus size={11} style={{ marginRight: 3 }} /> TOLLS
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setExtras([...(extras || []), { label: "Dump Fees", amount: "" }])}
+              style={{ padding: "5px 10px", fontSize: 10 }}
+            >
+              <Plus size={11} style={{ marginRight: 3 }} /> DUMP FEES
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setExtras([...(extras || []), { label: "Fuel Surcharge", amount: "" }])}
+              style={{ padding: "5px 10px", fontSize: 10 }}
+            >
+              <Plus size={11} style={{ marginRight: 3 }} /> FUEL SURCHARGE
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setExtras([...(extras || []), { label: "", amount: "" }])}
+              style={{ padding: "5px 10px", fontSize: 10 }}
+            >
+              <Plus size={11} style={{ marginRight: 3 }} /> CUSTOM
+            </button>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 14 }}>
           <div><label className="fbt-label">Payment Terms</label><textarea className="fbt-textarea" value={terms} onChange={(e) => setTerms(e.target.value)} /></div>
@@ -2904,12 +3061,12 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
                 <td style={{ fontWeight: 600 }}>SUBTOTAL · {matchedBills.length} FREIGHT BILLS</td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt$(previewTotals.subtotal)}</td>
               </tr>
-              {Number(extraFees) !== 0 && (
-                <tr>
-                  <td style={{ fontWeight: 600 }}>{extraFeesLabel || "ADDITIONAL FEES"}</td>
-                  <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt$(extraFees)}</td>
+              {(extras || []).filter((x) => Number(x.amount) !== 0).map((x, idx) => (
+                <tr key={idx}>
+                  <td style={{ fontWeight: 600 }}>{(x.label || "ADDITIONAL").toUpperCase()}</td>
+                  <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt$(x.amount)}</td>
                 </tr>
-              )}
+              ))}
               {Number(discount) !== 0 && (
                 <tr>
                   <td style={{ fontWeight: 600 }}>DISCOUNT</td>
@@ -3127,6 +3284,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
     type: "sub", companyName: "", contactName: "", phone: "", phone2: "",
     email: "", address: "", typicalTrucks: "", rateNotes: "",
     usdot: "", insurance: "", notes: "", favorite: false, drivesForId: null,
+    brokerageApplies: false, brokeragePercent: 8,
   });
 
   const save = async () => {
@@ -3144,12 +3302,13 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
     onClose();
   };
 
-  const typeLabel = { sub: "Sub-Contractor", driver: "Driver", customer: "Customer" }[draft.type] || "Contact";
+  const typeLabel = { sub: "Sub-Contractor", driver: "Driver", customer: "Customer", broker: "Broker" }[draft.type] || "Contact";
   const companyLabel = draft.type === "driver" ? "Full Name" : "Company Name";
   const companyPlaceholder = {
     sub: "ACME Trucking Inc.",
     driver: "John Smith",
     customer: "Mountain Cascade, Inc.",
+    broker: "Regional Freight Brokers LLC",
   }[draft.type];
 
   const subContacts = contacts.filter((c) => c.type === "sub");
@@ -3171,6 +3330,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
                 <option value="sub">Sub-Contractor</option>
                 <option value="driver">Driver</option>
                 <option value="customer">Customer</option>
+                <option value="broker">Broker</option>
               </select>
             </div>
             <div>
@@ -3240,6 +3400,56 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
               <div>
                 <label className="fbt-label">Rate / Pricing Notes</label>
                 <input className="fbt-input" value={draft.rateNotes} onChange={(e) => setDraft({ ...draft, rateNotes: e.target.value })} placeholder="$135/hr, 8-hr min" />
+              </div>
+            </div>
+          )}
+
+          {/* Brokerage section — for subs and drivers */}
+          {(draft.type === "sub" || draft.type === "driver") && (
+            <div style={{ padding: 12, background: draft.brokerageApplies ? "#FEF3C7" : "#F5F5F4", border: "2px solid " + (draft.brokerageApplies ? "var(--hazard)" : "var(--concrete)") }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!draft.brokerageApplies}
+                  onChange={(e) => setDraft({ ...draft, brokerageApplies: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em", fontWeight: 700 }}>
+                  DEDUCT BROKERAGE WHEN PAYING
+                </span>
+              </label>
+              {draft.brokerageApplies && (
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
+                  <label className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>BROKERAGE %:</label>
+                  <input
+                    className="fbt-input"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={draft.brokeragePercent ?? 8}
+                    onChange={(e) => setDraft({ ...draft, brokeragePercent: e.target.value })}
+                    style={{ width: 90, padding: "6px 10px" }}
+                  />
+                  <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
+                    (DEFAULT 8%)
+                  </span>
+                </div>
+              )}
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+                ▸ WHEN WE PAY THIS {draft.type === "sub" ? "SUB" : "DRIVER"}, WE'LL SUBTRACT THIS % FROM THEIR GROSS PAY. LEAVE OFF IF BROKERAGE ISN'T INVOLVED.
+              </div>
+            </div>
+          )}
+
+          {/* Broker-specific fields */}
+          {draft.type === "broker" && (
+            <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+                ▸ BROKER — PAYS US, NOT WE PAY THEM
+              </div>
+              <div style={{ fontSize: 12, color: "var(--steel)", lineHeight: 1.5 }}>
+                Brokers bring you work and pay you directly. Track their contact info here. Future payroll module will show the brokerage income per broker.
               </div>
             </div>
           )}
@@ -3326,7 +3536,10 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
-              {contact.type === "sub" ? "SUB-CONTRACTOR" : contact.type === "customer" ? "CUSTOMER" : "DRIVER"}{contact.favorite && " · ★ PREFERRED"}
+              {contact.type === "sub" ? "SUB-CONTRACTOR"
+                : contact.type === "customer" ? "CUSTOMER"
+                : contact.type === "broker" ? "BROKER"
+                : "DRIVER"}{contact.favorite && " · ★ PREFERRED"}
             </div>
             <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{contact.companyName || contact.contactName}</h3>
             {contact.contactName && contact.companyName && (
@@ -3528,6 +3741,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
   const subsCount = contacts.filter((c) => c.type === "sub").length;
   const driversCount = contacts.filter((c) => c.type === "driver").length;
   const customersCount = contacts.filter((c) => c.type === "customer").length;
+  const brokersCount = contacts.filter((c) => c.type === "broker").length;
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -3574,6 +3788,10 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
           <div className="stat-num">{driversCount}</div>
           <div className="stat-label">Drivers</div>
         </div>
+        <div className="fbt-card" style={{ padding: 20 }}>
+          <div className="stat-num">{brokersCount}</div>
+          <div className="stat-label">Brokers</div>
+        </div>
         <div className="fbt-card" style={{ padding: 20, background: "var(--hazard)" }}>
           <div className="stat-num">{contacts.filter((c) => c.favorite).length}</div>
           <div className="stat-label">Preferred ★</div>
@@ -3590,6 +3808,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
           <option value="customer">Customers Only</option>
           <option value="sub">Subs Only</option>
           <option value="driver">Drivers Only</option>
+          <option value="broker">Brokers Only</option>
         </select>
         <button onClick={() => { setEditing(null); setShowModal(true); }} className="btn-primary">
           <UserPlus size={16} /> NEW CONTACT
@@ -3615,11 +3834,17 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <span className="chip" style={{
-                          background: c.type === "sub" ? "var(--hazard)" : c.type === "customer" ? "var(--good)" : "#FFF",
-                          color: c.type === "customer" ? "#FFF" : undefined,
+                          background: c.type === "sub" ? "var(--hazard)"
+                            : c.type === "customer" ? "var(--good)"
+                            : c.type === "broker" ? "var(--steel)"
+                            : "#FFF",
+                          color: (c.type === "customer" || c.type === "broker") ? "#FFF" : undefined,
                           fontSize: 9, padding: "2px 8px"
                         }}>
-                          {c.type === "sub" ? "SUB" : c.type === "customer" ? "CUSTOMER" : "DRIVER"}
+                          {c.type === "sub" ? "SUB"
+                            : c.type === "customer" ? "CUSTOMER"
+                            : c.type === "broker" ? "BROKER"
+                            : "DRIVER"}
                         </span>
                         {jobCount > 0 && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>{jobCount} job{jobCount !== 1 ? "s" : ""}</span>}
                       </div>

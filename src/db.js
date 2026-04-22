@@ -178,6 +178,8 @@ const contactFromDB = (row) => ({
   drivesForId: row.drives_for_id || null,
   portalToken: row.portal_token || "",
   portalEnabled: !!row.portal_enabled,
+  brokerageApplies: !!row.brokerage_applies,
+  brokeragePercent: row.brokerage_percent !== null && row.brokerage_percent !== undefined ? Number(row.brokerage_percent) : 8,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -199,6 +201,8 @@ const contactToDB = (c) => ({
   drives_for_id: c.drivesForId ? Number(c.drivesForId) : null,
   portal_token: c.portalToken || null,
   portal_enabled: !!c.portalEnabled,
+  brokerage_applies: !!c.brokerageApplies,
+  brokerage_percent: c.brokeragePercent !== null && c.brokeragePercent !== undefined && c.brokeragePercent !== "" ? Number(c.brokeragePercent) : 8,
 });
 
 export const fetchContacts = async () => {
@@ -352,6 +356,7 @@ const invoiceFromDB = (row) => ({
   rate: row.rate,
   extraFees: row.extra_fees || 0,
   extraFeesLabel: row.extra_fees_label || "",
+  extras: row.extras || [],
   discount: row.discount || 0,
   terms: row.terms || "",
   notes: row.notes || "",
@@ -376,6 +381,7 @@ const invoiceToDB = (i) => ({
   rate: i.rate ? Number(i.rate) : null,
   extra_fees: Number(i.extraFees) || 0,
   extra_fees_label: i.extraFeesLabel || null,
+  extras: i.extras || [],
   discount: Number(i.discount) || 0,
   terms: i.terms || null,
   notes: i.notes || null,
