@@ -1032,6 +1032,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
 
 const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [activeDispatch, setActiveDispatch] = useState(null);
   const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
 
@@ -1056,9 +1057,36 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
 
+  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [], assignments: [] });
+
+  // Open the modal pre-filled with an existing order's data (edit mode)
+  const openEditDispatch = (d) => {
+    setEditingId(d.id);
+    setDraft({
+      date: d.date || todayISO(),
+      jobName: d.jobName || "",
+      clientName: d.clientName || "",
+      clientId: d.clientId || "",
+      projectId: d.projectId || null,
+      subContractor: d.subContractor || "",
+      subContractorId: d.subContractorId || "",
+      pickup: d.pickup || "",
+      dropoff: d.dropoff || "",
+      material: d.material || "",
+      trucksExpected: d.trucksExpected || 1,
+      ratePerHour: d.ratePerHour || "",
+      ratePerTon: d.ratePerTon || "",
+      quarryId: d.quarryId || null,
+      notes: d.notes || "",
+      assignedDriverIds: d.assignedDriverIds || [],
+      assignments: d.assignments || [],
+    });
+    setShowNew(true);
+  };
+
   const createDispatch = async () => {
     if (!draft.jobName) { onToast("JOB NAME REQUIRED"); return; }
-    const code = randomCode(6);
+
     const assignedIds = draft.assignedDriverIds || [];
     const assignedNames = assignedIds.map((id) => {
       const c = contacts.find((x) => x.id === id);
@@ -1075,6 +1103,35 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       ? assignmentsTrucks
       : (Number(draft.trucksExpected) || 1);
 
+    if (editingId) {
+      // EDIT MODE — update existing order (keep its original code, createdAt, status)
+      const existing = dispatches.find((x) => x.id === editingId);
+      if (!existing) { onToast("ORDER NOT FOUND"); return; }
+      const updated = {
+        ...existing,
+        ...draft,
+        trucksExpected: finalTrucksExpected,
+        assignedDriverIds: assignedIds,
+        assignedDriverNames: assignedNames,
+        assignments,
+        updatedAt: new Date().toISOString(),
+        // Preserve: id, code, createdAt, status
+        id: existing.id,
+        code: existing.code,
+        createdAt: existing.createdAt,
+        status: existing.status,
+      };
+      const next = dispatches.map((d) => d.id === editingId ? updated : d);
+      await setDispatches(next);
+      setShowNew(false);
+      setEditingId(null);
+      resetDraft();
+      onToast("ORDER UPDATED");
+      return;
+    }
+
+    // CREATE MODE — new order
+    const code = randomCode(6);
     const d = {
       ...draft,
       id: "temp-" + Date.now(),
@@ -1093,12 +1150,12 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       const fresh = dispatches.find((x) => x.code === code);
       if (fresh) setActiveDispatch(fresh.id);
     }, 100);
-    setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [], assignments: [] });
+    resetDraft();
     onToast("ORDER CREATED — COPY THE LINK");
   };
 
   const removeDispatch = async (id) => {
-    if (!confirm("Delete this dispatch AND all its freight bills?")) return;
+    if (!confirm("Delete this order AND all its freight bills?")) return;
     const nextD = dispatches.filter((d) => d.id !== id);
     const nextFB = freightBills.filter((fb) => fb.dispatchId !== id);
     await setDispatches(nextD);
@@ -1155,15 +1212,15 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
           <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
           <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search freight bill #, driver, truck, job, sub…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <button onClick={() => setShowNew(true)} className="btn-primary"><Plus size={16} /> NEW DISPATCH</button>
+        <button onClick={() => { setEditingId(null); resetDraft(); setShowNew(true); }} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
       </div>
 
       {showNew && (
-        <div className="modal-bg" onClick={() => setShowNew(false)}>
+        <div className="modal-bg" onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }}>
           <div className="modal-body" onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>NEW DISPATCH</h3>
-              <button onClick={() => setShowNew(false)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+              <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>{editingId ? "EDIT ORDER" : "NEW ORDER"}</h3>
+              <button onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
             </div>
             <div style={{ padding: 24, display: "grid", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
@@ -1450,8 +1507,8 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               )}
               <div><label className="fbt-label">Notes</label><textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></div>
               <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-                <button onClick={createDispatch} className="btn-primary"><CheckCircle2 size={16} /> CREATE & GET LINK</button>
-                <button onClick={() => setShowNew(false)} className="btn-ghost">CANCEL</button>
+                <button onClick={createDispatch} className="btn-primary"><CheckCircle2 size={16} /> {editingId ? "SAVE CHANGES" : "CREATE & GET LINK"}</button>
+                <button onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }} className="btn-ghost">CANCEL</button>
               </div>
             </div>
           </div>
@@ -1538,12 +1595,21 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         return (
           <div className="modal-bg" onClick={() => setActiveDispatch(null)}>
             <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 900 }}>
-              <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>
                   <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>ORDER #{d.code}</div>
                   <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{d.jobName}</h3>
                 </div>
-                <button onClick={() => setActiveDispatch(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    onClick={() => { setActiveDispatch(null); openEditDispatch(d); }}
+                    className="btn-ghost"
+                    style={{ padding: "6px 12px", fontSize: 11, color: "var(--cream)", borderColor: "var(--cream)" }}
+                  >
+                    <Edit2 size={12} style={{ marginRight: 4 }} /> EDIT ORDER
+                  </button>
+                  <button onClick={() => setActiveDispatch(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+                </div>
               </div>
               <div style={{ padding: 24 }}>
                 <div style={{ background: "#FEF3C7", border: "2px solid var(--hazard)", padding: 16, marginBottom: 20 }}>
@@ -1855,6 +1921,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => copyLink(d.code)}><Link2 size={12} style={{ marginRight: 4 }} /> COPY LINK</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => printDriverSheet(d, `${window.location.origin}${window.location.pathname}#/submit/${d.code}`, onToast)} title="Print driver sheet with QR"><Printer size={12} style={{ marginRight: 4 }} /> PRINT</button>
+                      <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => openEditDispatch(d)} title="Edit this order"><Edit2 size={12} style={{ marginRight: 4 }} /> EDIT</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => setActiveDispatch(d.id)}><Eye size={12} style={{ marginRight: 4 }} /> OPEN</button>
                       <button className="btn-danger" onClick={() => removeDispatch(d.id)}><Trash2 size={12} /></button>
                     </div>
