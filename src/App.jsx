@@ -4931,6 +4931,26 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   // Session C: collapse the massive inline builder into a modal. All builder logic stays the same;
   // we just hide it until the user clicks "New Invoice".
   const [showNewInvoice, setShowNewInvoice] = useState(false);
+  // v18 multi-mode: user picks one of 3 intake modes BEFORE filters are shown.
+  // null = no mode selected yet (shows "Pick a mode to start" splash)
+  // "select" = By Selecting — user checks individual FBs
+  // "range" = By Date Range — all customer's FBs in date window auto-include
+  // "project" = By Project — all FBs on a project auto-include
+  const [builderMode, setBuilderMode] = useState(null);
+  // FBs user has clicked to include (only used when mode==="select")
+  const [selectedFbIds, setSelectedFbIds] = useState(new Set());
+  // Which FBs have their billing lines expanded (click-to-toggle UI)
+  const [expandedFbIds, setExpandedFbIds] = useState(new Set());
+
+  // Reset builder state when modal opens/closes
+  useEffect(() => {
+    if (!showNewInvoice) {
+      setBuilderMode(null);
+      setSelectedFbIds(new Set());
+      setExpandedFbIds(new Set());
+    }
+  }, [showNewInvoice]);
+
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [clientFilter, setClientFilter] = useState("");
@@ -5003,14 +5023,19 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
   // Filter freight bills by date + client (dispatch sub/job) + APPROVED status + invoice binding
   const matchedBills = useMemo(() => {
-    return freightBills.filter((fb) => {
-      // Only approved FBs unless explicitly opted in
+    // v18: mode-aware requirements for auto-inclusion.
+    // "range" mode requires customer + both dates before anything shows.
+    // "project" mode requires customer + project before anything shows.
+    // "select" mode shows all matching FBs the user could check (broader filters).
+    // null mode = no mode chosen yet, show nothing.
+    if (!builderMode) return [];
+    if (builderMode === "range" && (!clientFilter || !fromDate || !toDate)) return [];
+    if (builderMode === "project" && (!clientFilter || !projectId)) return [];
+
+    const candidates = freightBills.filter((fb) => {
       const status = fb.status || "pending";
       if (!includeUnapproved && status !== "approved") return false;
-      // Always hide rejected
       if (status === "rejected") return false;
-
-      // HARD BLOCK: Skip FBs already locked to another invoice (prevents double-billing)
       if (fb.invoiceId) return false;
 
       const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
@@ -5019,19 +5044,48 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
       const disp = dispatches.find((d) => d.id === fb.dispatchId);
 
-      // Customer filter — match by customer contact id on the dispatch
       if (clientFilter) {
         if (String(disp?.clientId) !== String(clientFilter)) return false;
       }
 
-      // Project filter — match by project id on the dispatch
       if (projectId) {
         if (String(disp?.projectId) !== String(projectId)) return false;
       }
 
       return true;
     });
-  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved]);
+
+    // In "select" mode, only return FBs the user has explicitly selected.
+    // In "range" / "project" mode, return all candidates (auto-include).
+    if (builderMode === "select") {
+      return candidates.filter((fb) => selectedFbIds.has(fb.id));
+    }
+    return candidates;
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved, builderMode, selectedFbIds]);
+
+  // For "select" mode: all FBs the user could potentially select from (used for the checkbox list).
+  const selectableBills = useMemo(() => {
+    if (builderMode !== "select") return [];
+    return freightBills.filter((fb) => {
+      const status = fb.status || "pending";
+      if (!includeUnapproved && status !== "approved") return false;
+      if (status === "rejected") return false;
+      if (fb.invoiceId) return false;
+
+      const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
+      if (fromDate && fbDate < fromDate) return false;
+      if (toDate && fbDate > toDate) return false;
+
+      const disp = dispatches.find((d) => d.id === fb.dispatchId);
+      if (clientFilter) {
+        if (String(disp?.clientId) !== String(clientFilter)) return false;
+      }
+      if (projectId) {
+        if (String(disp?.projectId) !== String(projectId)) return false;
+      }
+      return true;
+    }).sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved, builderMode]);
 
   // When matchedBills change, auto-populate hoursOverride from fb.hoursBilled (if empty)
   useEffect(() => {
@@ -5484,13 +5538,73 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           </button>
         </div>
 
+        {/* v18 Multi-mode intake — pick one of 3 intake modes before filters show */}
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ HOW WOULD YOU LIKE TO BUILD THIS INVOICE?</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 22 }}>
+          {[
+            { k: "select",  t: "BY SELECTING",  d: "Cherry-pick individual FBs",          ico: <ClipboardList size={18} /> },
+            { k: "range",   t: "BY DATE RANGE", d: "All customer FBs in a window",         ico: <Calendar size={18} /> },
+            { k: "project", t: "BY PROJECT",    d: "All FBs on one job / project",         ico: <Briefcase size={18} /> },
+          ].map((m) => {
+            const active = builderMode === m.k;
+            return (
+              <button
+                key={m.k}
+                onClick={() => {
+                  setBuilderMode(m.k);
+                  // Reset anything stale from previous mode
+                  setSelectedFbIds(new Set());
+                  setExpandedFbIds(new Set());
+                  // Project mode: clear project filter to force a fresh pick
+                  if (m.k !== "project") setProjectId("");
+                  if (m.k === "project") setFromDate("");
+                  if (m.k === "project") setToDate("");
+                }}
+                style={{
+                  padding: "14px 16px",
+                  background: active ? "var(--hazard)" : "var(--cream)",
+                  border: `2px solid ${active ? "var(--steel)" : "var(--concrete)"}`,
+                  color: "var(--steel)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontFamily: "inherit",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  {m.ico}
+                  <span className="fbt-display" style={{ fontSize: 14 }}>{m.t}</span>
+                </div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: active ? "var(--steel)" : "var(--concrete)", letterSpacing: "0.05em", lineHeight: 1.4 }}>
+                  {m.d}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {!builderMode && (
+          <div style={{ padding: 32, background: "#F5F5F4", border: "2px dashed var(--concrete)", textAlign: "center" }}>
+            <FileText size={28} style={{ color: "var(--concrete)", marginBottom: 10 }} />
+            <div className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+              ▸ PICK A MODE ABOVE TO START BUILDING THIS INVOICE
+            </div>
+          </div>
+        )}
+
+        {builderMode && (<>
         {/* Filters */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 01 / SELECT FREIGHT BILLS — PICK CUSTOMER + DATE RANGE (ALL FB FIELDS AUTO-PULL)</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>
+          ▸ 01 / {builderMode === "select" ? "FILTERS (OPTIONAL) — THEN CHECK FBS BELOW" :
+                   builderMode === "range"  ? "PICK CUSTOMER + DATE RANGE (REQUIRED)" :
+                                              "PICK CUSTOMER + PROJECT (REQUIRED)"}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 18 }}>
-          <div><label className="fbt-label">From Date</label><input className="fbt-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></div>
-          <div><label className="fbt-label">To Date</label><input className="fbt-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></div>
+          {builderMode !== "project" && (<>
+          <div><label className="fbt-label">From Date{builderMode === "range" ? " *" : ""}</label><input className="fbt-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></div>
+          <div><label className="fbt-label">To Date{builderMode === "range" ? " *" : ""}</label><input className="fbt-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></div>
+          </>)}
           <div>
-            <label className="fbt-label">Customer</label>
+            <label className="fbt-label">Customer{builderMode === "range" || builderMode === "project" ? " *" : ""}</label>
             <select
               className="fbt-select"
               value={clientFilter || ""}
@@ -5522,7 +5636,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             </select>
           </div>
           <div>
-            <label className="fbt-label">Project {clientFilter ? "(auto-fills PO# + Ref)" : "(pick customer first)"}</label>
+            <label className="fbt-label">Project{builderMode === "project" ? " *" : ""} {clientFilter ? "(auto-fills PO# + Ref)" : "(pick customer first)"}</label>
             <select
               className="fbt-select"
               value={projectId || ""}
@@ -5624,6 +5738,163 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           );
         })()}
 
+        {/* v18: FB selection list with click-to-expand billing lines */}
+        {builderMode === "select" && selectableBills.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+              ▸ CHECK FBs TO INCLUDE · {selectedFbIds.size} OF {selectableBills.length} SELECTED
+              {selectableBills.length > 0 && (
+                <button
+                  onClick={() => {
+                    if (selectedFbIds.size === selectableBills.length) {
+                      setSelectedFbIds(new Set());
+                    } else {
+                      setSelectedFbIds(new Set(selectableBills.map((fb) => fb.id)));
+                    }
+                  }}
+                  style={{ marginLeft: 12, background: "transparent", border: "none", color: "var(--hazard-deep)", fontSize: 10, letterSpacing: "0.08em", cursor: "pointer", fontWeight: 700, textTransform: "uppercase" }}
+                >
+                  {selectedFbIds.size === selectableBills.length ? "UNCHECK ALL" : "CHECK ALL"}
+                </button>
+              )}
+            </div>
+            <div style={{ display: "grid", gap: 6, maxHeight: 380, overflowY: "auto", padding: 4, background: "#F5F5F4", border: "1.5px solid var(--concrete)" }}>
+              {selectableBills.map((fb) => {
+                const checked = selectedFbIds.has(fb.id);
+                const expanded = expandedFbIds.has(fb.id);
+                const disp = dispatches.find((d) => d.id === fb.dispatchId);
+                const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                const fbTotal = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                return (
+                  <div key={fb.id} style={{ background: checked ? "#FEF3C7" : "#FFF", border: `1.5px solid ${checked ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
+                    <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                         onClick={(e) => {
+                           // Let checkbox click handle checking; otherwise toggle expand
+                           if (e.target.type === "checkbox") return;
+                           const next = new Set(expandedFbIds);
+                           if (expanded) next.delete(fb.id); else next.add(fb.id);
+                           setExpandedFbIds(next);
+                         }}>
+                      <input type="checkbox" checked={checked} onChange={(e) => {
+                        e.stopPropagation();
+                        const next = new Set(selectedFbIds);
+                        if (e.target.checked) next.add(fb.id); else next.delete(fb.id);
+                        setSelectedFbIds(next);
+                      }} style={{ width: 16, height: 16 }} />
+                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                        <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                        <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
+                        <span>T{fb.truckNumber || "—"}</span>
+                        <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {disp?.jobName || "—"} · {fb.driverName || "—"}
+                        </span>
+                        <span style={{ fontWeight: 700 }}>${fbTotal.toFixed(2)}</span>
+                      </div>
+                      <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                    </div>
+                    {expanded && lines.length > 0 && (
+                      <div style={{ padding: "6px 10px 8px 38px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
+                        {lines.map((ln, idx) => {
+                          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
+                          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
+                          const net = Number(ln.net) || (gross - brokAmt);
+                          return (
+                            <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)", padding: "3px 0", borderBottom: idx < lines.length - 1 ? "1px dotted var(--concrete)" : "none" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ display: "inline-block", width: 50, fontWeight: 700 }}>{ln.code}</span>
+                                <span style={{ flex: 1, minWidth: 100 }}>{ln.item}</span>
+                                <span>{Number(ln.qty || 0).toFixed(2)} × ${Number(ln.rate || 0).toFixed(2)} = ${gross.toFixed(2)}</span>
+                                {ln.brokerable && (
+                                  <span style={{ color: "var(--hazard-deep)" }}>
+                                    - broker {ln.brokeragePct}% (${brokAmt.toFixed(2)})
+                                  </span>
+                                )}
+                                <span style={{ fontWeight: 700, color: "var(--good)", minWidth: 80, textAlign: "right" }}>= ${net.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {expanded && lines.length === 0 && (
+                      <div style={{ padding: "8px 10px 8px 38px", background: "#FAFAF9", fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>
+                        Legacy FB — no line breakdown. Will bill using rate method below.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Auto-include preview for range + project modes */}
+        {(builderMode === "range" || builderMode === "project") && matchedBills.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+              ▸ {matchedBills.length} FBs AUTO-INCLUDED · CLICK ANY ROW TO SEE LINE BREAKDOWN
+            </div>
+            <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto", padding: 4, background: "#F5F5F4", border: "1.5px solid var(--concrete)" }}>
+              {matchedBills.map((fb) => {
+                const expanded = expandedFbIds.has(fb.id);
+                const disp = dispatches.find((d) => d.id === fb.dispatchId);
+                const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                const fbTotal = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                return (
+                  <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                    <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                         onClick={() => {
+                           const next = new Set(expandedFbIds);
+                           if (expanded) next.delete(fb.id); else next.add(fb.id);
+                           setExpandedFbIds(next);
+                         }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                        <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                        <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
+                        <span>T{fb.truckNumber || "—"}</span>
+                        <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {disp?.jobName || "—"} · {fb.driverName || "—"}
+                        </span>
+                        <span style={{ fontWeight: 700 }}>${fbTotal.toFixed(2)}</span>
+                      </div>
+                      <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                    </div>
+                    {expanded && lines.length > 0 && (
+                      <div style={{ padding: "6px 10px 8px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
+                        {lines.map((ln, idx) => {
+                          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
+                          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
+                          const net = Number(ln.net) || (gross - brokAmt);
+                          return (
+                            <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)", padding: "3px 0", borderBottom: idx < lines.length - 1 ? "1px dotted var(--concrete)" : "none" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ display: "inline-block", width: 50, fontWeight: 700 }}>{ln.code}</span>
+                                <span style={{ flex: 1, minWidth: 100 }}>{ln.item}</span>
+                                <span>{Number(ln.qty || 0).toFixed(2)} × ${Number(ln.rate || 0).toFixed(2)} = ${gross.toFixed(2)}</span>
+                                {ln.brokerable && (
+                                  <span style={{ color: "var(--hazard-deep)" }}>
+                                    - broker {ln.brokeragePct}% (${brokAmt.toFixed(2)})
+                                  </span>
+                                )}
+                                <span style={{ fontWeight: 700, color: "var(--good)", minWidth: 80, textAlign: "right" }}>= ${net.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {expanded && lines.length === 0 && (
+                      <div style={{ padding: "8px 10px 8px 14px", background: "#FAFAF9", fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>
+                        Legacy FB — will use rate method below.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ padding: 12, background: matchedBills.length > 0 ? "#FEF3C7" : "#F5F5F4", border: "2px solid var(--steel)", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <div className="fbt-mono" style={{ fontSize: 13 }}>
             {matchedBills.length === 0 ? "NO MATCHES" : `${matchedBills.length} FREIGHT BILL${matchedBills.length !== 1 ? "S" : ""} MATCHED`}
@@ -5637,8 +5908,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           )}
         </div>
 
-        {/* Pricing */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 02 / PRICING</div>
+        {/* Pricing — v18: only used for legacy FBs without billingLines[] */}
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>▸ 02 / PRICING</div>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 10, letterSpacing: "0.04em" }}>
+          ▸ ONLY USED FOR LEGACY FBs THAT DON'T HAVE THEIR OWN BILLING LINES · MODERN FBs USE EACH LINE'S OWN QTY × RATE
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 14 }}>
           <div>
             <label className="fbt-label">Method</label>
@@ -5901,21 +6175,34 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
         <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
           {/* Visible hints if button can't be clicked */}
-          {(matchedBills.length === 0 || !rate || !billTo.name) && (
-            <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
-              <strong>⚠ FIX BEFORE GENERATING:</strong>
-              <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>
-                {matchedBills.length === 0 && <li>No freight bills match your filters (date range / approved / invoice status)</li>}
-                {!rate && <li>Enter a rate in section 02 / PRICING</li>}
-                {!billTo.name && <li>Select a customer or enter bill-to name in section 03 / BILL TO</li>}
-              </ul>
-            </div>
-          )}
+          {(() => {
+            // v18: rate is only required if ANY matched FB lacks billingLines (legacy FB).
+            // v16+ FBs use their own billing lines and don't need a global rate.
+            const legacyFbs = matchedBills.filter((fb) => !Array.isArray(fb.billingLines) || fb.billingLines.length === 0);
+            const needsRate = legacyFbs.length > 0;
+            const issues = [];
+            if (matchedBills.length === 0) issues.push("No freight bills match your filters (date range / approved / invoice status)");
+            if (needsRate && !rate) issues.push(`Enter a rate — ${legacyFbs.length} legacy FB${legacyFbs.length !== 1 ? "s" : ""} without billing lines need a global rate`);
+            if (!billTo.name) issues.push("Select a customer or enter bill-to name in section 03 / BILL TO");
+            if (issues.length === 0) return null;
+            return (
+              <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
+                <strong>⚠ FIX BEFORE GENERATING:</strong>
+                <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>
+                  {issues.map((i, idx) => <li key={idx}>{i}</li>)}
+                </ul>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <button
               onClick={() => {
                 if (matchedBills.length === 0) { onToast("NO FBs MATCH — CHECK FILTERS"); return; }
-                if (!rate || Number(rate) <= 0) { onToast("ENTER A RATE FIRST"); return; }
+                const legacyFbs = matchedBills.filter((fb) => !Array.isArray(fb.billingLines) || fb.billingLines.length === 0);
+                if (legacyFbs.length > 0 && (!rate || Number(rate) <= 0)) {
+                  onToast("ENTER A RATE — LEGACY FBs NEED A GLOBAL RATE");
+                  return;
+                }
                 if (!billTo.name) { onToast("SELECT CUSTOMER OR BILL-TO NAME"); return; }
                 generate();
                 setShowNewInvoice(false);
@@ -5926,6 +6213,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             </button>
           </div>
         </div>
+        </>)}
       </div>
       </div>
       </div>
