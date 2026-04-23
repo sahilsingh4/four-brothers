@@ -4576,8 +4576,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       // Always hide rejected
       if (status === "rejected") return false;
 
-      // Skip FBs already locked to another invoice (unless toggle enabled)
-      if (!showAlreadyInvoiced && fb.invoiceId) return false;
+      // HARD BLOCK: Skip FBs already locked to another invoice (prevents double-billing)
+      if (fb.invoiceId) return false;
 
       const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
       if (fromDate && fbDate < fromDate) return false;
@@ -4597,7 +4597,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
       return true;
     });
-  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved, showAlreadyInvoiced]);
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved]);
 
   // When matchedBills change, auto-populate hoursOverride from fb.hoursBilled (if empty)
   useEffect(() => {
@@ -4976,24 +4976,63 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           )}
         </div>
 
-        {/* Already-invoiced toggle */}
-        <div style={{ padding: 10, background: showAlreadyInvoiced ? "#FEF2F2" : "#F0FDF4", border: "2px solid " + (showAlreadyInvoiced ? "var(--safety)" : "var(--good)"), marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
-            <input
-              type="checkbox"
-              checked={!showAlreadyInvoiced}
-              onChange={(e) => setShowAlreadyInvoiced(!e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer" }}
-            />
-            <Lock size={14} style={{ color: showAlreadyInvoiced ? "var(--safety)" : "var(--good)" }} />
-            <strong>HIDE FBs ALREADY ON ANOTHER INVOICE</strong>
-          </label>
-          {showAlreadyInvoiced && (
-            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginLeft: "auto" }}>
-              ⚠ INCLUDING INVOICED FBs (DUPLICATE RISK)
-            </span>
-          )}
-        </div>
+        {/* Locked FBs reference — already on another invoice (read-only view) */}
+        {(() => {
+          // Find FBs that would match filters EXCEPT they're already invoiced
+          const lockedFbs = freightBills.filter((fb) => {
+            if (!fb.invoiceId) return false;
+            const status = fb.status || "pending";
+            if (!includeUnapproved && status !== "approved") return false;
+            if (status === "rejected") return false;
+            const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
+            if (fromDate && fbDate < fromDate) return false;
+            if (toDate && fbDate > toDate) return false;
+            const disp = dispatches.find((d) => d.id === fb.dispatchId);
+            if (clientFilter && String(disp?.clientId) !== String(clientFilter)) return false;
+            if (projectId && String(disp?.projectId) !== String(projectId)) return false;
+            return true;
+          });
+          if (lockedFbs.length === 0) return null;
+          return (
+            <div style={{ padding: 10, background: "#F5F5F4", border: "2px dashed var(--concrete)", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.1em" }}
+                onClick={() => setShowAlreadyInvoiced(!showAlreadyInvoiced)}>
+                <Lock size={14} style={{ color: "var(--concrete)" }} />
+                <strong>{lockedFbs.length} FB{lockedFbs.length !== 1 ? "S" : ""} ALREADY ON ANOTHER INVOICE (BLOCKED)</strong>
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--concrete)" }}>{showAlreadyInvoiced ? "▲ HIDE" : "▼ SHOW"}</span>
+              </div>
+              {showAlreadyInvoiced && (
+                <div style={{ display: "grid", gap: 4, marginTop: 8, maxHeight: 180, overflowY: "auto" }}>
+                  {lockedFbs.map((fb) => {
+                    const inv = invoices.find((i) => i.id === fb.invoiceId);
+                    return (
+                      <div key={fb.id} style={{
+                        padding: 6,
+                        background: "#FFF",
+                        border: "1px solid var(--concrete)",
+                        fontSize: 11,
+                        fontFamily: "JetBrains Mono, monospace",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        opacity: 0.7,
+                      }}>
+                        <span>
+                          <Lock size={10} style={{ color: "var(--concrete)", marginRight: 4 }} />
+                          FB#{fb.freightBillNumber || "—"} · {fb.driverName || "—"}
+                        </span>
+                        <span className="chip" style={{ background: "var(--steel)", color: "var(--cream)", fontSize: 9, padding: "2px 6px" }}>
+                          🔒 ON {inv?.invoiceNumber || "INVOICE"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div style={{ padding: 12, background: matchedBills.length > 0 ? "#FEF3C7" : "#F5F5F4", border: "2px solid var(--steel)", marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <div className="fbt-mono" style={{ fontSize: 13 }}>
@@ -7122,25 +7161,77 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             </div>
           </div>
 
-          {/* Photos */}
-          {draft.photos.length > 0 && (
-            <div>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
-                ▸ SCALE TICKETS ({draft.photos.length})
+          {/* Photos — admin can add, view, or remove */}
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                ▸ SCALE TICKETS ({draft.photos?.length || 0})
               </div>
+              <label
+                className="btn-ghost"
+                style={{ cursor: "pointer", padding: "5px 12px", fontSize: 11 }}
+                title="Add more photos for this freight bill"
+              >
+                <Camera size={12} style={{ marginRight: 4 }} /> ADD PHOTOS
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    const next = [...(draft.photos || [])];
+                    for (const f of Array.from(files)) {
+                      try {
+                        const dataUrl = await compressImage(f);
+                        next.push({ id: Date.now() + Math.random(), dataUrl, name: f.name, addedByAdmin: true });
+                      } catch (err) { console.warn(err); }
+                    }
+                    setDraft({ ...draft, photos: next });
+                    e.target.value = ""; // reset so same file can be picked again
+                  }}
+                />
+              </label>
+            </div>
+            {(draft.photos || []).length === 0 ? (
+              <div style={{ padding: 16, border: "2px dashed var(--concrete)", textAlign: "center", color: "var(--concrete)", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                NO PHOTOS ATTACHED · TAP ADD PHOTOS TO UPLOAD
+              </div>
+            ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {draft.photos.map((p, idx) => (
-                  <img
-                    key={p.id || idx}
-                    src={p.dataUrl}
-                    alt=""
-                    style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)", cursor: "pointer" }}
-                    onClick={() => setLightbox(p.dataUrl)}
-                  />
+                  <div key={p.id || idx} style={{ position: "relative" }}>
+                    <img
+                      src={p.dataUrl}
+                      alt=""
+                      style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)", cursor: "pointer" }}
+                      onClick={() => setLightbox(p.dataUrl)}
+                    />
+                    {p.addedByAdmin && (
+                      <span
+                        style={{ position: "absolute", bottom: 2, left: 2, background: "var(--steel)", color: "var(--cream)", fontSize: 8, padding: "1px 4px", letterSpacing: "0.08em", fontFamily: "JetBrains Mono, monospace" }}
+                        title="Added by admin"
+                      >
+                        ADMIN
+                      </span>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!confirm("Remove this photo?")) return;
+                        setDraft({ ...draft, photos: draft.photos.filter((_, i) => i !== idx) });
+                      }}
+                      style={{ position: "absolute", top: -6, right: -6, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 22, height: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}
+                      title="Remove photo"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 14, borderTop: "2px solid var(--steel)" }}>
@@ -7824,6 +7915,17 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSucce
     if (form.method === "check" && !form.checkNumber) {
       if (!confirm("No check number entered. Mark paid anyway?")) return;
     }
+
+    // DOUBLE-PAY BACKSTOP — warn if any FB in this batch is already paid
+    const alreadyPaid = fbs.filter((x) => x.fb.paidAt);
+    if (alreadyPaid.length > 0) {
+      const names = alreadyPaid.map((x) => `FB#${x.fb.freightBillNumber || "—"} (paid ${new Date(x.fb.paidAt).toLocaleDateString()})`).join(", ");
+      const ok = confirm(
+        `⚠ WARNING: ${alreadyPaid.length} FB${alreadyPaid.length !== 1 ? "S" : ""} ALREADY MARKED PAID:\n\n${names}\n\nPaying again will OVERWRITE the existing payment record. Continue?`
+      );
+      if (!ok) return;
+    }
+
     setSaving(true);
     try {
       const stamp = {
