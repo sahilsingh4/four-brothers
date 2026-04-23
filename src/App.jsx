@@ -346,10 +346,13 @@ const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <nav style={{ position: "sticky", top: 0, zIndex: 100, background: "#FFF", borderBottom: "1px solid #E7E5E4", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", padding: "14px 32px", display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
           <a href="#top" onClick={scrollTo("top")} style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 40, height: 40, background: "#1C1917", color: "#F59E0B", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontFamily: "Arial", fontSize: 18, letterSpacing: "-0.04em" }}>4B</div>
+            <div style={{ position: "relative", width: 48, height: 48, background: "#1C1917", color: "#F59E0B", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontFamily: "Arial, sans-serif", fontSize: 20, letterSpacing: "-0.06em", borderRadius: 2, boxShadow: "0 2px 4px rgba(28,25,23,0.15)" }}>
+              4B
+              <div style={{ position: "absolute", bottom: -4, left: 6, right: 6, height: 3, background: "#F59E0B" }} />
+            </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#1C1917", lineHeight: 1 }}>4 BROTHERS</div>
-              <div style={{ fontSize: 10, color: "#78716C", letterSpacing: "0.12em", marginTop: 2 }}>TRUCKING, LLC</div>
+              <div style={{ fontSize: 16, fontWeight: 900, color: "#1C1917", lineHeight: 1, letterSpacing: "-0.01em" }}>4 BROTHERS</div>
+              <div style={{ fontSize: 10, color: "#78716C", letterSpacing: "0.16em", marginTop: 3, fontWeight: 600 }}>TRUCKING, LLC</div>
             </div>
           </a>
           <div style={{ marginLeft: "auto", display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
@@ -380,7 +383,7 @@ const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             <a href="#quote" onClick={scrollTo("quote")} style={{ padding: "16px 32px", background: "#F59E0B", color: "#1C1917", fontWeight: 800, fontSize: 14, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
               REQUEST A QUOTE <ArrowRight size={16} />
             </a>
-            <a href="tel:+19255551234" style={{ padding: "16px 32px", background: "transparent", color: "#FFF", border: "2px solid #FFF", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <a href="tel:+16268145541" style={{ padding: "16px 32px", background: "transparent", color: "#FFF", border: "2px solid #FFF", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
               <Phone size={14} /> CALL DISPATCH
             </a>
           </div>
@@ -509,7 +512,7 @@ const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
               Tell us about your job.
             </h2>
             <p style={{ fontSize: 17, color: "#57534E", lineHeight: 1.6, margin: 0 }}>
-              Fill out the form and we'll get back to you within 24 hours. Need it sooner? <a href="tel:+19255551234" style={{ color: "#F59E0B", fontWeight: 700 }}>Call dispatch.</a>
+              Fill out the form and we'll get back to you within 24 hours. Need it sooner? <a href="tel:+16268145541" style={{ color: "#F59E0B", fontWeight: 700 }}>Call dispatch.</a>
             </p>
           </div>
           {submitted ? (
@@ -573,11 +576,11 @@ const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
           <div>
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>PHONE</div>
-              <a href="tel:+19255551234" style={{ fontSize: 22, fontWeight: 800, color: "#1C1917", textDecoration: "none" }}>(925) 555-1234</a>
+              <a href="tel:+16268145541" style={{ fontSize: 22, fontWeight: 800, color: "#1C1917", textDecoration: "none" }}>(626) 814-5541</a>
             </div>
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>EMAIL</div>
-              <a href="mailto:dispatch@4brotherstruck.com" style={{ fontSize: 16, fontWeight: 600, color: "#1C1917", textDecoration: "none" }}>dispatch@4brotherstruck.com</a>
+              <a href="mailto:office@4brotherstruck.com" style={{ fontSize: 16, fontWeight: 600, color: "#1C1917", textDecoration: "none" }}>office@4brotherstruck.com</a>
             </div>
             <div>
               <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>ADDRESS</div>
@@ -599,7 +602,9 @@ const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <footer style={{ background: "#1C1917", color: "#A8A29E", padding: "40px 32px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 32, height: 32, background: "#F59E0B", color: "#1C1917", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, letterSpacing: "-0.04em" }}>4B</div>
+            <div style={{ position: "relative", width: 36, height: 36, background: "#F59E0B", color: "#1C1917", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15, letterSpacing: "-0.06em", fontFamily: "Arial, sans-serif", borderRadius: 2 }}>
+              4B
+            </div>
             <div style={{ fontSize: 12, color: "#D6D3D1", letterSpacing: "0.08em" }}>© 2026 · 4 BROTHERS TRUCKING, LLC</div>
           </div>
           <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
