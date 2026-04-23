@@ -670,31 +670,47 @@ const ClientTrackingPage = ({ token, dispatches, freightBills, company, onBack }
   );
 };
 
-const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null }) => {
-  // For driver-kind assignments, driver name is locked in
+const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null, assignmentContact = null }) => {
+  // For driver-kind assignments, driver name is locked in (but editable via override)
   const lockedDriverName = assignment?.kind === "driver" ? assignment.name : null;
+  // Prefill truck number from contact's default (if available)
+  const prefillTruck = assignment?.kind === "driver" && assignmentContact?.defaultTruckNumber
+    ? assignmentContact.defaultTruckNumber
+    : "";
+
   const [form, setForm] = useState({
     freightBillNumber: "",
     driverName: lockedDriverName || "",
     driverId: assignment?.kind === "driver" ? assignment.contactId : null,
-    truckNumber: "",
+    truckNumber: prefillTruck,
     material: dispatch?.material || "",
     tonnage: "", loadCount: "1",
     pickupTime: "", dropoffTime: "", notes: "",
     extras: [],
   });
+
+  // Track which pre-filled fields the driver has unlocked for override
+  const [unlockedFields, setUnlockedFields] = useState({});
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(""); // stage text
   const [submitted, setSubmitted] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [lastFB, setLastFB] = useState("");
+  const [submissionSummary, setSubmissionSummary] = useState(null); // full details of what was submitted
 
   const handlePhotos = async (files) => {
     if (!files || files.length === 0) return;
     setUploading(true);
     const next = [...photos];
+    let processed = 0;
     for (const f of Array.from(files)) {
-      try { const dataUrl = await compressImage(f); next.push({ id: Date.now() + Math.random(), dataUrl, name: f.name }); } catch (e) { console.warn(e); }
+      try {
+        const dataUrl = await compressImage(f);
+        next.push({ id: Date.now() + Math.random(), dataUrl, name: f.name });
+      } catch (e) { console.warn(e); }
+      processed++;
     }
     setPhotos(next);
     setUploading(false);
@@ -703,11 +719,54 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
   const removePhoto = (id) => setPhotos(photos.filter((p) => p.id !== id));
 
   const submit = async () => {
-    if (!form.freightBillNumber || !form.driverName || !form.truckNumber) { alert("Freight bill #, driver name, and truck # are required."); return; }
-    const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
-    await onSubmitTruck({ ...form, extras: cleanExtras, id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), dispatchId: dispatch.id, photos, submittedAt: new Date().toISOString() });
-    setLastFB(form.freightBillNumber);
-    setSubmitted(true);
+    if (!form.freightBillNumber || !form.driverName || !form.truckNumber) {
+      alert("Freight bill #, driver name, and truck # are required.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      setSubmitProgress("COMPRESSING PHOTOS…");
+      await new Promise((r) => setTimeout(r, 100)); // UI tick
+
+      setSubmitProgress("UPLOADING TO DISPATCH…");
+      const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
+      const submittedAt = new Date().toISOString();
+      await onSubmitTruck({
+        ...form,
+        extras: cleanExtras,
+        id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+        dispatchId: dispatch.id,
+        photos,
+        submittedAt,
+      });
+
+      setSubmitProgress("✓ SENT");
+      await new Promise((r) => setTimeout(r, 400));
+
+      // Save detailed submission summary for confirmation screen
+      setSubmissionSummary({
+        fbNumber: form.freightBillNumber,
+        driverName: form.driverName,
+        truckNumber: form.truckNumber,
+        material: form.material,
+        tonnage: form.tonnage,
+        loadCount: form.loadCount,
+        pickupTime: form.pickupTime,
+        dropoffTime: form.dropoffTime,
+        photoCount: photos.length,
+        extras: cleanExtras,
+        extrasTotal: cleanExtras.reduce((s, x) => s + (Number(x.amount) || 0), 0),
+        submittedAt,
+      });
+      setLastFB(form.freightBillNumber);
+      setSubmitted(true);
+    } catch (e) {
+      console.error(e);
+      alert("Upload failed. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+      setSubmitProgress("");
+    }
   };
 
   if (!dispatch) {
@@ -725,19 +784,53 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
 
   if (submitted) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-        <div className="fbt-card" style={{ padding: 40, textAlign: "center", maxWidth: 480 }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--cream)" }} className="texture-paper">
+        <div className="fbt-card" style={{ padding: 32, textAlign: "center", maxWidth: 520, width: "100%" }}>
           <div style={{ width: 80, height: 80, background: "var(--good)", borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <CheckCircle2 size={44} color="#FFF" />
           </div>
-          <h2 className="fbt-display" style={{ fontSize: 28, margin: "0 0 12px" }}>FB #{lastFB} SUBMITTED</h2>
-          <p style={{ color: "var(--concrete)", margin: "0 0 24px", fontSize: 15 }}>Thanks — your paperwork is in. If you have another truck to log for this same dispatch, tap below.</p>
-          <button className="btn-primary" onClick={() => {
-            setSubmitted(false);
-            setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: "", material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "", extras: [] });
-            setPhotos([]);
-            window.scrollTo(0, 0);
-          }}><Plus size={16} /> LOG ANOTHER TRUCK</button>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.15em", marginBottom: 4 }}>▸ SENT TO DISPATCHER</div>
+          <h2 className="fbt-display" style={{ fontSize: 28, margin: "0 0 8px" }}>FB #{lastFB}</h2>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 20 }}>
+            {submissionSummary?.submittedAt ? new Date(submissionSummary.submittedAt).toLocaleString() : "—"}
+          </div>
+
+          {/* Summary block */}
+          {submissionSummary && (
+            <div style={{ background: "#F0FDF4", border: "2px solid var(--good)", padding: 16, marginBottom: 20, textAlign: "left" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ WHAT YOU SUBMITTED</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+                <div><strong>DRIVER:</strong> {submissionSummary.driverName}</div>
+                <div><strong>TRUCK:</strong> {submissionSummary.truckNumber}</div>
+                {submissionSummary.material && <div><strong>MATERIAL:</strong> {submissionSummary.material}</div>}
+                {submissionSummary.tonnage && <div><strong>TONNAGE:</strong> {submissionSummary.tonnage} tons</div>}
+                {submissionSummary.loadCount && submissionSummary.loadCount !== "1" && <div><strong>LOADS:</strong> {submissionSummary.loadCount}</div>}
+                {(submissionSummary.pickupTime || submissionSummary.dropoffTime) && (
+                  <div><strong>TIMES:</strong> {submissionSummary.pickupTime || "—"} → {submissionSummary.dropoffTime || "—"}</div>
+                )}
+                <div><strong>PHOTOS:</strong> {submissionSummary.photoCount} scale ticket{submissionSummary.photoCount !== 1 ? "s" : ""} attached</div>
+                {submissionSummary.extras.length > 0 && (
+                  <div><strong>EXTRAS:</strong> {submissionSummary.extras.length} item{submissionSummary.extras.length !== 1 ? "s" : ""} · ${submissionSummary.extrasTotal.toFixed(2)}</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+            <button className="btn-primary" onClick={() => {
+              setSubmitted(false);
+              setSubmissionSummary(null);
+              setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: form.truckNumber, material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "", extras: [] });
+              setPhotos([]);
+              window.scrollTo(0, 0);
+            }}><Plus size={16} /> LOG ANOTHER TRUCK</button>
+            <button className="btn-ghost" onClick={onBack}>
+              DONE — CLOSE
+            </button>
+          </div>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 16, letterSpacing: "0.1em" }}>
+            ▸ ORDER #{dispatch.code} · {dispatch.jobName}
+          </div>
         </div>
       </div>
     );
@@ -790,15 +883,30 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
               <div>
-                <label className="fbt-label">Driver Name *</label>
-                {lockedDriverName ? (
-                  <input
-                    className="fbt-input"
-                    value={lockedDriverName}
-                    disabled
-                    style={{ background: "#FEF3C7", fontWeight: 700 }}
-                    title="This link is assigned to you"
-                  />
+                <label className="fbt-label">
+                  Driver Name *
+                  {lockedDriverName && unlockedFields.driverName && (
+                    <span className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", marginLeft: 8, fontWeight: 700 }}>● OVERRIDDEN</span>
+                  )}
+                </label>
+                {lockedDriverName && !unlockedFields.driverName ? (
+                  <div>
+                    <input
+                      className="fbt-input"
+                      value={form.driverName}
+                      disabled
+                      style={{ background: "#FEF3C7", fontWeight: 700 }}
+                      title="This link is assigned to you"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setUnlockedFields({ ...unlockedFields, driverName: true })}
+                      className="fbt-mono"
+                      style={{ background: "transparent", border: "none", color: "var(--hazard-deep)", fontSize: 10, marginTop: 4, cursor: "pointer", padding: 0, textDecoration: "underline" }}
+                    >
+                      ▸ NOT YOU? TAP TO CHANGE
+                    </button>
+                  </div>
                 ) : availableDrivers.length > 0 ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select
@@ -832,7 +940,29 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
                   <input className="fbt-input" value={form.driverName} onChange={(e) => setForm({ ...form, driverName: e.target.value })} placeholder="Your full name" />
                 )}
               </div>
-              <div><label className="fbt-label">Truck # *</label><input className="fbt-input" value={form.truckNumber} onChange={(e) => setForm({ ...form, truckNumber: e.target.value })} placeholder="T-01 or plate" /></div>
+              <div>
+                <label className="fbt-label">
+                  Truck # *
+                  {prefillTruck && !unlockedFields.truckNumber && form.truckNumber === prefillTruck && (
+                    <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginLeft: 8 }}>● AUTOFILLED</span>
+                  )}
+                  {prefillTruck && unlockedFields.truckNumber && (
+                    <span className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", marginLeft: 8, fontWeight: 700 }}>● CHANGED</span>
+                  )}
+                </label>
+                <input
+                  className="fbt-input"
+                  value={form.truckNumber}
+                  onChange={(e) => { setForm({ ...form, truckNumber: e.target.value }); if (prefillTruck && e.target.value !== prefillTruck) setUnlockedFields({ ...unlockedFields, truckNumber: true }); }}
+                  placeholder="T-01 or plate"
+                  style={prefillTruck && !unlockedFields.truckNumber ? { background: "#FEF3C7" } : {}}
+                />
+                {prefillTruck && !unlockedFields.truckNumber && (
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 3 }}>
+                    ▸ AUTOFILLED FROM YOUR CONTACT · TAP FIELD TO CHANGE
+                  </div>
+                )}
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
               <div><label className="fbt-label">Material</label><input className="fbt-input" value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value })} /></div>
@@ -926,40 +1056,90 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
               </div>
             </div>
             <div>
-              <label className="fbt-label">Scale Tickets / Freight Bill Photos</label>
-              <div style={{ border: "2px dashed var(--steel)", padding: 20, textAlign: "center", background: "#FFF" }}>
-                <Camera size={32} style={{ color: "var(--hazard-deep)", marginBottom: 8 }} />
-                <div style={{ fontSize: 13, color: "var(--concrete)", marginBottom: 12, fontFamily: "JetBrains Mono, monospace" }}>{uploading ? "PROCESSING…" : "TAKE PHOTO OR PICK FROM GALLERY"}</div>
-                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-                  <label className="btn-primary" style={{ cursor: "pointer", display: "inline-flex", padding: "10px 16px" }}>
-                    <Camera size={16} /> {photos.length > 0 ? `CAMERA` : "TAKE PHOTO"}
-                    <input type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
-                  </label>
-                  <label className="btn-ghost" style={{ cursor: "pointer", display: "inline-flex", padding: "10px 16px" }}>
-                    <Upload size={16} /> {photos.length > 0 ? `ADD FROM GALLERY` : "FROM GALLERY"}
-                    <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
-                  </label>
+              <label className="fbt-label" style={{ fontSize: 14, marginBottom: 10 }}>Scale Tickets / Freight Bill Photos *</label>
+
+              {/* BIG camera button — dominant for mobile/field use */}
+              <label
+                htmlFor="big-camera-input"
+                style={{
+                  display: "block",
+                  cursor: "pointer",
+                  padding: "32px 20px",
+                  background: photos.length > 0 ? "var(--good)" : "var(--hazard)",
+                  color: photos.length > 0 ? "#FFF" : "var(--steel)",
+                  border: "3px solid " + (photos.length > 0 ? "var(--good)" : "var(--hazard-deep)"),
+                  textAlign: "center",
+                  fontFamily: "JetBrains Mono, monospace",
+                  fontWeight: 700,
+                  fontSize: 16,
+                  letterSpacing: "0.08em",
+                  minHeight: 120,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  transition: "transform 0.1s",
+                  WebkitTapHighlightColor: "transparent",
+                }}
+                onTouchStart={(e) => { e.currentTarget.style.transform = "scale(0.98)"; }}
+                onTouchEnd={(e) => { e.currentTarget.style.transform = ""; }}
+              >
+                <Camera size={48} />
+                <div style={{ fontSize: 18 }}>
+                  {uploading ? "PROCESSING…" : photos.length === 0 ? "📷 TAKE PHOTO OF TICKETS" : `+ ADD MORE PHOTOS`}
                 </div>
-                {photos.length > 0 && (
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8 }}>
-                    {photos.length} PHOTO{photos.length !== 1 ? "S" : ""} ATTACHED
+                {photos.length === 0 && (
+                  <div style={{ fontSize: 11, opacity: 0.9, letterSpacing: "0.08em" }}>
+                    TAP TO USE YOUR CAMERA
                   </div>
                 )}
+                {photos.length > 0 && (
+                  <div style={{ fontSize: 11, opacity: 0.95, letterSpacing: "0.08em" }}>
+                    {photos.length} ATTACHED · TAP TO ADD MORE
+                  </div>
+                )}
+                <input id="big-camera-input" type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+              </label>
+
+              {/* Secondary gallery option */}
+              <div style={{ marginTop: 8, textAlign: "center" }}>
+                <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.08em", padding: "6px 10px" }}>
+                  <Upload size={12} /> OR PICK FROM GALLERY
+                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+                </label>
               </div>
+
               {photos.length > 0 && (
                 <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}>
                   {photos.map((p) => (
                     <div key={p.id} style={{ position: "relative" }}>
-                      <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} />
-                      <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -6, right: -6, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 22, height: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>
-                        <X size={12} />
+                      <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)" }} />
+                      <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -8, right: -8, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}>
+                        <X size={14} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-            <button onClick={submit} className="btn-primary" style={{ marginTop: 12 }} disabled={uploading}><CheckCircle2 size={16} /> SUBMIT FREIGHT BILL</button>
+
+            {/* Submit button with progress indicator */}
+            {submitting ? (
+              <div style={{ marginTop: 16, padding: 20, background: "var(--good)", color: "#FFF", textAlign: "center" }}>
+                <div className="fbt-mono" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
+                  {submitProgress || "SUBMITTING…"}
+                </div>
+                <div style={{ height: 6, background: "rgba(255,255,255,0.3)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: "#FFF", width: "50%", animation: "slide 1.2s linear infinite" }}></div>
+                </div>
+                <style>{`@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }`}</style>
+              </div>
+            ) : (
+              <button onClick={submit} className="btn-primary" style={{ marginTop: 16, padding: "16px 24px", fontSize: 15, letterSpacing: "0.08em" }} disabled={uploading}>
+                <CheckCircle2 size={18} /> SUBMIT FREIGHT BILL
+              </button>
+            )}
           </div>
         </div>
         <div className="fbt-mono" style={{ marginTop: 20, fontSize: 11, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em" }}>▸ PROBLEM WITH THIS FORM? CONTACT DISPATCH.</div>
@@ -1164,6 +1344,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   };
   const [activeDispatch, setActiveDispatch] = useState(null);
   const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
+  const [sendLinksTarget, setSendLinksTarget] = useState(null); // Dispatch object to show Send Links modal for
 
   // Jump to dispatch when notification clicked
   useEffect(() => {
@@ -1284,7 +1465,12 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       if (fresh) setActiveDispatch(fresh.id);
     }, 100);
     resetDraft();
-    onToast("ORDER CREATED — COPY THE LINK");
+    onToast("ORDER CREATED");
+
+    // If order has assignments with contacts — open Send Links modal so admin can text/email the team
+    if (assignments && assignments.length > 0 && assignments.some((a) => a.contactId)) {
+      setSendLinksTarget(d);
+    }
   };
 
   const removeDispatch = async (id) => {
@@ -1317,6 +1503,12 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     });
     await setDispatches(next);
     onToast("✓ MARKED AS DISPATCHED");
+
+    // Offer to send team links after marking dispatched
+    const dispatch = next.find((d) => d.id === id);
+    if (dispatch?.assignments?.length > 0 && dispatch.assignments.some((a) => a.contactId)) {
+      setSendLinksTarget(dispatch);
+    }
   };
 
   // Compute the lock state for a dispatch
@@ -1430,6 +1622,132 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         </div>
         <button onClick={() => { setEditingId(null); resetDraft(); setShowNew(true); }} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
       </div>
+
+      {/* Send Links modal — offered after order create / mark-dispatched */}
+      {sendLinksTarget && (() => {
+        // Find the order fresh each render so we pick up state changes
+        const dispatch = dispatches.find((x) => x.id === sendLinksTarget.id) || sendLinksTarget;
+        const assignmentsToNotify = (dispatch.assignments || []).filter((a) => a.contactId);
+        const project = projects.find((p) => p.id === dispatch.projectId);
+        const customer = contacts.find((c) => c.id === dispatch.clientId);
+
+        return (
+          <div className="modal-bg" onClick={() => setSendLinksTarget(null)} style={{ zIndex: 108 }}>
+            <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
+              <div style={{ padding: "16px 22px", background: "var(--good)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>SEND DISPATCH TO TEAM</div>
+                  <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>Order #{dispatch.code}</h3>
+                  <div className="fbt-mono" style={{ fontSize: 10, opacity: 0.9, marginTop: 2 }}>
+                    {dispatch.jobName} · {dispatch.date}
+                  </div>
+                </div>
+                <button onClick={() => setSendLinksTarget(null)} style={{ background: "transparent", border: "none", color: "#FFF", cursor: "pointer" }}><X size={20} /></button>
+              </div>
+
+              <div style={{ padding: 18 }}>
+                <div style={{ padding: 10, background: "#FEF3C7", border: "1px solid var(--hazard)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", marginBottom: 14, color: "var(--hazard-deep)", letterSpacing: "0.05em" }}>
+                  ▸ TAP TEXT OR EMAIL BELOW TO SEND EACH DRIVER/SUB THEIR DISPATCH INFO · MESSAGE IS PRE-FILLED · YOU STILL TAP SEND
+                </div>
+
+                {assignmentsToNotify.length === 0 ? (
+                  <div style={{ padding: 40, textAlign: "center", color: "var(--concrete)" }}>
+                    <AlertCircle size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
+                    <div className="fbt-mono" style={{ fontSize: 12 }}>NO ASSIGNMENTS WITH LINKED CONTACTS · ADD SUBS/DRIVERS TO THIS ORDER FIRST</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {assignmentsToNotify.map((a) => {
+                      const contact = contacts.find((c) => c.id === a.contactId);
+                      const text = buildDispatchText(dispatch, a);
+                      const phone = contact?.phone || "";
+                      const email = contact?.email || "";
+                      const cleanPhone = phone.replace(/[^0-9+]/g, "");
+                      const smsHref = cleanPhone ? `sms:${cleanPhone}?&body=${encodeURIComponent(text)}` : null;
+                      const subject = `Dispatch — Order #${dispatch.code} · ${dispatch.date || ""}`;
+                      const mailHref = email ? `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` : null;
+
+                      return (
+                        <div key={a.aid} style={{ border: "1.5px solid var(--steel)", background: "#FFF", padding: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                            <div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                <span className="chip" style={{ background: a.kind === "driver" ? "#FFF" : "var(--hazard)", fontSize: 9, padding: "2px 7px" }}>
+                                  {a.kind === "driver" ? "DRIVER" : "SUB"}
+                                </span>
+                                <div className="fbt-display" style={{ fontSize: 14 }}>{a.name}</div>
+                              </div>
+                              {(phone || email) && (
+                                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 3 }}>
+                                  {phone && `☎ ${phone}`}
+                                  {phone && email && " · "}
+                                  {email && `✉ ${email}`}
+                                </div>
+                              )}
+                              {a.kind === "sub" && a.payRate && (
+                                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 2 }}>
+                                  Rate in text: ${a.payRate}/{a.payMethod || "hour"}
+                                </div>
+                              )}
+                              {a.kind === "driver" && (
+                                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                                  (rate NOT sent to drivers)
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {!phone && !email ? (
+                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", padding: 8, background: "#FEF2F2", border: "1px solid var(--safety)" }}>
+                              ⚠ NO PHONE OR EMAIL ON FILE · ADD CONTACT INFO TO SEND
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {smsHref && (
+                                <a
+                                  href={smsHref}
+                                  className="btn-primary"
+                                  style={{ padding: "8px 14px", fontSize: 11, background: "var(--hazard)", color: "var(--steel)", borderColor: "var(--hazard-deep)", textDecoration: "none" }}
+                                >
+                                  <Send size={12} style={{ marginRight: 4 }} /> TEXT
+                                </a>
+                              )}
+                              {mailHref && (
+                                <a
+                                  href={mailHref}
+                                  className="btn-ghost"
+                                  style={{ padding: "8px 14px", fontSize: 11, textDecoration: "none" }}
+                                >
+                                  <Mail size={12} style={{ marginRight: 4 }} /> EMAIL
+                                </a>
+                              )}
+                              <button
+                                className="btn-ghost"
+                                style={{ padding: "8px 14px", fontSize: 11 }}
+                                onClick={() => copyDispatchText(dispatch, a)}
+                                title="Copy the dispatch text to paste anywhere"
+                              >
+                                <FileText size={12} style={{ marginRight: 4 }} /> COPY
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 18, justifyContent: "space-between", flexWrap: "wrap" }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", alignSelf: "center" }}>
+                    ▸ CLOSE WHEN FINISHED · YOU CAN RE-SEND ANYTIME FROM THE ORDER DETAIL
+                  </div>
+                  <button onClick={() => setSendLinksTarget(null)} className="btn-ghost">DONE</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Override lock modal */}
       {overrideTarget && (
@@ -11254,6 +11572,11 @@ export default function App() {
       companyName: (d.assignedDriverNames || [])[idx] || `Driver ${idx + 1}`,
     }));
 
+    // Look up the full contact object for the assignment (for prefill: default truck, etc.)
+    const assignmentContact = assignment?.contactId
+      ? (contacts || []).find((c) => c.id === assignment.contactId)
+      : null;
+
     // Check if order is closed — show closed message
     if (d && d.status === "closed") {
       return (
@@ -11280,6 +11603,7 @@ export default function App() {
           onBack={() => { window.location.hash = ""; }}
           availableDrivers={availableDrivers}
           assignment={assignment}
+          assignmentContact={assignmentContact}
         />
       </div>
     );
