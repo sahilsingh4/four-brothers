@@ -1,6 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted } from "./db";
+import {
+  hoursFromTimes as mathHoursFromTimes,
+  computeLineNet as mathComputeLineNet,
+  recomputeLine as mathRecomputeLine,
+  totalLines as mathTotalLines,
+  seedHoursForFb as mathSeedHoursForFb,
+  billableHoursForInvoice as mathBillableHoursForInvoice,
+  contactBrokeragePct as mathContactBrokeragePct,
+} from "./math";
 import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, Package, Mountain, BarChart3, History, Calendar, DollarSign, Banknote, Award, Briefcase, ShieldCheck, Clock, Save, Send } from "lucide-react";
 
 const GlobalStyles = () => (
