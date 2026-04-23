@@ -6933,6 +6933,63 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     paidLoads: fb.paidLoads != null ? String(fb.paidLoads) : (fb.loadCount != null ? String(fb.loadCount) : ""),
     paidRate: fb.paidRate != null ? String(fb.paidRate) : (assignment?.payRate ? String(assignment.payRate) : ""),
     paidMethodSnapshot: fb.paidMethodSnapshot || assignment?.payMethod || "hour",
+
+    // LINE-ITEM STRUCTURE (v16) — new master data model
+    // If fb already has lines (from backfill), use them. Otherwise seed with a single HOURLY line
+    // based on dispatch/assignment rates.
+    billingLines: Array.isArray(fb.billingLines) && fb.billingLines.length > 0
+      ? fb.billingLines
+      : (() => {
+          // Seed one billing line from dispatch rate
+          const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
+          const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
+          const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
+          const rate = Number(dispatch?.ratePerHour || dispatch?.ratePerTon || dispatch?.ratePerLoad || 0);
+          const qty = method === "hour" ? Number(fb.hoursBilled) || 0
+                   : method === "ton" ? Number(fb.tonnage) || 0
+                   : Number(fb.loadCount) || 1;
+          if (rate > 0 || qty > 0) {
+            const gross = qty * rate;
+            return [{
+              id: Date.now(),
+              code, item, qty, rate, gross,
+              brokerable: false, brokeragePct: 0, net: gross,
+              copyToPay: false,
+              createdAt: new Date().toISOString(),
+              createdBy: "system-seed",
+            }];
+          }
+          return [];
+        })(),
+    payingLines: Array.isArray(fb.payingLines) && fb.payingLines.length > 0
+      ? fb.payingLines
+      : (() => {
+          // Seed one pay line from assignment rate (if a rate is known)
+          const method = assignment?.payMethod || "hour";
+          const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
+          const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
+          const rate = Number(assignment?.payRate || 0);
+          const qty = method === "hour" ? Number(fb.hoursBilled) || 0
+                   : method === "ton" ? Number(fb.tonnage) || 0
+                   : Number(fb.loadCount) || 1;
+          if (rate > 0 || qty > 0) {
+            const gross = qty * rate;
+            const isSub = assignment?.kind === "sub";
+            const contactForPay = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+            const brokerable = isSub && !!contactForPay?.brokerageApplies;
+            const brokeragePct = brokerable ? Number(contactForPay?.brokeragePercent || 8) : 0;
+            const net = gross - (brokerable ? gross * brokeragePct / 100 : 0);
+            return [{
+              id: Date.now() + 1,
+              code, item, qty, rate, gross,
+              brokerable, brokeragePct, net,
+              sourceBillingLineId: null,
+              createdAt: new Date().toISOString(),
+              createdBy: "system-seed",
+            }];
+          }
+          return [];
+        })(),
   });
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
@@ -6969,6 +7026,175 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       paidMethodSnapshot: d.billedMethod,
     }));
   };
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // LINE-ITEM HELPERS (v16 unified structure)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  // Compute net for a line based on gross, brokerable flag, and brokerage %
+  const computeLineNet = (line) => {
+    const gross = Number(line.gross) || (Number(line.qty) || 0) * (Number(line.rate) || 0);
+    if (line.brokerable) {
+      const pct = Number(line.brokeragePct) || 0;
+      return Number((gross - gross * pct / 100).toFixed(2));
+    }
+    return Number(gross.toFixed(2));
+  };
+
+  // Recompute gross + net for a line after qty/rate/brokerable/brokeragePct changes
+  const recomputeLine = (line) => {
+    const qty = Number(line.qty) || 0;
+    const rate = Number(line.rate) || 0;
+    const gross = Number((qty * rate).toFixed(2));
+    const net = line.brokerable
+      ? Number((gross - gross * (Number(line.brokeragePct) || 0) / 100).toFixed(2))
+      : gross;
+    return { ...line, gross, net };
+  };
+
+  // Get brokerage % from the contact associated with the assignment (sub only)
+  const getContactBrokeragePct = () => {
+    if (!assignment) return 0;
+    const isSub = assignment.kind === "sub";
+    if (!isSub) return 0; // drivers never have brokerage
+    const contact = contacts.find((c) => c.id === assignment.contactId);
+    return contact?.brokerageApplies ? (Number(contact?.brokeragePercent) || 8) : 0;
+  };
+
+  // Add a new billing line
+  const addBillingLine = (seed = {}) => {
+    const newLine = recomputeLine({
+      id: Date.now(),
+      code: seed.code || "",
+      item: seed.item || "",
+      qty: seed.qty != null ? Number(seed.qty) : 0,
+      rate: seed.rate != null ? Number(seed.rate) : 0,
+      brokerable: !!seed.brokerable,
+      brokeragePct: seed.brokerable ? getContactBrokeragePct() : 0,
+      copyToPay: !!seed.copyToPay,
+      note: seed.note || "",
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser || "admin",
+    });
+    setDraft((d) => ({ ...d, billingLines: [...(d.billingLines || []), newLine] }));
+  };
+
+  const updateBillingLine = (id, patch) => {
+    setDraft((d) => {
+      const next = (d.billingLines || []).map((ln) => {
+        if (ln.id !== id) return ln;
+        const merged = { ...ln, ...patch };
+        // If brokerable just turned on, snapshot current contact %
+        if (patch.brokerable === true && !ln.brokerable) {
+          merged.brokeragePct = getContactBrokeragePct();
+        }
+        return recomputeLine(merged);
+      });
+      return { ...d, billingLines: next };
+    });
+  };
+
+  const deleteBillingLine = (id) => {
+    setDraft((d) => ({ ...d, billingLines: (d.billingLines || []).filter((ln) => ln.id !== id) }));
+  };
+
+  // Add/update/delete paying lines — same shape but NO copyToPay field, optional sourceBillingLineId
+  const addPayingLine = (seed = {}) => {
+    const newLine = recomputeLine({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      code: seed.code || "",
+      item: seed.item || "",
+      qty: seed.qty != null ? Number(seed.qty) : 0,
+      rate: seed.rate != null ? Number(seed.rate) : 0,
+      brokerable: seed.brokerable != null ? !!seed.brokerable : (assignment?.kind === "sub"),
+      brokeragePct: (seed.brokerable || assignment?.kind === "sub") ? getContactBrokeragePct() : 0,
+      sourceBillingLineId: seed.sourceBillingLineId || null,
+      note: seed.note || "",
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser || "admin",
+    });
+    setDraft((d) => ({ ...d, payingLines: [...(d.payingLines || []), newLine] }));
+  };
+
+  const updatePayingLine = (id, patch) => {
+    setDraft((d) => {
+      const next = (d.payingLines || []).map((ln) => {
+        if (ln.id !== id) return ln;
+        const merged = { ...ln, ...patch };
+        if (patch.brokerable === true && !ln.brokerable) {
+          merged.brokeragePct = getContactBrokeragePct();
+        }
+        return recomputeLine(merged);
+      });
+      return { ...d, payingLines: next };
+    });
+  };
+
+  const deletePayingLine = (id) => {
+    setDraft((d) => ({ ...d, payingLines: (d.payingLines || []).filter((ln) => ln.id !== id) }));
+  };
+
+  // Auto-sync: when a billing line's copyToPay is checked, ensure a matching pay line exists.
+  // When unchecked, remove the matched pay line (if it was auto-created).
+  const toggleCopyToPay = (billLineId, checked) => {
+    setDraft((d) => {
+      const bLines = d.billingLines || [];
+      const pLines = d.payingLines || [];
+      const bLine = bLines.find((x) => x.id === billLineId);
+      if (!bLine) return d;
+
+      // Update the billing line's copyToPay flag
+      const nextBLines = bLines.map((x) => x.id === billLineId ? { ...x, copyToPay: checked } : x);
+
+      if (checked) {
+        // Add a matching pay line if one doesn't already exist for this billing line
+        if (pLines.some((p) => p.sourceBillingLineId === billLineId)) {
+          return { ...d, billingLines: nextBLines };
+        }
+        const isSub = assignment?.kind === "sub";
+        const brokPct = getContactBrokeragePct();
+        const newPayLine = recomputeLine({
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          code: bLine.code,
+          item: bLine.item,
+          qty: bLine.qty,
+          rate: bLine.rate,  // admin can edit pay rate after — default is SAME as bill rate
+          brokerable: isSub && bLine.brokerable,   // inherit brokerable but only for subs
+          brokeragePct: (isSub && bLine.brokerable) ? brokPct : 0,
+          sourceBillingLineId: billLineId,
+          note: "Copied from billing",
+          createdAt: new Date().toISOString(),
+          createdBy: currentUser || "admin",
+        });
+        return { ...d, billingLines: nextBLines, payingLines: [...pLines, newPayLine] };
+      } else {
+        // Remove the auto-created pay line (if it's still linked to this billing line)
+        const nextPLines = pLines.filter((p) => p.sourceBillingLineId !== billLineId);
+        return { ...d, billingLines: nextBLines, payingLines: nextPLines };
+      }
+    });
+  };
+
+  // Totals
+  const billingTotals = useMemo(() => {
+    const lines = draft.billingLines || [];
+    const gross = lines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+    const brokerableGross = lines.filter((ln) => ln.brokerable).reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+    const brokerageAmt = lines.filter((ln) => ln.brokerable)
+      .reduce((s, ln) => s + (Number(ln.gross) || 0) * (Number(ln.brokeragePct) || 0) / 100, 0);
+    const net = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+    return { count: lines.length, gross, brokerableGross, brokerageAmt, net };
+  }, [draft.billingLines]);
+
+  const payingTotals = useMemo(() => {
+    const lines = draft.payingLines || [];
+    const gross = lines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+    const brokerableGross = lines.filter((ln) => ln.brokerable).reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+    const brokerageAmt = lines.filter((ln) => ln.brokerable)
+      .reduce((s, ln) => s + (Number(ln.gross) || 0) * (Number(ln.brokeragePct) || 0) / 100, 0);
+    const net = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+    return { count: lines.length, gross, brokerableGross, brokerageAmt, net };
+  }, [draft.payingLines]);
 
   // Adjustment entry state (one form for each side)
   // Structure: qty × rate = amount. Type: hours|rate|extras|other. applyBrokerage for pay side only.
@@ -7090,6 +7316,15 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         paidLoads: paySnapshotLocked && fb.paidLoads != null ? fb.paidLoads : (draft.paidLoads !== "" ? Number(draft.paidLoads) : null),
         paidRate:  paySnapshotLocked && fb.paidRate  != null ? fb.paidRate  : (draft.paidRate  !== "" ? Number(draft.paidRate)  : null),
         paidMethodSnapshot: paySnapshotLocked && fb.paidMethodSnapshot ? fb.paidMethodSnapshot : (draft.paidMethodSnapshot || null),
+
+        // Persist line-item arrays (v16 master data)
+        // If billing is locked, don't overwrite existing lines. Otherwise save what's in draft.
+        billingLines: billingSnapshotLocked && Array.isArray(fb.billingLines) && fb.billingLines.length > 0
+          ? fb.billingLines
+          : (draft.billingLines || []),
+        payingLines: paySnapshotLocked && Array.isArray(fb.payingLines) && fb.payingLines.length > 0
+          ? fb.payingLines
+          : (draft.payingLines || []),
       };
 
       // If admin confirmed min-hours, stamp audit
@@ -7471,6 +7706,264 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
           </fieldset>
 
+
+          {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+              v16 LINE ITEM TABLES — new master data model
+              Combined billing + pay entry like DumpTruckSoftware TRLoDTS
+              ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          <div style={{ borderTop: "3px double var(--steel)", paddingTop: 14 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
+              ▸ BILLING &amp; PAY LINES (NEW STRUCTURE)
+            </div>
+
+            {/* ─── BILLING LINES ─── */}
+            <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "#0369A1"), marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700 }}>
+                  🏢 BILLING LINES (BILL TO CUSTOMER)
+                </div>
+                {billingSnapshotLocked && (
+                  <span className="chip" style={{ background: "#0EA5E9", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                    <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED · {invoiceOnFb?.invoiceNumber || "invoiced"}
+                  </span>
+                )}
+              </div>
+
+              {/* Quick-add buttons */}
+              {!billingSnapshotLocked && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => addBillingLine({ code: "H", item: "HOURLY", rate: Number(dispatch?.ratePerHour) || 0, brokerable: !!getContactBrokeragePct() })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "T", item: "TONS", rate: Number(dispatch?.ratePerTon) || 0 })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "L", item: "LOADS", rate: Number(dispatch?.ratePerLoad) || 0 })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "TOLL", item: "Tolls", qty: 1 })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "DUMP", item: "Dump Fees", qty: 1 })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "FUEL", item: "Fuel", qty: 1 })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ FUEL</button>
+                  <button type="button" onClick={() => addBillingLine({ code: "OTHER", item: "" })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
+                </div>
+              )}
+
+              {/* Lines table */}
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 11, fontFamily: "JetBrains Mono, monospace", borderCollapse: "collapse", minWidth: 760 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #0369A1", color: "#0369A1", fontSize: 9, letterSpacing: "0.05em" }}>
+                      <th style={{ textAlign: "left", padding: "4px 6px", width: 50 }}>CODE</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px" }}>ITEM</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 70 }}>QTY</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 80 }}>RATE</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 85 }}>GROSS</th>
+                      <th style={{ textAlign: "center", padding: "4px 6px", width: 40 }}>BR?</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 50 }}>%</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 85 }}>NET</th>
+                      <th style={{ textAlign: "center", padding: "4px 6px", width: 40 }}>CP?</th>
+                      <th style={{ width: 30 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(draft.billingLines || []).length === 0 && (
+                      <tr><td colSpan={10} style={{ padding: 16, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>No billing lines yet — use the quick-add buttons above.</td></tr>
+                    )}
+                    {(draft.billingLines || []).map((ln) => (
+                      <tr key={ln.id} style={{ borderBottom: "1px solid #BAE6FD" }}>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="text" value={ln.code || ""} onChange={(e) => updateBillingLine(ln.id, { code: e.target.value.toUpperCase() })}
+                            disabled={billingSnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="text" value={ln.item || ""} onChange={(e) => updateBillingLine(ln.id, { item: e.target.value })}
+                            disabled={billingSnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="number" step="0.01" value={ln.qty || ""} onChange={(e) => updateBillingLine(ln.id, { qty: e.target.value })}
+                            disabled={billingSnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="number" step="0.01" value={ln.rate || ""} onChange={(e) => updateBillingLine(ln.id, { rate: e.target.value })}
+                            disabled={billingSnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                          <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updateBillingLine(ln.id, { brokerable: e.target.checked })}
+                            disabled={billingSnapshotLocked} />
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--concrete)" }}>
+                          {ln.brokerable ? `${ln.brokeragePct || 0}%` : "—"}
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "#0369A1" }}>{fmt$(ln.net)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                          <input type="checkbox" checked={!!ln.copyToPay} onChange={(e) => toggleCopyToPay(ln.id, e.target.checked)}
+                            disabled={billingSnapshotLocked}
+                            title="Copy this line to the sub/driver's pay side" />
+                        </td>
+                        <td style={{ padding: "4px 2px", textAlign: "center" }}>
+                          {!billingSnapshotLocked && (
+                            <button type="button" onClick={() => deleteBillingLine(ln.id)}
+                              style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", padding: 2 }} title="Delete line">
+                              <X size={12} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {billingTotals.count > 0 && (
+                    <tfoot>
+                      <tr style={{ borderTop: "2px solid #0369A1", background: "#F0F9FF" }}>
+                        <td colSpan={4} style={{ padding: "6px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#0369A1" }}>TOTALS</td>
+                        <td style={{ padding: "6px", textAlign: "right", fontWeight: 700 }}>{fmt$(billingTotals.gross)}</td>
+                        <td colSpan={2} style={{ padding: "6px", textAlign: "right", fontSize: 9, color: "var(--concrete)" }}>
+                          {billingTotals.brokerageAmt > 0 ? `−${fmt$(billingTotals.brokerageAmt)}` : ""}
+                        </td>
+                        <td style={{ padding: "6px", textAlign: "right", fontWeight: 700, color: "#0369A1", fontSize: 13 }}>{fmt$(billingTotals.net)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+
+            {/* ─── PAYING LINES ─── */}
+            <div style={{ padding: 12, background: paySnapshotLocked ? "#F0FDF4" : "#FFF", border: "2px solid " + (paySnapshotLocked ? "var(--good)" : "var(--good)") }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                  🚚 PAYING LINES (PAY TO SUB / DRIVER)
+                </div>
+                {paySnapshotLocked && (
+                  <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                    <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED
+                  </span>
+                )}
+              </div>
+
+              {!paySnapshotLocked && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => addPayingLine({ code: "H", item: "HOURLY", rate: Number(assignment?.payRate) || 0, brokerable: assignment?.kind === "sub" && !!getContactBrokeragePct() })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
+                  <button type="button" onClick={() => addPayingLine({ code: "T", item: "TONS" })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
+                  <button type="button" onClick={() => addPayingLine({ code: "L", item: "LOADS" })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
+                  <button type="button" onClick={() => addPayingLine({ code: "TOLL", item: "Tolls", qty: 1, brokerable: false })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL REIMB</button>
+                  <button type="button" onClick={() => addPayingLine({ code: "DUMP", item: "Dump Fees", qty: 1, brokerable: false })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP REIMB</button>
+                  <button type="button" onClick={() => addPayingLine({ code: "OTHER", item: "", brokerable: false })}
+                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
+                </div>
+              )}
+
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 11, fontFamily: "JetBrains Mono, monospace", borderCollapse: "collapse", minWidth: 720 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid var(--good)", color: "var(--good)", fontSize: 9, letterSpacing: "0.05em" }}>
+                      <th style={{ textAlign: "left", padding: "4px 6px", width: 50 }}>CODE</th>
+                      <th style={{ textAlign: "left", padding: "4px 6px" }}>ITEM</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 70 }}>QTY</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 80 }}>RATE</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 85 }}>GROSS</th>
+                      <th style={{ textAlign: "center", padding: "4px 6px", width: 40 }}>BR?</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 50 }}>%</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", width: 85 }}>NET</th>
+                      <th style={{ width: 30 }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(draft.payingLines || []).length === 0 && (
+                      <tr><td colSpan={9} style={{ padding: 16, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>No pay lines yet — use the quick-add buttons above, or check CP? on a billing line.</td></tr>
+                    )}
+                    {(draft.payingLines || []).map((ln) => (
+                      <tr key={ln.id} style={{ borderBottom: "1px solid #86EFAC", background: ln.sourceBillingLineId ? "#ECFDF5" : "transparent" }}>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="text" value={ln.code || ""} onChange={(e) => updatePayingLine(ln.id, { code: e.target.value.toUpperCase() })}
+                            disabled={paySnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="text" value={ln.item || ""} onChange={(e) => updatePayingLine(ln.id, { item: e.target.value })}
+                            disabled={paySnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                          {ln.sourceBillingLineId && <div style={{ fontSize: 8, color: "var(--good)", marginTop: 2 }}>↖ from billing</div>}
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="number" step="0.01" value={ln.qty || ""} onChange={(e) => updatePayingLine(ln.id, { qty: e.target.value })}
+                            disabled={paySnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px" }}>
+                          <input type="number" step="0.01" value={ln.rate || ""} onChange={(e) => updatePayingLine(ln.id, { rate: e.target.value })}
+                            disabled={paySnapshotLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                          <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updatePayingLine(ln.id, { brokerable: e.target.checked })}
+                            disabled={paySnapshotLocked || assignment?.kind !== "sub"}
+                            title={assignment?.kind !== "sub" ? "Brokerage only applies to subs" : "Apply brokerage to this line"} />
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--concrete)" }}>
+                          {ln.brokerable ? `${ln.brokeragePct || 0}%` : "—"}
+                        </td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "var(--good)" }}>{fmt$(ln.net)}</td>
+                        <td style={{ padding: "4px 2px", textAlign: "center" }}>
+                          {!paySnapshotLocked && (
+                            <button type="button" onClick={() => deletePayingLine(ln.id)}
+                              style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", padding: 2 }} title="Delete line">
+                              <X size={12} />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {payingTotals.count > 0 && (
+                    <tfoot>
+                      <tr style={{ borderTop: "2px solid var(--good)", background: "#F0FDF4" }}>
+                        <td colSpan={4} style={{ padding: "6px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "var(--good)" }}>TOTALS</td>
+                        <td style={{ padding: "6px", textAlign: "right", fontWeight: 700 }}>{fmt$(payingTotals.gross)}</td>
+                        <td colSpan={2} style={{ padding: "6px", textAlign: "right", fontSize: 9, color: "var(--concrete)" }}>
+                          {payingTotals.brokerageAmt > 0 ? `−${fmt$(payingTotals.brokerageAmt)}` : ""}
+                        </td>
+                        <td style={{ padding: "6px", textAlign: "right", fontWeight: 700, color: "var(--good)", fontSize: 13 }}>{fmt$(payingTotals.net)}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+
+            {/* MARGIN summary */}
+            {billingTotals.net > 0 && payingTotals.net > 0 && (
+              <div style={{ marginTop: 10, padding: "10px 14px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>▸ FB MARGIN</div>
+                <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+                    BILLED <strong style={{ color: "#7DD3FC" }}>{fmt$(billingTotals.net)}</strong> − PAID <strong style={{ color: "#86EFAC" }}>{fmt$(payingTotals.net)}</strong>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--hazard)" }}>
+                    = {fmt$(billingTotals.net - payingTotals.net)}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 8, letterSpacing: "0.05em" }}>
+              ▸ CHECK CP? ON A BILLING LINE TO AUTO-ADD A MATCHING PAY LINE (EDIT PAY RATE AFTER)
+            </div>
+          </div>
+
+          {/* ━━ OLD DUAL SNAPSHOT PANEL (kept for backward compat, Session 3 will remove) ━━ */}
           {/* ━━ BILLING + PAY SNAPSHOT DUAL PANEL ━━
               Billing = what we charge customer (locked on invoice)
               Pay     = what we pay sub/driver (locked on pay statement) */}
@@ -8305,16 +8798,24 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       else if (method === "load") qty = Number(fb.loadCount) || 1;
     }
     const baseGross = qty * rate;
-    const extrasSum = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    // Only extras explicitly copied to pay flow through (not just "reimbursable" on the bill)
+    const extrasSum = (fb.extras || []).filter((x) => x.copyToPay === true).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    // Billing adjustments flagged copy-to-pay flow through as non-brokerable pay additions
+    const billingAdjCopiedToPay = (fb.billingAdjustments || [])
+      .filter((a) => a.copyToPay === true)
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
     // Pay adjustments split by brokerage flag
     const adjustments = fb.payingAdjustments || [];
     const adjBrokerable = adjustments.filter((a) => a.applyBrokerage !== false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const adjNonBrokerable = adjustments.filter((a) => a.applyBrokerage === false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
     return {
-      gross: baseGross + extrasSum + adjBrokerable + adjNonBrokerable,
+      gross: baseGross + extrasSum + adjBrokerable + adjNonBrokerable + billingAdjCopiedToPay,
       qty, method, rate, extrasSum, baseGross,
       extras: fb.extras || [],
       adjustments, adjBrokerable, adjNonBrokerable,
+      billingAdjCopiedToPay,
+      // Expose billing adjustments with copy flag so the stub can render them as line items
+      billingAdjustmentsCopied: (fb.billingAdjustments || []).filter((a) => a.copyToPay === true),
     };
   };
 
@@ -8330,9 +8831,10 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   const extrasTotal = fbRows.reduce((s, r) => s + r.calc.extrasSum, 0);
   const adjBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjBrokerable, 0);
   const adjNonBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjNonBrokerable, 0);
-  // Brokerage applies ONLY to base + brokerable adjustments. Reimbursable extras pass through 100%.
+  const billingAdjCopiedTotal = fbRows.reduce((s, r) => s + (r.calc.billingAdjCopiedToPay || 0), 0);
+  // Brokerage applies ONLY to base + brokerable adjustments. Everything else flows through 100%.
   const grossForBrokerage = subtotal + adjBrokerableTotal;
-  const gross = grossForBrokerage + extrasTotal + adjNonBrokerableTotal;
+  const gross = grossForBrokerage + extrasTotal + adjNonBrokerableTotal + billingAdjCopiedTotal;
   const brokerageAmt = brokerageApplies ? grossForBrokerage * (brokeragePct / 100) : 0;
   const netPay = gross - brokerageAmt;
 
@@ -8507,8 +9009,15 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
               <td class="r">${money(calc.rate)}</td>
               <td class="r"><strong>${money(calc.baseGross)}</strong></td>
             </tr>
-            ${extrasList.filter((x) => x.reimbursable !== false).map((x) => `
-              <tr><td colspan="7" class="extra-line">+ ${esc(x.label || "Extra")}: ${money(x.amount)} (reimbursable)</td></tr>
+            ${extrasList.filter((x) => x.copyToPay === true).map((x) => `
+              <tr><td colspan="7" class="extra-line">+ ${esc(x.label || "Extra")}: ${money(x.amount)} (reimbursed to you)</td></tr>
+            `).join("")}
+            ${(calc.billingAdjustmentsCopied || []).map((adj) => `
+              <tr><td colspan="7" class="extra-line" style="color: #065F46;">
+                + From customer bill [${esc(adj.type)}]:
+                ${adj.qty != null && adj.rate != null ? `${adj.qty} × ${money(adj.rate)} = ` : ""}${money(adj.amount)}
+                ${adj.note ? ` — "${esc(adj.note)}"` : ""}
+              </td></tr>
             `).join("")}
             ${(calc.adjustments || []).map((adj) => `
               <tr><td colspan="7" class="extra-line" style="color: ${adj.amount >= 0 ? "#065F46" : "#991B1B"};">
@@ -8551,8 +9060,14 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       `}
       ${extrasTotal > 0 ? `
         <div class="totals-row">
-          <span>Reimbursable Extras (tolls / dump / fuel / etc) — paid 100%</span>
+          <span>Extras copied to pay (tolls / dump / fuel / etc) — paid 100%</span>
           <strong>+${money(extrasTotal)}</strong>
+        </div>
+      ` : ""}
+      ${billingAdjCopiedTotal !== 0 ? `
+        <div class="totals-row" style="color: ${billingAdjCopiedTotal >= 0 ? "#065F46" : "#991B1B"};">
+          <span>Billing adjustments copied to pay — paid 100%</span>
+          <strong>${billingAdjCopiedTotal >= 0 ? "+" : ""}${money(billingAdjCopiedTotal)}</strong>
         </div>
       ` : ""}
       ${adjNonBrokerableTotal !== 0 ? `
@@ -8911,11 +9426,15 @@ const PayStatementModal = ({
           ? (payMethod === "hour" ? Number(fb.paidHours) : payMethod === "ton" ? Number(fb.paidTons) : Number(fb.paidLoads))
           : (payMethod === "hour" ? Number(fb.hoursBilled) : payMethod === "ton" ? Number(fb.tonnage) : Number(fb.loadCount)) || 0;
         const payBase = payRate * payQty;
-        const payExtras = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        // Only extras explicitly copied to pay flow through (not just "reimbursable" on the bill)
+        const payExtras = (fb.extras || []).filter((x) => x.copyToPay === true).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        // Billing adjustments flagged copy-to-pay flow 100% (non-brokerable)
+        const billingAdjToPay = (fb.billingAdjustments || []).filter((x) => x.copyToPay === true).reduce((s, x) => s + (Number(x.amount) || 0), 0);
         const payAdjBrok = (fb.payingAdjustments || []).filter((x) => x.applyBrokerage !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
         const payAdjNon = (fb.payingAdjustments || []).filter((x) => x.applyBrokerage === false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-        const payGross = payBase + payExtras + payAdjBrok + payAdjNon;
-        const payGrossForBrok = payBase + payExtras + payAdjBrok;
+        const payGross = payBase + payExtras + payAdjBrok + payAdjNon + billingAdjToPay;
+        // Brokerage only on base + brokerable adjustments — everything else flows 100%
+        const payGrossForBrok = payBase + payAdjBrok;
 
         // Customer-pay status
         const invoice = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
@@ -8925,7 +9444,8 @@ const PayStatementModal = ({
         return {
           fb, dispatch: d, assignment: a,
           billMethod, billRate, billQty, billBase, billAdj, billTotal: billBase + billAdj,
-          payMethod, payRate, payQty, payBase, payExtras, payAdjBrok, payAdjNon, payGross, payGrossForBrok,
+          payMethod, payRate, payQty, payBase, payExtras, payAdjBrok, payAdjNon, billingAdjToPay,
+          payGross, payGrossForBrok,
           invoice, invoiced, custPaid,
         };
       })
@@ -9245,20 +9765,27 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const adjustmentsSum = adjustmentsBrokerable + adjustmentsNonBrokerable;
 
-    // Reimbursable FB extras are added to net pay (sub fronted the cost, gets paid back IN FULL — no brokerage cut)
+    // FB extras ONLY flow to pay when admin explicitly checked "→ PAY" on that extra.
+    // Default is false — extras stay on the customer bill only.
     const extrasSum = (fb.extras || [])
-      .filter((x) => x.reimbursable !== false)
+      .filter((x) => x.copyToPay === true)
       .reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
+    // Billing adjustments flagged "copy to pay" also flow to pay side, 100%, no brokerage cut
+    const billingAdjCopiedToPay = (fb.billingAdjustments || [])
+      .filter((a) => a.copyToPay === true)
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+
     return {
-      gross: grossBeforeExtras + extrasSum + adjustmentsSum,
+      gross: grossBeforeExtras + extrasSum + adjustmentsSum + billingAdjCopiedToPay,
       // Brokerage applies ONLY to base work + brokerable adjustments
-      // Reimbursable extras pass through at 100% (the sub/driver fronted cash for tolls/dump/fuel)
+      // Reimbursements + copied-from-billing always pass through at 100%
       grossForBrokerage: grossBeforeExtras + adjustmentsBrokerable,
-      // Reimbursements + non-brokerable adjustments bypass brokerage
-      nonBrokerableAdj: adjustmentsNonBrokerable + extrasSum,
+      // Non-brokerable adjustments + copy-to-pay extras + copy-to-pay billing adjustments bypass brokerage
+      nonBrokerableAdj: adjustmentsNonBrokerable + extrasSum + billingAdjCopiedToPay,
       qty, method, rate, assignment, extrasSum, grossBeforeExtras,
       adjustmentsSum, adjustmentsBrokerable, adjustmentsNonBrokerable,
+      billingAdjCopiedToPay,
     };
   };
 
