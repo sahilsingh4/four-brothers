@@ -4928,6 +4928,9 @@ const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [
 // ========== INVOICES TAB ==========
 const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createInvoice, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
+  // Session C: collapse the massive inline builder into a modal. All builder logic stays the same;
+  // we just hide it until the user clicks "New Invoice".
+  const [showNewInvoice, setShowNewInvoice] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [clientFilter, setClientFilter] = useState("");
@@ -5457,11 +5460,28 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
         </button>
       </div>
 
-      {/* Builder */}
-      <div className="fbt-card" style={{ padding: 24 }}>
+      {/* NEW INVOICE launcher bar (session C: replaces the always-visible builder with a modal) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>INVOICES</h3>
+        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+          · {invoices.length} TOTAL · {invoices.filter((i) => (i.amountPaid || 0) > 0 && (i.amountPaid || 0) < (i.total || 0)).length} PARTIAL · {invoices.filter((i) => (i.amountPaid || 0) >= (i.total || 0) && (i.total || 0) > 0).length} PAID
+        </span>
+        <button onClick={() => setShowNewInvoice(true)} className="btn-primary" style={{ marginLeft: "auto" }}>
+          <Plus size={14} style={{ marginRight: 6 }} /> NEW INVOICE
+        </button>
+      </div>
+
+      {/* Builder — hidden by default, opens as a modal when user clicks NEW INVOICE */}
+      {showNewInvoice && (
+      <div className="modal-bg" onClick={() => setShowNewInvoice(false)}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040, maxHeight: "95vh", overflowY: "auto" }}>
+      <div className="fbt-card" style={{ padding: 24, margin: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <div style={{ width: 8, height: 24, background: "var(--hazard)" }} />
           <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>NEW INVOICE</h3>
+          <button onClick={() => setShowNewInvoice(false)} className="btn-ghost" style={{ marginLeft: "auto", padding: "6px 12px", fontSize: 12 }}>
+            <X size={14} style={{ marginRight: 4 }} /> CLOSE
+          </button>
         </div>
 
         {/* Filters */}
@@ -5898,6 +5918,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                 if (!rate || Number(rate) <= 0) { onToast("ENTER A RATE FIRST"); return; }
                 if (!billTo.name) { onToast("SELECT CUSTOMER OR BILL-TO NAME"); return; }
                 generate();
+                setShowNewInvoice(false);
               }}
               className="btn-primary"
             >
@@ -5906,6 +5927,9 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           </div>
         </div>
       </div>
+      </div>
+      </div>
+      )}
 
       {/* Invoice payment stats */}
       {invoices.length > 0 && (() => {
