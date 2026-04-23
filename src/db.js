@@ -127,6 +127,8 @@ const fbFromDB = (row) => ({
   minHoursApplied: !!row.min_hours_applied,
   minHoursApprovedBy: row.min_hours_approved_by || "",
   minHoursApprovedAt: row.min_hours_approved_at || null,
+  customerRate: row.customer_rate !== null && row.customer_rate !== undefined ? Number(row.customer_rate) : null,
+  customerRateMethod: row.customer_rate_method || null,
 });
 
 const fbToDB = (fb) => ({
@@ -163,6 +165,8 @@ const fbToDB = (fb) => ({
   min_hours_applied: !!fb.minHoursApplied,
   min_hours_approved_by: fb.minHoursApprovedBy || null,
   min_hours_approved_at: fb.minHoursApprovedAt || null,
+  customer_rate: fb.customerRate !== null && fb.customerRate !== undefined && fb.customerRate !== "" ? Number(fb.customerRate) : null,
+  customer_rate_method: fb.customerRateMethod || null,
 });
 
 export const fetchFreightBills = async () => {

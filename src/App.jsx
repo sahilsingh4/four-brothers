@@ -4582,14 +4582,22 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
       if (fromDate && fbDate < fromDate) return false;
       if (toDate && fbDate > toDate) return false;
+
+      const disp = dispatches.find((d) => d.id === fb.dispatchId);
+
+      // Customer filter — match by customer contact id on the dispatch
       if (clientFilter) {
-        const disp = dispatches.find((d) => d.id === fb.dispatchId);
-        const hay = `${disp?.subContractor || ""} ${disp?.jobName || ""} ${disp?.clientName || ""}`.toLowerCase();
-        if (!hay.includes(clientFilter.toLowerCase())) return false;
+        if (String(disp?.clientId) !== String(clientFilter)) return false;
       }
+
+      // Project filter — match by project id on the dispatch
+      if (projectId) {
+        if (String(disp?.projectId) !== String(projectId)) return false;
+      }
+
       return true;
     });
-  }, [freightBills, dispatches, fromDate, toDate, clientFilter, includeUnapproved, showAlreadyInvoiced]);
+  }, [freightBills, dispatches, fromDate, toDate, clientFilter, projectId, includeUnapproved, showAlreadyInvoiced]);
 
   // When matchedBills change, auto-populate hoursOverride from fb.hoursBilled (if empty)
   useEffect(() => {
@@ -4654,26 +4662,30 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
 
   // Auto-recall rate from source orders / project
   const suggestedRateInfo = useMemo(() => {
-    const orderIds = [...new Set(matchedBills.map((fb) => fb.dispatchId))];
-    const sources = orderIds
-      .map((id) => {
-        const d = dispatches.find((x) => x.id === id);
-        if (!d) return null;
-        const project = projects.find((p) => p.id === d.projectId);
-        // Prefer project default_rate, fall back to order's rate for the current pricing method
-        const projRate = project?.defaultRate ? Number(project.defaultRate) : null;
-        const orderRate = pricingMethod === "hour" ? d.ratePerHour : d.ratePerTon;
-        return {
-          orderCode: d.code,
-          rate: projRate || (orderRate ? Number(orderRate) : null),
-          source: projRate ? `Project default` : `Order #${d.code}`,
-        };
-      })
-      .filter((x) => x && x.rate);
-    if (sources.length === 0) return { rates: [], suggested: null, mixed: false };
-    const uniqueRates = [...new Set(sources.map((s) => s.rate))];
+    // Collect rates in priority: FB.customerRate > project.defaultRate > order.ratePerHour/ratePerTon
+    const perFbRates = matchedBills.map((fb) => {
+      // 1. Per-FB snapshot (set after last invoice)
+      if (fb.customerRate && fb.customerRateMethod === pricingMethod) {
+        return { rate: Number(fb.customerRate), source: `Previous invoice snapshot`, fbNum: fb.freightBillNumber };
+      }
+      // 2. Project default
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const project = projects.find((p) => p.id === d?.projectId);
+      if (project?.defaultRate) {
+        return { rate: Number(project.defaultRate), source: `Project "${project.name}"`, fbNum: fb.freightBillNumber };
+      }
+      // 3. Order rate
+      const orderRate = pricingMethod === "hour" ? d?.ratePerHour : d?.ratePerTon;
+      if (orderRate) {
+        return { rate: Number(orderRate), source: `Order #${d.code}`, fbNum: fb.freightBillNumber };
+      }
+      return null;
+    }).filter(Boolean);
+
+    if (perFbRates.length === 0) return { rates: [], suggested: null, mixed: false };
+    const uniqueRates = [...new Set(perFbRates.map((s) => s.rate))];
     return {
-      rates: sources,
+      rates: perFbRates,
       suggested: uniqueRates.length === 1 ? uniqueRates[0] : null,
       mixed: uniqueRates.length > 1,
       uniqueRates,
@@ -4686,6 +4698,27 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       setRate(String(suggestedRateInfo.suggested));
     }
   }, [suggestedRateInfo.suggested]);
+
+  // Auto-detect pricing method from the matched FBs: if most have tonnage, default to ton; else hour
+  useEffect(() => {
+    if (matchedBills.length === 0) return;
+    // Only auto-set once (while user hasn't changed it)
+    const withTon = matchedBills.filter((fb) => Number(fb.tonnage) > 0).length;
+    const withHours = matchedBills.filter((fb) => billableHoursForInvoice(fb) > 0).length;
+    // Prefer the method used in most FBs' source orders
+    const methodFromOrders = new Map();
+    matchedBills.forEach((fb) => {
+      if (fb.customerRateMethod) methodFromOrders.set(fb.customerRateMethod, (methodFromOrders.get(fb.customerRateMethod) || 0) + 1);
+    });
+    if (methodFromOrders.size === 1) {
+      const [m] = methodFromOrders.keys();
+      setPricingMethod(m);
+    } else if (withHours > withTon) {
+      setPricingMethod("hour");
+    } else if (withTon > 0) {
+      setPricingMethod("ton");
+    }
+  }, [matchedBills.length]);
 
   const makeInvoiceNumber = () => {
     const year = new Date().getFullYear();
@@ -4745,18 +4778,49 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       await setInvoices(next);
 
       // Find the newly saved invoice (real id from Supabase) and lock FBs to it
-      // Wait briefly for realtime sub to give us the saved invoice, then match by number
+      // Also flow back the rate + hours as the FB's authoritative snapshot (for payroll + future invoices)
       setTimeout(async () => {
         const saved = invoices.find((x) => x.invoiceNumber === invoiceNumber);
         const realId = saved?.id;
         if (realId && editFreightBill && matchedBills.length > 0) {
+          let hoursChanged = 0;
+          let rateChanged = 0;
           for (const fb of matchedBills) {
-            if (!fb.invoiceId) {
-              try { await editFreightBill(fb.id, { ...fb, invoiceId: realId }); }
-              catch (e) { console.warn("Could not tag FB with invoice", fb.id, e); }
+            const patch = { ...fb };
+            // Lock to invoice
+            if (!fb.invoiceId) patch.invoiceId = realId;
+
+            // Flow-back: stamp per-FB customer rate snapshot
+            const newRate = Number(rate);
+            if (newRate > 0 && (Number(fb.customerRate) !== newRate || fb.customerRateMethod !== pricingMethod)) {
+              patch.customerRate = newRate;
+              patch.customerRateMethod = pricingMethod;
+              rateChanged++;
+            }
+
+            // Flow-back: if admin edited hours (for hour-based invoices), save back to fb.hoursBilled
+            if (pricingMethod === "hour") {
+              const manual = hoursOverride[fb.id];
+              if (manual !== undefined && manual !== "") {
+                const newHours = Number(manual);
+                const oldHours = Number(fb.hoursBilled) || 0;
+                if (Math.abs(newHours - oldHours) > 0.001) {
+                  patch.hoursBilled = newHours;
+                  hoursChanged++;
+                }
+              }
+            }
+
+            try {
+              await editFreightBill(fb.id, patch);
+            } catch (e) {
+              console.warn("Could not update FB", fb.id, e);
             }
           }
-          onToast(`✓ ${matchedBills.length} FB${matchedBills.length !== 1 ? "S" : ""} LOCKED TO ${invoiceNumber}`);
+          const msgs = [`✓ ${matchedBills.length} FB${matchedBills.length !== 1 ? "S" : ""} LOCKED TO ${invoiceNumber}`];
+          if (rateChanged > 0) msgs.push(`${rateChanged} RATE${rateChanged !== 1 ? "S" : ""} UPDATED`);
+          if (hoursChanged > 0) msgs.push(`${hoursChanged} HOURS UPDATED → PAYROLL`);
+          onToast(msgs.join(" · "));
         }
       }, 800);
 
@@ -4841,11 +4905,56 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         </div>
 
         {/* Filters */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 01 / SELECT FREIGHT BILLS</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 01 / SELECT FREIGHT BILLS — PICK CUSTOMER + DATE RANGE (ALL FB FIELDS AUTO-PULL)</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 18 }}>
           <div><label className="fbt-label">From Date</label><input className="fbt-input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} /></div>
           <div><label className="fbt-label">To Date</label><input className="fbt-input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} /></div>
-          <div><label className="fbt-label">Client / Sub / Job Contains</label><input className="fbt-input" value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} placeholder="e.g. MCI" /></div>
+          <div>
+            <label className="fbt-label">Customer</label>
+            <select
+              className="fbt-select"
+              value={clientFilter || ""}
+              onChange={(e) => {
+                const id = e.target.value;
+                setClientFilter(id);
+                // Auto-fill Bill-To from selected customer
+                if (id) {
+                  const c = contacts.find((x) => String(x.id) === id);
+                  if (c) {
+                    setBillTo({
+                      id: c.id,
+                      name: c.companyName || c.contactName || "",
+                      address: c.address || "",
+                      contact: c.contactName || "",
+                    });
+                  }
+                } else {
+                  setBillTo({ id: "", name: "", address: "", contact: "" });
+                }
+                // Reset project when customer changes
+                setProjectId("");
+              }}
+            >
+              <option value="">— All customers —</option>
+              {contacts.filter((c) => c.type === "customer").map((c) => (
+                <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="fbt-label">Project {clientFilter ? "(optional)" : "(pick customer first)"}</label>
+            <select
+              className="fbt-select"
+              value={projectId || ""}
+              onChange={(e) => setProjectId(e.target.value)}
+              disabled={!clientFilter}
+            >
+              <option value="">— All projects —</option>
+              {projects.filter((p) => !clientFilter || String(p.customerId) === String(clientFilter)).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}{p.defaultRate ? ` · $${p.defaultRate}/hr` : ""}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Approval filter */}
