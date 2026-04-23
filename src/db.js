@@ -32,6 +32,10 @@ const dispatchFromDB = (row) => ({
   noShowCount: row.no_show_count || 0,
   reconciledAt: row.reconciled_at || null,
   reconciledBy: row.reconciled_by || null,
+  // v17 soft-delete metadata
+  deletedAt: row.deleted_at || null,
+  deletedBy: row.deleted_by || null,
+  deleteReason: row.delete_reason || null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -65,8 +69,23 @@ const dispatchToDB = (d) => ({
 });
 
 export const fetchDispatches = async () => {
-  const { data, error } = await supabase.from("dispatches").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("dispatches")
+    .select("*")
+    .is("deleted_at", null)          // v17: exclude soft-deleted
+    .order("created_at", { ascending: false });
   if (error) { console.error("fetchDispatches:", error); return []; }
+  return (data || []).map(dispatchFromDB);
+};
+
+// v17: fetch soft-deleted dispatches for Recovery view (last 30 days only, auto-purge handled elsewhere)
+export const fetchDeletedDispatches = async () => {
+  const { data, error } = await supabase
+    .from("dispatches")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) { console.error("fetchDeletedDispatches:", error); return []; }
   return (data || []).map(dispatchFromDB);
 };
 
@@ -87,9 +106,32 @@ export const updateDispatch = async (id, patch) => {
   return dispatchFromDB(data);
 };
 
-export const deleteDispatch = async (id) => {
+// v17: SOFT delete — marks deleted_at + deleted_by + delete_reason. Recoverable for 30 days.
+export const deleteDispatch = async (id, { deletedBy = "admin", reason = "" } = {}) => {
+  const { error } = await supabase
+    .from("dispatches")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: deletedBy,
+      delete_reason: reason || null,
+    })
+    .eq("id", id);
+  if (error) { console.error("deleteDispatch (soft):", error); throw error; }
+};
+
+// v17: RECOVER — un-soft-deletes a dispatch
+export const recoverDispatch = async (id) => {
+  const { error } = await supabase
+    .from("dispatches")
+    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
+    .eq("id", id);
+  if (error) { console.error("recoverDispatch:", error); throw error; }
+};
+
+// v17: HARD delete — actually removes row. Use sparingly (admin override or auto-purge).
+export const hardDeleteDispatch = async (id) => {
   const { error } = await supabase.from("dispatches").delete().eq("id", id);
-  if (error) { console.error("deleteDispatch:", error); throw error; }
+  if (error) { console.error("hardDeleteDispatch:", error); throw error; }
 };
 
 // ========== FREIGHT BILLS ==========
@@ -150,6 +192,10 @@ const fbFromDB = (row) => ({
   // Unified line-item structure (v16) — replaces snapshot + extras + adjustments as the master data
   billingLines: Array.isArray(row.billing_lines) ? row.billing_lines : (row.billing_lines || []),
   payingLines: Array.isArray(row.paying_lines) ? row.paying_lines : (row.paying_lines || []),
+  // v17 soft-delete metadata
+  deletedAt: row.deleted_at || null,
+  deletedBy: row.deleted_by || null,
+  deleteReason: row.delete_reason || null,
 });
 
 const fbToDB = (fb) => ({
@@ -210,8 +256,23 @@ const fbToDB = (fb) => ({
 });
 
 export const fetchFreightBills = async () => {
-  const { data, error } = await supabase.from("freight_bills").select("*").order("submitted_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("freight_bills")
+    .select("*")
+    .is("deleted_at", null)          // v17: exclude soft-deleted
+    .order("submitted_at", { ascending: false });
   if (error) { console.error("fetchFreightBills:", error); return []; }
+  return (data || []).map(fbFromDB);
+};
+
+// v17: soft-deleted freight bills for Recovery view
+export const fetchDeletedFreightBills = async () => {
+  const { data, error } = await supabase
+    .from("freight_bills")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) { console.error("fetchDeletedFreightBills:", error); return []; }
   return (data || []).map(fbFromDB);
 };
 
@@ -232,9 +293,30 @@ export const updateFreightBill = async (id, patch) => {
   return fbFromDB(data);
 };
 
-export const deleteFreightBill = async (id) => {
+// v17: SOFT delete
+export const deleteFreightBill = async (id, { deletedBy = "admin", reason = "" } = {}) => {
+  const { error } = await supabase
+    .from("freight_bills")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: deletedBy,
+      delete_reason: reason || null,
+    })
+    .eq("id", id);
+  if (error) { console.error("deleteFreightBill (soft):", error); throw error; }
+};
+
+export const recoverFreightBill = async (id) => {
+  const { error } = await supabase
+    .from("freight_bills")
+    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
+    .eq("id", id);
+  if (error) { console.error("recoverFreightBill:", error); throw error; }
+};
+
+export const hardDeleteFreightBill = async (id) => {
   const { error } = await supabase.from("freight_bills").delete().eq("id", id);
-  if (error) { console.error("deleteFreightBill:", error); throw error; }
+  if (error) { console.error("hardDeleteFreightBill:", error); throw error; }
 };
 
 // ========== CONTACTS ==========
@@ -461,6 +543,10 @@ const invoiceFromDB = (row) => ({
   paymentHistory: row.payment_history || [],
   paymentStatus: row.payment_status || "outstanding",
   statusOverride: row.status_override || null,
+  // v17 soft-delete metadata
+  deletedAt: row.deleted_at || null,
+  deletedBy: row.deleted_by || null,
+  deleteReason: row.delete_reason || null,
 });
 
 const invoiceToDB = (i) => ({
@@ -503,8 +589,23 @@ export const updateInvoice = async (id, patch) => {
 };
 
 export const fetchInvoices = async () => {
-  const { data, error } = await supabase.from("invoices").select("*").order("invoice_date", { ascending: false });
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("*")
+    .is("deleted_at", null)          // v17: exclude soft-deleted
+    .order("invoice_date", { ascending: false });
   if (error) { console.error("fetchInvoices:", error); return []; }
+  return (data || []).map(invoiceFromDB);
+};
+
+// v17: soft-deleted invoices for Recovery view
+export const fetchDeletedInvoices = async () => {
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) { console.error("fetchDeletedInvoices:", error); return []; }
   return (data || []).map(invoiceFromDB);
 };
 
@@ -514,9 +615,69 @@ export const insertInvoice = async (i) => {
   return invoiceFromDB(data);
 };
 
-export const deleteInvoice = async (id) => {
+// v17: SOFT delete
+export const deleteInvoice = async (id, { deletedBy = "admin", reason = "" } = {}) => {
+  const { error } = await supabase
+    .from("invoices")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: deletedBy,
+      delete_reason: reason || null,
+    })
+    .eq("id", id);
+  if (error) { console.error("deleteInvoice (soft):", error); throw error; }
+};
+
+export const recoverInvoice = async (id) => {
+  const { error } = await supabase
+    .from("invoices")
+    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
+    .eq("id", id);
+  if (error) { console.error("recoverInvoice:", error); throw error; }
+};
+
+export const hardDeleteInvoice = async (id) => {
   const { error } = await supabase.from("invoices").delete().eq("id", id);
-  if (error) { console.error("deleteInvoice:", error); throw error; }
+  if (error) { console.error("hardDeleteInvoice:", error); throw error; }
+};
+
+// v17: AUTO-PURGE — hard-delete any row soft-deleted more than 30 days ago.
+// Call this periodically (e.g., on app load or nightly cron) to keep the tables clean.
+export const autoPurgeDeleted = async (daysOld = 30) => {
+  const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
+  const results = { dispatches: 0, freightBills: 0, invoices: 0, errors: [] };
+
+  try {
+    const { error, count } = await supabase
+      .from("dispatches")
+      .delete({ count: "exact" })
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+    if (error) results.errors.push({ table: "dispatches", error: error.message });
+    else results.dispatches = count || 0;
+  } catch (e) { results.errors.push({ table: "dispatches", error: String(e) }); }
+
+  try {
+    const { error, count } = await supabase
+      .from("freight_bills")
+      .delete({ count: "exact" })
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+    if (error) results.errors.push({ table: "freight_bills", error: error.message });
+    else results.freightBills = count || 0;
+  } catch (e) { results.errors.push({ table: "freight_bills", error: String(e) }); }
+
+  try {
+    const { error, count } = await supabase
+      .from("invoices")
+      .delete({ count: "exact" })
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+    if (error) results.errors.push({ table: "invoices", error: error.message });
+    else results.invoices = count || 0;
+  } catch (e) { results.errors.push({ table: "invoices", error: String(e) }); }
+
+  return results;
 };
 
 // ========== PROJECTS ==========
