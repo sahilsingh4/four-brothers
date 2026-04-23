@@ -7042,6 +7042,26 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     return (mins / 60).toFixed(2);
   }, [draft.pickupTime, draft.dropoffTime]);
 
+  // Auto-fill billed + paid HOURS whenever pickup/dropoff changes — but only
+  // for hour-based methods, and only if the field is currently empty (don't overwrite admin edits).
+  // Skips if snapshot is locked to preserve historical values.
+  useEffect(() => {
+    if (!autoHours) return;
+    setDraft((d) => {
+      const next = { ...d };
+      let changed = false;
+      if (d.billedMethod === "hour" && (d.billedHours === "" || d.billedHours == null) && !billingSnapshotLocked) {
+        next.billedHours = autoHours;
+        changed = true;
+      }
+      if (d.paidMethodSnapshot === "hour" && (d.paidHours === "" || d.paidHours == null) && !paySnapshotLocked) {
+        next.paidHours = autoHours;
+        changed = true;
+      }
+      return changed ? next : d;
+    });
+  }, [autoHours, billingSnapshotLocked, paySnapshotLocked]);
+
   const save = async (andApprove = false) => {
     setSaving(true);
     try {
@@ -7520,12 +7540,11 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   )}
                 </div>
 
-                {/* Billing adjustments list + add form — available after FB approval */}
-                {fb.status === "approved" && (
-                  <div style={{ marginTop: 10, borderTop: "1px dashed #0EA5E9", paddingTop: 10 }}>
-                    <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                      ▸ BILLING ADJUSTMENTS ({(fb.billingAdjustments || []).length})
-                    </div>
+                {/* Billing adjustments list + add form — always visible */}
+                <div style={{ marginTop: 10, borderTop: "1px dashed #0EA5E9", paddingTop: 10 }}>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                    ▸ BILLING ADJUSTMENTS ({(fb.billingAdjustments || []).length})
+                  </div>
                     {(fb.billingAdjustments || []).map((adj) => (
                       <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #BAE6FD", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -7618,7 +7637,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       )}
                     </div>
                   </div>
-                )}
               </div>
 
               {/* ─── PAY SIDE ─── */}
@@ -7705,12 +7723,11 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   )}
                 </div>
 
-                {/* Pay adjustments list + add form — available after FB approval */}
-                {fb.status === "approved" && (
-                  <div style={{ marginTop: 10, borderTop: "1px dashed var(--good)", paddingTop: 10 }}>
-                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                      ▸ PAY ADJUSTMENTS ({(fb.payingAdjustments || []).length})
-                    </div>
+                {/* Pay adjustments list + add form — always visible */}
+                <div style={{ marginTop: 10, borderTop: "1px dashed var(--good)", paddingTop: 10 }}>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                    ▸ PAY ADJUSTMENTS ({(fb.payingAdjustments || []).length})
+                  </div>
                     {(fb.payingAdjustments || []).map((adj) => (
                       <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #86EFAC", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -7818,7 +7835,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       </div>
                     </div>
                   </div>
-                )}
               </div>
             </div>
             <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
