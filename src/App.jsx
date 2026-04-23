@@ -4145,102 +4145,125 @@ const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
 // Opens a styled print window — user hits Print and saves as PDF from browser dialog.
 // Works on mobile (Safari/Chrome both support "Save as PDF" in print dialog).
 const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
+  // v18 Task B: clean invoice layout matching the actual 4 Brothers printed invoice.
+  // Sparse table · FB headers with sub-rows for tolls/dump/etc · left-aligned Bill To ·
+  // centered circular logo · boxed total · customizable terms footer.
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+  const fmtQty = (n) => Number(n || 0).toFixed(2);
   const rate = Number(pricing.rate) || 0;
 
-  // v16: render per-FB line items. Each FB gets a header row + one row per billing line.
-  // Legacy FBs (without billingLines) render a single row using the invoice-level rate.
-  const rowsHtml = freightBills.map((fb, idx) => {
-    const fbDate = fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+  const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
+  const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
+
+  // Inline SVG logo — circular mark with "4 BROTHERS" banner, "4B" in center.
+  // Monochrome to print cleanly on any black-and-white printer.
+  const logoSvg = `<svg viewBox="0 0 120 120" width="88" height="88" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="56" fill="#FFF" stroke="#1C1917" stroke-width="3"/>
+    <circle cx="60" cy="60" r="48" fill="none" stroke="#1C1917" stroke-width="1"/>
+    <!-- banner -->
+    <path d="M 10 56 L 110 56 L 110 74 L 10 74 Z" fill="#1C1917"/>
+    <path d="M 2 58 L 10 56 L 10 74 L 2 76 Z" fill="#1C1917"/>
+    <path d="M 118 58 L 110 56 L 110 74 L 118 76 Z" fill="#1C1917"/>
+    <!-- banner text -->
+    <text x="60" y="69" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="10" font-weight="900" fill="#FFF" letter-spacing="0.5">4 BROTHERS</text>
+    <!-- 4B center -->
+    <text x="60" y="38" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="22" font-weight="900" fill="#1C1917" letter-spacing="-1">4B</text>
+    <!-- decorative line top -->
+    <path d="M 22 44 Q 60 32 98 44" fill="none" stroke="#1C1917" stroke-width="1.2"/>
+    <!-- base text -->
+    <text x="60" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#1C1917" letter-spacing="1">TRUCKING, LLC</text>
+  </svg>`;
+
+  // Per-FB rows: "main row" has date + FB# + truck + first-line description, qty, rate, amount.
+  // Sub-rows have blank date/FB#/truck and just description/qty/rate/amount — matches sample.
+  const rowsHtml = freightBills.map((fb) => {
+    const fbDate = fb.submittedAt ? fmtFullDate(fb.submittedAt) : "";
     const hasLines = Array.isArray(fb.billingLines) && fb.billingLines.length > 0;
 
     if (hasLines) {
-      // Header row summarizing the FB
-      const fbLineHtml = `
-        <tr class="fb-header"${idx % 2 === 0 ? " data-alt='1'" : ""}>
-          <td><strong>FB #${esc(fb.freightBillNumber || "—")}</strong></td>
-          <td>${esc(fbDate)}</td>
-          <td>${esc(fb.truckNumber || "")}</td>
-          <td colspan="5">${esc(fb.driverName || "")}</td>
-        </tr>
-      `;
-      // One row per billing line
-      const lineRows = fb.billingLines.map((ln) => {
-        const unit = ln.code === "H" ? "hrs" : ln.code === "T" ? "tons" : ln.code === "L" ? "loads" : "ea";
-        const isBrok = ln.brokerable && Number(ln.brokeragePct) > 0;
-        const adjBadge = ln.isAdjustment ? ' <span style="color:#B45309;font-size:8pt;">(adj)</span>' : '';
-        const brokBadge = isBrok ? ` <span style="color:#B45309;font-size:8pt;">(Br ${ln.brokeragePct}%)</span>` : '';
-        return `
-          <tr class="fb-line">
-            <td colspan="3"></td>
-            <td style="padding-left:18px;">${esc(ln.item || ln.code || "")}${adjBadge}${brokBadge}</td>
-            <td class="r">${(Number(ln.qty) || 0).toFixed(2)}</td>
-            <td>${unit}</td>
-            <td class="r">${money(Number(ln.rate) || 0)}</td>
-            <td class="r"><strong>${money(Number(ln.net) || 0)}</strong></td>
-          </tr>
-        `;
+      return fb.billingLines.map((ln, lnIdx) => {
+        const isFirst = lnIdx === 0;
+        const unit = ln.code === "H" ? "" : ""; // sample doesn't show units — they're baked into description
+        // Description — if HOURLY show "HOURLY", if LOAD show "LOAD", if TOLL show "TOLL EMPTY" or "TOLL LOADED" etc.
+        const desc = (ln.item || ln.code || "").toUpperCase();
+        const qty = Number(ln.qty) || 0;
+        const rate = Number(ln.rate) || 0;
+        const amt = Number(ln.net) || 0;
+        return `<tr class="line ${isFirst ? 'line-first' : 'line-sub'}">
+          <td>${isFirst ? esc(fbDate) : ''}</td>
+          <td>${isFirst ? esc(fb.freightBillNumber || '—') : ''}</td>
+          <td>${isFirst ? esc(fb.truckNumber || '') : ''}</td>
+          <td>${esc(desc)}</td>
+          <td class="r">${fmtQty(qty)}</td>
+          <td class="r">${money(rate)}</td>
+          <td class="r">${money(amt)}</td>
+        </tr>`;
       }).join("");
-      // FB subtotal
-      const fbSubtotal = fb.billingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
-      const fbSubtotalRow = fb.billingLines.length > 1 ? `
-        <tr class="fb-subtotal">
-          <td colspan="7" class="r" style="font-size:9pt;color:#44403C;">FB#${esc(fb.freightBillNumber || "—")} SUBTOTAL</td>
-          <td class="r" style="font-weight:700;border-top:1px solid #1C1917;">${money(fbSubtotal)}</td>
-        </tr>
-      ` : "";
-      return fbLineHtml + lineRows + fbSubtotalRow;
     }
 
-    // LEGACY PATH — pre-v16 FB, render as single row using invoice rate/method
-    let qty = 0, unitLabel = "";
-    if (pricing.method === "ton") { qty = Number(fb.tonnage) || 0; unitLabel = "tons"; }
-    else if (pricing.method === "load") { qty = Number(fb.loadCount) || 1; unitLabel = "loads"; }
-    else if (pricing.method === "hour") { qty = Number(fb.hoursOverride || 0); unitLabel = "hrs"; }
-    const amount = qty * rate;
-    return `<tr${idx % 2 === 0 ? " class='alt'" : ""}>
-      <td>${esc(fb.freightBillNumber || "—")}</td>
+    // LEGACY FB — no billingLines. Render a single row using the invoice's global rate/method.
+    let qty = 0;
+    if (pricing.method === "ton") qty = Number(fb.tonnage) || 0;
+    else if (pricing.method === "load") qty = Number(fb.loadCount) || 1;
+    else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
+    const desc = pricing.method === "ton" ? "TONS" : pricing.method === "load" ? "LOAD" : "HOURLY";
+    const amt = qty * rate;
+    return `<tr class="line line-first">
       <td>${esc(fbDate)}</td>
-      <td>${esc(fb.truckNumber || "")}</td>
-      <td>${esc(fb.driverName || "")}</td>
-      <td class="r">${qty.toFixed(2)}</td>
-      <td>${esc(unitLabel)}</td>
+      <td>${esc(fb.freightBillNumber || '—')}</td>
+      <td>${esc(fb.truckNumber || '')}</td>
+      <td>${desc}</td>
+      <td class="r">${fmtQty(qty)}</td>
       <td class="r">${money(rate)}</td>
-      <td class="r"><strong>${money(amount)}</strong></td>
+      <td class="r">${money(amt)}</td>
     </tr>`;
   }).join("");
 
+  // Subtotal = sum of all billingLines net, or legacy calc
   const subtotal = freightBills.reduce((s, fb) => {
-    // v16: sum from billingLines
     if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) {
       return s + fb.billingLines.reduce((ss, ln) => ss + (Number(ln.net) || 0), 0);
     }
-    // LEGACY
     let qty = 0;
     if (pricing.method === "ton") qty = Number(fb.tonnage) || 0;
     else if (pricing.method === "load") qty = Number(fb.loadCount) || 1;
     else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
     return s + qty * rate;
   }, 0);
-  // Legacy FB extras — only sum for FBs WITHOUT billingLines (new FBs include extras as lines)
+
+  // Invoice-level extras, fees, discount (rendered as extra table rows under the FBs)
+  const extraFees = Number(invoice.extraFees) || 0;
+  const invoiceExtras = (invoice.extras || []).filter((x) => x.label || Number(x.amount));
+  const invoiceExtrasSum = invoiceExtras.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  const discount = Number(invoice.discount) || 0;
+  // Legacy-only: FB-level extras that haven't been converted to lines (pre-v16 FBs)
   const fbExtrasSum = freightBills.reduce((s, fb) => {
-    if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) return s; // already in lines
+    if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) return s;
     return s + (fb.extras || [])
       .filter((x) => x.reimbursable !== false)
       .reduce((ss, x) => ss + (Number(x.amount) || 0), 0);
   }, 0);
-  const extraFees = Number(invoice.extraFees) || 0;
-  const invoiceExtrasSum = (invoice.extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const discount = Number(invoice.discount) || 0;
   const total = subtotal + fbExtrasSum + extraFees + invoiceExtrasSum - discount;
 
+  // Extra invoice-level rows (tolls/dump/fuel/other added at invoice time)
+  const invoiceExtrasRows = invoiceExtras.map((x) => `
+    <tr class="line line-first">
+      <td></td><td></td><td></td>
+      <td>${esc((x.label || "").toUpperCase())}</td>
+      <td class="r">1.00</td>
+      <td class="r">${money(x.amount)}</td>
+      <td class="r">${money(x.amount)}</td>
+    </tr>
+  `).join("");
+
+  // Optional scale ticket photos at the end
   const photos = invoice.includePhotos
     ? freightBills.flatMap((fb) => (fb.photos || []).map((p) => ({ ...p, fbNum: fb.freightBillNumber })))
     : [];
   const photosHtml = photos.length
     ? `<div class="photos">
-        <h2>ATTACHED SCALE TICKETS / FREIGHT BILLS</h2>
+        <h3 style="text-align:center;font-size:11pt;margin:30px 0 12px;letter-spacing:0.1em;">ATTACHED SCALE TICKETS / FREIGHT BILLS</h3>
         <div class="photo-grid">
           ${photos.map((p) => `<div class="photo-item">
             <img src="${p.dataUrl}" alt="scale ticket" />
@@ -4250,137 +4273,172 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
       </div>`
     : "";
 
+  // Footer terms — from invoice.terms (per-invoice override) or company.defaultTerms
+  const footerTerms = invoice.terms || company.defaultTerms || "Net 30 Days. Unpaid balance is subject to 1 1/2% service charge per month and any and all cost of collections.";
+
+  // Company header info (left column)
+  const companyAddr = company.address ? company.address.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const companyLines = [
+    company.name || "4 BROTHERS TRUCKING, LLC",
+    ...companyAddr,
+    company.phone ? `Office: ${company.phone}` : "",
+    company.email || "",
+  ].filter(Boolean);
+
   const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${esc(invoice.invoiceNumber)} — ${esc(invoice.billToName || "Invoice")}</title>
+<html><head><meta charset="utf-8"><title>Invoice ${esc(invoice.invoiceNumber)} — ${esc(invoice.billToName || "")}</title>
 <style>
-  @page { margin: 0.4in; size: letter; }
+  @page { margin: 0.5in; size: letter; }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 20px; font-family: -apple-system, Arial, sans-serif; color: #1C1917; font-size: 11pt; }
-  .hazard-top { height: 8px; background: #F59E0B; margin: -20px -20px 0; }
-  .steel-top { height: 2px; background: #1C1917; margin: 0 -20px 24px; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 28px; }
-  .company { display: flex; gap: 14px; align-items: flex-start; flex: 1; }
-  .logo { width: 64px; height: 64px; object-fit: contain; border: 2px solid #1C1917; background: #FFF; }
-  .company-info { flex: 1; }
-  .company-name { font-size: 18pt; font-weight: 900; letter-spacing: -0.02em; margin: 0 0 4px; }
-  .company-meta { font-size: 9pt; color: #44403C; line-height: 1.5; }
-  .invoice-box { background: #1C1917; color: #FFF; padding: 14px 18px; min-width: 180px; }
-  .invoice-box h1 { color: #F59E0B; font-size: 22pt; letter-spacing: -0.02em; margin: 0 0 6px; font-weight: 900; }
-  .invoice-box div { font-family: Menlo, Consolas, monospace; font-size: 10pt; line-height: 1.6; }
-  .bill-to { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 14px 16px; border: 2px solid #1C1917; background: #FAFAF9; margin-bottom: 24px; }
-  .bill-to h3 { font-size: 8pt; color: #44403C; letter-spacing: 0.12em; margin: 0 0 6px; font-weight: 700; }
-  .bill-to .name { font-size: 12pt; font-weight: 700; margin-bottom: 4px; }
-  .bill-to .info { font-size: 10pt; color: #44403C; line-height: 1.5; }
-  table.items { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-  table.items thead th { background: #1C1917; color: #F59E0B; text-align: left; padding: 8px 10px; font-size: 8pt; letter-spacing: 0.08em; font-weight: 700; }
-  table.items thead th.r, table.items td.r { text-align: right; }
-  table.items td { padding: 8px 10px; font-size: 10pt; border-bottom: 1px solid #E7E5E4; }
-  table.items tr.alt td { background: #FAFAF9; }
-  table.items tr.fb-header td { background: #1C1917; color: #FAFAF9; padding-top: 10px; padding-bottom: 6px; border-bottom: none; }
-  table.items tr.fb-header td strong { color: #F59E0B; font-size: 10pt; }
-  table.items tr.fb-line td { padding: 5px 10px; font-size: 9.5pt; background: #FAFAF9; border-bottom: 1px dotted #D6D3D1; }
-  table.items tr.fb-subtotal td { padding: 6px 10px; background: #F5F5F4; border-bottom: 2px solid #1C1917; }
-  .totals { margin-left: auto; width: 50%; }
-  .totals tr td { padding: 6px 10px; font-size: 10pt; }
-  .totals tr td.label { text-align: right; color: #44403C; }
-  .totals tr td.val { text-align: right; font-weight: 700; min-width: 110px; }
-  .totals tr.total { background: #F59E0B; }
-  .totals tr.total td { font-weight: 900; font-size: 13pt; padding: 10px; }
-  .notes-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
-  .notes-wrap h4 { font-size: 8pt; color: #44403C; letter-spacing: 0.12em; margin: 0 0 6px; font-weight: 700; }
-  .notes-wrap p { font-size: 10pt; color: #1C1917; margin: 0; white-space: pre-wrap; line-height: 1.5; }
-  .photos { margin-top: 28px; padding-top: 16px; border-top: 2px solid #1C1917; page-break-before: auto; }
-  .photos h2 { font-size: 10pt; letter-spacing: 0.05em; margin: 0 0 12px; font-weight: 900; }
-  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .photo-item { }
-  .photo-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border: 1.5px solid #1C1917; }
-  .photo-label { font-family: Menlo, monospace; font-size: 8pt; color: #44403C; margin-top: 4px; }
-  .footer { margin-top: 30px; padding-top: 10px; border-top: 2px solid #1C1917; font-family: Menlo, monospace; font-size: 8pt; color: #44403C; display: flex; justify-content: space-between; letter-spacing: 0.1em; }
-  .btn-print { position: fixed; top: 10px; right: 10px; padding: 12px 24px; background: #F59E0B; color: #1C1917; border: 3px solid #1C1917; font-weight: 900; cursor: pointer; font-size: 12pt; letter-spacing: 0.08em; box-shadow: 4px 4px 0 #1C1917; }
-  .btn-print:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #1C1917; }
-  .instructions { background: #FEF3C7; border: 2px solid #F59E0B; padding: 10px 14px; margin-bottom: 20px; font-size: 10pt; color: #44403C; }
-  .instructions strong { color: #1C1917; }
-  @media print {
-    .btn-print, .instructions { display: none; }
-    body { padding: 0; }
+  body { margin: 0; padding: 18px; font-family: 'Times New Roman', Times, serif; color: #000; font-size: 10pt; line-height: 1.35; }
+  .btn-print { position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #F59E0B; color: #000; border: 2px solid #000; font-weight: 900; cursor: pointer; font-size: 11pt; letter-spacing: 0.06em; box-shadow: 3px 3px 0 #000; z-index: 999; font-family: Arial, sans-serif; }
+  @media print { .btn-print { display: none; } body { padding: 0; } }
+
+  /* HEADER ─────────────────────────────────────── */
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 26px; }
+  .hdr-left { flex: 1; }
+  .hdr-left .co-name { font-weight: 700; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.02em; }
+  .hdr-left .co-line { font-size: 10pt; color: #000; }
+  .hdr-logo { flex-shrink: 0; padding: 0 20px; }
+  .hdr-right { flex: 1; text-align: right; font-size: 10pt; }
+  .hdr-right .invoice-num { font-weight: 700; font-size: 11pt; margin-bottom: 2px; }
+
+  /* BILL TO ─────────────────────────────────────── */
+  .billto { margin-bottom: 16px; }
+  .billto .label { font-size: 9pt; color: #555; font-style: italic; margin-bottom: 2px; }
+  .billto .name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
+  .billto .addr { font-size: 10pt; color: #333; }
+
+  .jobref { margin-bottom: 16px; font-size: 10pt; }
+  .jobref strong { font-weight: 700; }
+
+  /* LINE ITEMS TABLE ─────────────────────────────────────── */
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.lines thead th {
+    background: #E5E5E5;
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-align: left;
+    padding: 4px 6px;
+    border: 1px solid #000;
   }
+  table.lines thead th.r { text-align: right; }
+  table.lines td {
+    font-size: 9.5pt;
+    padding: 2px 6px;
+    border: 1px solid #000;
+    vertical-align: top;
+  }
+  table.lines td.r { text-align: right; }
+  table.lines tr.line-sub td:nth-child(-n+3) { border-top: none; border-bottom: none; }
+  /* Column widths (total fits letter page @ 0.5in margins ≈ 7.5in) */
+  table.lines th:nth-child(1), table.lines td:nth-child(1) { width: 8%; }
+  table.lines th:nth-child(2), table.lines td:nth-child(2) { width: 10%; }
+  table.lines th:nth-child(3), table.lines td:nth-child(3) { width: 8%; }
+  table.lines th:nth-child(4), table.lines td:nth-child(4) { width: 38%; }
+  table.lines th:nth-child(5), table.lines td:nth-child(5) { width: 9%; }
+  table.lines th:nth-child(6), table.lines td:nth-child(6) { width: 12%; }
+  table.lines th:nth-child(7), table.lines td:nth-child(7) { width: 15%; }
+
+  /* TOTAL ROW ─────────────────────────────────────── */
+  .total-row { display: flex; justify-content: flex-end; margin-top: 6px; font-size: 11pt; }
+  .total-row .total-box {
+    border: 2px solid #000;
+    padding: 6px 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    display: flex;
+    gap: 40px;
+    min-width: 340px;
+    justify-content: space-between;
+  }
+
+  .thank-you { text-align: center; font-size: 11pt; font-style: italic; margin-top: 24px; }
+  .terms { text-align: center; font-size: 9pt; color: #444; margin-top: 6px; padding: 0 20px; line-height: 1.4; }
+
+  /* PHOTOS ─────────────────────────────────────── */
+  .photos { page-break-before: always; margin-top: 40px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .photo-item { border: 1px solid #1C1917; padding: 4px; }
+  .photo-item img { width: 100%; max-height: 400px; object-fit: contain; display: block; }
+  .photo-label { font-family: Menlo, monospace; font-size: 8pt; text-align: center; padding: 4px; background: #F5F5F4; }
 </style></head>
 <body>
 <button class="btn-print" onclick="window.print()">🖨 PRINT / SAVE AS PDF</button>
-<div class="instructions">
-  <strong>📋 How to save as PDF:</strong> Tap the PRINT button. In the print dialog, change the destination to <strong>"Save as PDF"</strong> (desktop) or <strong>"Save to Files"</strong> (mobile) — then save.
-</div>
-<div class="hazard-top"></div>
-<div class="steel-top"></div>
 
-<div class="header">
-  <div class="company">
-    ${company.logoDataUrl ? `<img src="${company.logoDataUrl}" class="logo" alt="logo" />` : ""}
-    <div class="company-info">
-      <div class="company-name">${esc(company.name || "4 Brothers Trucking, LLC")}</div>
-      <div class="company-meta">
-        ${company.address ? esc(company.address) + "<br>" : ""}
-        ${[company.phone, company.email].filter(Boolean).map(esc).join(" · ")}
-        ${company.usdot ? "<br>" + esc(company.usdot) : ""}
-      </div>
-    </div>
+<div class="hdr">
+  <div class="hdr-left">
+    ${companyLines.map((l, i) => `<div class="${i === 0 ? 'co-name' : 'co-line'}">${esc(l)}</div>`).join("")}
   </div>
-  <div class="invoice-box">
-    <h1>INVOICE</h1>
-    <div># ${esc(invoice.invoiceNumber)}</div>
-    <div>DATE: ${esc(invoice.invoiceDate)}</div>
-    ${invoice.dueDate ? `<div>DUE: &nbsp;${esc(invoice.dueDate)}</div>` : ""}
-    ${invoice.poNumber ? `<div>PO #: &nbsp;${esc(invoice.poNumber)}</div>` : ""}
+  <div class="hdr-logo">${logoSvg}</div>
+  <div class="hdr-right">
+    <div class="invoice-num">INVOICE: ${esc(invoice.invoiceNumber)}</div>
+    <div>Date: ${esc(fmtLongDate(invoice.invoiceDate))}</div>
+    ${invoice.dueDate ? `<div>Due: ${esc(fmtLongDate(invoice.dueDate))}</div>` : ''}
+    ${invoice.poNumber ? `<div>PO #: ${esc(invoice.poNumber)}</div>` : ''}
   </div>
 </div>
 
-<div class="bill-to">
-  <div>
-    <h3>BILL TO</h3>
-    <div class="name">${esc(invoice.billToName || "—")}</div>
-    <div class="info">
-      ${invoice.billToAddress ? esc(invoice.billToAddress) + "<br>" : ""}
-      ${invoice.billToContact ? esc(invoice.billToContact) : ""}
-    </div>
-  </div>
-  <div>
-    <h3>JOB / REFERENCE</h3>
-    <div class="info">${esc(invoice.jobReference || "—")}</div>
-  </div>
+${(invoice.jobReference || '') ? `<div class="jobref"><strong>Customer Job:</strong> ${esc(invoice.jobReference)}</div>` : ''}
+
+<div class="billto">
+  <div class="label">Bill To:</div>
+  <div class="name">${esc(invoice.billToName || '—')}</div>
+  ${invoice.billToContact ? `<div class="addr">Attn: ${esc(invoice.billToContact)}</div>` : ''}
+  ${invoice.billToAddress ? `<div class="addr">${esc(invoice.billToAddress)}</div>` : ''}
 </div>
 
-<table class="items">
+<table class="lines">
   <thead>
     <tr>
-      <th>FB #</th><th>DATE</th><th>TRUCK</th><th>DRIVER</th>
-      <th class="r">QTY</th><th>UNIT</th><th class="r">RATE</th><th class="r">AMOUNT</th>
+      <th>Date</th>
+      <th>Ft Bill</th>
+      <th>Truck</th>
+      <th>Description</th>
+      <th class="r">Qty</th>
+      <th class="r">Rate</th>
+      <th class="r">Amount</th>
     </tr>
   </thead>
-  <tbody>${rowsHtml}</tbody>
-</table>
-
-<table class="totals">
   <tbody>
-    <tr><td class="label">SUBTOTAL</td><td class="val">${money(subtotal)}</td></tr>
-    ${fbExtrasSum > 0 ? `<tr><td class="label">FB EXTRAS (TOLLS · DUMP · FUEL · OTHER)</td><td class="val">${money(fbExtrasSum)}</td></tr>` : ""}
-    ${(invoice.extras || []).filter((x) => Number(x.amount) !== 0).map((x) => `<tr><td class="label">${esc((x.label || "ADDITIONAL").toUpperCase())}</td><td class="val">${money(Number(x.amount) || 0)}</td></tr>`).join("")}
-    ${extraFees !== 0 ? `<tr><td class="label">${esc(invoice.extraFeesLabel || "ADDITIONAL FEES")}</td><td class="val">${money(extraFees)}</td></tr>` : ""}
-    ${discount !== 0 ? `<tr><td class="label">DISCOUNT</td><td class="val">-${money(discount)}</td></tr>` : ""}
-    <tr class="total"><td class="label">TOTAL DUE</td><td class="val">${money(total)}</td></tr>
+    ${rowsHtml}
+    ${invoiceExtrasRows}
+    ${Number(extraFees) > 0 ? `
+      <tr class="line line-first">
+        <td></td><td></td><td></td>
+        <td>${esc((invoice.extraFeesLabel || "ADDITIONAL FEES").toUpperCase())}</td>
+        <td class="r">1.00</td>
+        <td class="r">${money(extraFees)}</td>
+        <td class="r">${money(extraFees)}</td>
+      </tr>
+    ` : ''}
+    ${Number(discount) > 0 ? `
+      <tr class="line line-first">
+        <td></td><td></td><td></td>
+        <td>DISCOUNT</td>
+        <td class="r">1.00</td>
+        <td class="r">-${money(discount)}</td>
+        <td class="r">-${money(discount)}</td>
+      </tr>
+    ` : ''}
   </tbody>
 </table>
 
-${(invoice.terms || invoice.notes) ? `<div class="notes-wrap">
-  ${invoice.terms ? `<div><h4>PAYMENT TERMS</h4><p>${esc(invoice.terms)}</p></div>` : "<div></div>"}
-  ${invoice.notes ? `<div><h4>NOTES</h4><p>${esc(invoice.notes)}</p></div>` : "<div></div>"}
-</div>` : ""}
+<div class="total-row">
+  <div class="total-box">
+    <span>Please Pay This Amount:</span>
+    <span>${money(total)}</span>
+  </div>
+</div>
+
+<div class="thank-you">Thank you for your business</div>
+<div class="terms">${esc(footerTerms)}</div>
+
+${invoice.notes ? `<div class="terms" style="margin-top:14px;font-size:8.5pt;">${esc(invoice.notes)}</div>` : ''}
 
 ${photosHtml}
 
-<div class="footer">
-  <span>${esc(company.name || "4 Brothers Trucking, LLC")}</span>
-  <span>INVOICE ${esc(invoice.invoiceNumber)}</span>
-</div>
 </body></html>`;
 
   const w = window.open("", "_blank", "width=850,height=1100");
@@ -4389,7 +4447,6 @@ ${photosHtml}
   w.document.close();
   return { opened: true };
 };
-
 // ========== COMPANY PROFILE MODAL ==========
 const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState({ ...company });
@@ -4941,6 +4998,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   const [selectedFbIds, setSelectedFbIds] = useState(new Set());
   // Which FBs have their billing lines expanded (click-to-toggle UI)
   const [expandedFbIds, setExpandedFbIds] = useState(new Set());
+  // v18 Fix 2b: per-line save state — { "fbId:lineId": "saving" | "saved" | "error" }
+  // "saved" entries auto-clear after 1.5s. "saving" means an edit is in flight.
+  const [lineSaveState, setLineSaveState] = useState({});
+  // Debounce timers per line — held in a ref so they survive re-renders
+  const saveTimersRef = useRef({});
 
   // Reset builder state when modal opens/closes
   useEffect(() => {
@@ -4948,6 +5010,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       setBuilderMode(null);
       setSelectedFbIds(new Set());
       setExpandedFbIds(new Set());
+      setLineSaveState({});
+      // Clear any pending timers
+      Object.values(saveTimersRef.current).forEach((t) => clearTimeout(t));
+      saveTimersRef.current = {};
     }
   }, [showNewInvoice]);
 
@@ -5019,6 +5085,97 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     const minH = Number(project?.minimumHours) || 0;
     if (minH > 0 && actual < minH) return minH;
     return actual;
+  };
+
+  // v18 Fix 2: recompute a billing line's gross + net after qty/rate/brokerage change.
+  // Mirrors math.js recomputeLine but written locally here so the builder doesn't depend on it.
+  const recomputeBuilderLine = (ln) => {
+    const qty = Number(ln.qty) || 0;
+    const rate = Number(ln.rate) || 0;
+    const gross = Number((qty * rate).toFixed(2));
+    const pct = Number(ln.brokeragePct) || 0;
+    const net = ln.brokerable
+      ? Number((gross - gross * pct / 100).toFixed(2))
+      : gross;
+    return { ...ln, qty, rate, gross, net };
+  };
+
+  // Persist the FB's billingLines to the database. Updates per-line save state so the UI
+  // can show "saving…" / "saved ✓". Debounced per-line by 600ms to avoid hammering DB.
+  const persistFbLines = (fbId, updatedLines) => {
+    // Mark every affected line as "saving" immediately
+    const key = (lineId) => `${fbId}:${lineId}`;
+    setLineSaveState((prev) => {
+      const next = { ...prev };
+      updatedLines.forEach((ln) => { next[key(ln.id)] = "saving"; });
+      return next;
+    });
+
+    // Clear any pending timer for this fb
+    if (saveTimersRef.current[fbId]) {
+      clearTimeout(saveTimersRef.current[fbId]);
+    }
+
+    saveTimersRef.current[fbId] = setTimeout(async () => {
+      try {
+        await editFreightBill(fbId, { billingLines: updatedLines });
+        // Mark saved
+        setLineSaveState((prev) => {
+          const next = { ...prev };
+          updatedLines.forEach((ln) => { next[key(ln.id)] = "saved"; });
+          return next;
+        });
+        // Clear "saved" badges after 1.5s
+        setTimeout(() => {
+          setLineSaveState((prev) => {
+            const next = { ...prev };
+            updatedLines.forEach((ln) => {
+              if (next[key(ln.id)] === "saved") delete next[key(ln.id)];
+            });
+            return next;
+          });
+        }, 1500);
+      } catch (e) {
+        console.error("persistFbLines failed:", e);
+        setLineSaveState((prev) => {
+          const next = { ...prev };
+          updatedLines.forEach((ln) => { next[key(ln.id)] = "error"; });
+          return next;
+        });
+        onToast("⚠ SAVE FAILED — CHECK CONNECTION");
+      }
+    }, 600);
+  };
+
+  // Inline builder-side line CRUD helpers (operate on the current FB from freightBills)
+  const builderUpdateLine = (fbId, lineId, patch) => {
+    const fb = freightBills.find((f) => f.id === fbId);
+    if (!fb) return;
+    const next = (fb.billingLines || []).map((ln) => ln.id === lineId ? recomputeBuilderLine({ ...ln, ...patch }) : ln);
+    persistFbLines(fbId, next);
+  };
+  const builderAddLine = (fbId, seed = {}) => {
+    const fb = freightBills.find((f) => f.id === fbId);
+    if (!fb) return;
+    const newLine = recomputeBuilderLine({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      code: seed.code || "OTHER",
+      item: seed.item || "",
+      qty: seed.qty != null ? Number(seed.qty) : 1,
+      rate: seed.rate != null ? Number(seed.rate) : 0,
+      brokerable: false,
+      brokeragePct: 0,
+      copyToPay: false,
+      isAdjustment: false,
+    });
+    const next = [...(fb.billingLines || []), newLine];
+    persistFbLines(fbId, next);
+  };
+  const builderDeleteLine = (fbId, lineId) => {
+    const fb = freightBills.find((f) => f.id === fbId);
+    if (!fb) return;
+    const next = (fb.billingLines || []).filter((ln) => ln.id !== lineId);
+    persistFbLines(fbId, next);
   };
 
   // Filter freight bills by date + client (dispatch sub/job) + APPROVED status + invoice binding
@@ -5243,19 +5400,54 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     }
   }, [matchedBills.length]);
 
-  const makeInvoiceNumber = () => {
+  // v18 fix: invoice number collisions. Local `invoices` array may be stale if prior inserts
+  // succeeded on server but didn't flow back. Query server for max and use that as baseline.
+  // If a concurrent insert still collides (23505 unique constraint), the retry loop in
+  // generate() bumps the number and tries again.
+  const makeInvoiceNumber = async () => {
     const year = new Date().getFullYear();
-    const existing = invoices.filter((i) => i.invoiceNumber?.startsWith(`INV-${year}-`));
-    const maxN = existing.reduce((m, i) => {
-      const n = parseInt(i.invoiceNumber.split("-")[2], 10);
-      return isNaN(n) ? m : Math.max(m, n);
-    }, 0);
-    return `INV-${year}-${String(maxN + 1).padStart(4, "0")}`;
+    const prefix = `INV-${year}-`;
+
+    // Fetch the live max from the DB
+    let serverMax = 0;
+    try {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("invoice_number")
+        .like("invoice_number", `${prefix}%`);
+      if (!error && Array.isArray(data)) {
+        serverMax = data.reduce((m, row) => {
+          const n = parseInt(String(row.invoice_number).split("-")[2], 10);
+          return isNaN(n) ? m : Math.max(m, n);
+        }, 0);
+      }
+    } catch (e) {
+      console.warn("Could not fetch invoice numbers from server, falling back to local:", e);
+    }
+
+    // Also check local state (in case of just-inserted-not-yet-subscribed)
+    const localMax = invoices
+      .filter((i) => i.invoiceNumber?.startsWith(prefix))
+      .reduce((m, i) => {
+        const n = parseInt(i.invoiceNumber.split("-")[2], 10);
+        return isNaN(n) ? m : Math.max(m, n);
+      }, 0);
+
+    const maxN = Math.max(serverMax, localMax);
+    return `${prefix}${String(maxN + 1).padStart(4, "0")}`;
+  };
+
+  // Helper: bump the numeric portion of an invoice number by 1. Used by retry loop.
+  const bumpInvoiceNumber = (num) => {
+    const parts = String(num || "").split("-");
+    if (parts.length !== 3) return num;
+    const n = parseInt(parts[2], 10);
+    if (isNaN(n)) return num;
+    return `${parts[0]}-${parts[1]}-${String(n + 1).padStart(4, "0")}`;
   };
 
   const generate = async () => {
     if (matchedBills.length === 0) { onToast("NO FREIGHT BILLS MATCH FILTERS"); return; }
-    if (!rate || Number(rate) <= 0) { onToast("ENTER A RATE"); return; }
     if (!billTo.name) { onToast("PICK A CUSTOMER"); return; }
 
     // HARD GUARD: drop any FB that's already invoiced (belt-and-suspenders — filter should have excluded them)
@@ -5270,7 +5462,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       if (!ok) return;
     }
 
-    const invoiceNumber = makeInvoiceNumber();
+    let invoiceNumber = await makeInvoiceNumber();
     const invoiceDate = todayISO();
 
     const billsWithHours = billsToInvoice.map((fb) => {
@@ -5279,8 +5471,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       return { ...fb, hoursOverride: qty };
     });
 
-    const invoice = {
-      invoiceNumber,
+    const buildInvoice = (invNum) => ({
+      invoiceNumber: invNum,
       invoiceDate,
       dueDate,
       billToName: billTo.name,
@@ -5303,16 +5495,34 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       subtotal: previewTotals.subtotal,
       total: previewTotals.total,
       createdAt: new Date().toISOString(),
-    };
+    });
+
+    let invoice = buildInvoice(invoiceNumber);
 
     try {
       // v18 Fix #2: Save invoice to DB FIRST, then generate PDF.
-      // If popup is blocked or PDF fails, the invoice still lands in the list and
-      // admin can use the "re-download" button. Previously the PDF ran first and a
-      // popup failure meant createInvoice never executed — invoice vanished.
+      // v18 duplicate-key fix: on 23505, retry with bumped number (up to 8 attempts).
       let savedInvoice;
       if (createInvoice) {
-        savedInvoice = await createInvoice(invoice);
+        let attempts = 0;
+        const maxAttempts = 8;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          try {
+            savedInvoice = await createInvoice(invoice);
+            break;
+          } catch (insertErr) {
+            const isDup = insertErr?.code === "23505" || String(insertErr?.message || "").includes("invoices_invoice_number_key");
+            attempts++;
+            if (isDup && attempts < maxAttempts) {
+              invoiceNumber = bumpInvoiceNumber(invoiceNumber);
+              invoice = buildInvoice(invoiceNumber);
+              console.warn(`[invoice] duplicate key, retrying with ${invoiceNumber} (attempt ${attempts + 1}/${maxAttempts})`);
+              continue;
+            }
+            throw insertErr;
+          }
+        }
       } else {
         await setInvoices([invoice, ...invoices]);
         savedInvoice = invoice;
@@ -5474,6 +5684,165 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       console.error("Soft delete invoice failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
     }
+  };
+
+  // v18 Fix 2: editable billing-line panel shown inside each expanded FB row in the invoice builder.
+  // Edits flow via persistFbLines → editFreightBill → Supabase. Save state shown per-line.
+  // Disabled (read-only) when FB is locked to another invoice.
+  const renderEditableLines = (fb, indent = 14) => {
+    const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+    const locked = !!fb.invoiceId;  // already on another invoice → read-only here
+    const saveKey = (lineId) => `${fb.id}:${lineId}`;
+
+    if (lines.length === 0 && !locked) {
+      return (
+        <div style={{ padding: `8px 10px 10px ${indent}px`, background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
+          <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic", marginBottom: 6 }}>
+            Legacy FB — no billing lines yet. Click ADD LINE to bill it.
+          </div>
+          <button
+            type="button"
+            className="btn-ghost"
+            style={{ padding: "4px 10px", fontSize: 10 }}
+            onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "H", item: "HOURLY" }); }}
+          >
+            <Plus size={11} style={{ marginRight: 4 }} /> ADD LINE
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ padding: `8px 10px 10px ${indent}px`, background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
+        {/* Header row for alignment */}
+        <div style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", fontSize: 9, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 4, paddingRight: 4 }}>
+          <div>CODE</div>
+          <div>DESCRIPTION</div>
+          <div style={{ textAlign: "right" }}>QTY</div>
+          <div style={{ textAlign: "right" }}>RATE</div>
+          <div style={{ textAlign: "center" }}>BROK%</div>
+          <div style={{ textAlign: "right" }}>NET</div>
+          <div></div>
+        </div>
+        {lines.map((ln) => {
+          const status = lineSaveState[saveKey(ln.id)];
+          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
+          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
+          const net = Number(ln.net) || (gross - brokAmt);
+          return (
+            <div
+              key={ln.id}
+              onClick={(e) => e.stopPropagation()}
+              style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", padding: "4px 4px", borderBottom: "1px dotted var(--concrete)", background: status === "saving" ? "#FEF9C3" : status === "error" ? "#FEE2E2" : "transparent" }}
+            >
+              <select
+                disabled={locked}
+                value={ln.code || "OTHER"}
+                onChange={(e) => builderUpdateLine(fb.id, ln.id, { code: e.target.value, item: (
+                  e.target.value === "H" ? "HOURLY" :
+                  e.target.value === "T" ? "TONS" :
+                  e.target.value === "L" ? "LOAD" :
+                  e.target.value === "TOLL" ? "Tolls" :
+                  e.target.value === "DUMP" ? "Dump Fees" :
+                  e.target.value === "FUEL" ? "Fuel Surcharge" :
+                  (ln.item || "")
+                ) })}
+                style={{ padding: "3px 4px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF" }}
+              >
+                <option value="H">H</option>
+                <option value="T">T</option>
+                <option value="L">L</option>
+                <option value="TOLL">TOLL</option>
+                <option value="DUMP">DUMP</option>
+                <option value="FUEL">FUEL</option>
+                <option value="OTHER">OTHER</option>
+              </select>
+              <input
+                disabled={locked}
+                type="text"
+                value={ln.item || ""}
+                onChange={(e) => builderUpdateLine(fb.id, ln.id, { item: e.target.value })}
+                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: "100%" }}
+              />
+              <input
+                disabled={locked}
+                type="number"
+                step="0.01"
+                value={ln.qty ?? ""}
+                onChange={(e) => builderUpdateLine(fb.id, ln.id, { qty: e.target.value })}
+                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
+              />
+              <input
+                disabled={locked}
+                type="number"
+                step="0.01"
+                value={ln.rate ?? ""}
+                onChange={(e) => builderUpdateLine(fb.id, ln.id, { rate: e.target.value })}
+                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "center" }}>
+                <input
+                  type="checkbox"
+                  disabled={locked}
+                  checked={!!ln.brokerable}
+                  onChange={(e) => builderUpdateLine(fb.id, ln.id, { brokerable: e.target.checked, brokeragePct: e.target.checked ? (ln.brokeragePct || 10) : 0 })}
+                  style={{ width: 13, height: 13 }}
+                />
+                {ln.brokerable && (
+                  <input
+                    disabled={locked}
+                    type="number"
+                    step="1"
+                    value={ln.brokeragePct ?? ""}
+                    onChange={(e) => builderUpdateLine(fb.id, ln.id, { brokeragePct: e.target.value })}
+                    style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: 38, textAlign: "right" }}
+                  />
+                )}
+              </div>
+              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: "var(--good)", textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                ${net.toFixed(2)}
+                {status === "saving" && <span style={{ fontSize: 8, color: "var(--hazard-deep)", fontWeight: 400, fontStyle: "italic" }}>saving…</span>}
+                {status === "saved" && <span style={{ fontSize: 9, color: "var(--good)", fontWeight: 700 }}>✓</span>}
+                {status === "error" && <span style={{ fontSize: 8, color: "var(--safety)", fontWeight: 700 }}>!</span>}
+              </div>
+              <button
+                type="button"
+                disabled={locked}
+                onClick={(e) => { e.stopPropagation(); if (confirm(`Delete ${ln.code} · ${ln.item} line?`)) builderDeleteLine(fb.id, ln.id); }}
+                style={{ padding: "2px 4px", background: "transparent", border: "1px solid var(--safety)", color: "var(--safety)", cursor: locked ? "not-allowed" : "pointer", fontSize: 10, opacity: locked ? 0.4 : 1 }}
+                title={locked ? "FB is locked (already on invoice)" : "Delete line"}
+              >
+                <Trash2 size={9} />
+              </button>
+            </div>
+          );
+        })}
+        {!locked && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "H", item: "HOURLY" }); }}>
+              <Plus size={11} style={{ marginRight: 3 }} /> HOURLY
+            </button>
+            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "TOLL", item: "Tolls" }); }}>
+              <Plus size={11} style={{ marginRight: 3 }} /> TOLL
+            </button>
+            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "DUMP", item: "Dump Fees" }); }}>
+              <Plus size={11} style={{ marginRight: 3 }} /> DUMP
+            </button>
+            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "FUEL", item: "Fuel Surcharge" }); }}>
+              <Plus size={11} style={{ marginRight: 3 }} /> FUEL
+            </button>
+            <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "OTHER", item: "" }); }}>
+              <Plus size={11} style={{ marginRight: 3 }} /> OTHER
+            </button>
+          </div>
+        )}
+        {locked && (
+          <div style={{ fontSize: 9, color: "var(--concrete)", fontStyle: "italic", marginTop: 6 }}>
+            ⚑ Read-only — FB is locked to another invoice.
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -5801,35 +6170,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                       </div>
                       <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
                     </div>
-                    {expanded && lines.length > 0 && (
-                      <div style={{ padding: "6px 10px 8px 38px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
-                        {lines.map((ln, idx) => {
-                          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
-                          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
-                          const net = Number(ln.net) || (gross - brokAmt);
-                          return (
-                            <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)", padding: "3px 0", borderBottom: idx < lines.length - 1 ? "1px dotted var(--concrete)" : "none" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <span style={{ display: "inline-block", width: 50, fontWeight: 700 }}>{ln.code}</span>
-                                <span style={{ flex: 1, minWidth: 100 }}>{ln.item}</span>
-                                <span>{Number(ln.qty || 0).toFixed(2)} × ${Number(ln.rate || 0).toFixed(2)} = ${gross.toFixed(2)}</span>
-                                {ln.brokerable && (
-                                  <span style={{ color: "var(--hazard-deep)" }}>
-                                    - broker {ln.brokeragePct}% (${brokAmt.toFixed(2)})
-                                  </span>
-                                )}
-                                <span style={{ fontWeight: 700, color: "var(--good)", minWidth: 80, textAlign: "right" }}>= ${net.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {expanded && lines.length === 0 && (
-                      <div style={{ padding: "8px 10px 8px 38px", background: "#FAFAF9", fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>
-                        Legacy FB — no line breakdown. Will bill using rate method below.
-                      </div>
-                    )}
+                    {expanded && renderEditableLines(fb, 38)}
                   </div>
                 );
               })}
@@ -5868,35 +6209,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                       </div>
                       <ChevronDown size={14} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
                     </div>
-                    {expanded && lines.length > 0 && (
-                      <div style={{ padding: "6px 10px 8px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
-                        {lines.map((ln, idx) => {
-                          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
-                          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
-                          const net = Number(ln.net) || (gross - brokAmt);
-                          return (
-                            <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)", padding: "3px 0", borderBottom: idx < lines.length - 1 ? "1px dotted var(--concrete)" : "none" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                <span style={{ display: "inline-block", width: 50, fontWeight: 700 }}>{ln.code}</span>
-                                <span style={{ flex: 1, minWidth: 100 }}>{ln.item}</span>
-                                <span>{Number(ln.qty || 0).toFixed(2)} × ${Number(ln.rate || 0).toFixed(2)} = ${gross.toFixed(2)}</span>
-                                {ln.brokerable && (
-                                  <span style={{ color: "var(--hazard-deep)" }}>
-                                    - broker {ln.brokeragePct}% (${brokAmt.toFixed(2)})
-                                  </span>
-                                )}
-                                <span style={{ fontWeight: 700, color: "var(--good)", minWidth: 80, textAlign: "right" }}>= ${net.toFixed(2)}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {expanded && lines.length === 0 && (
-                      <div style={{ padding: "8px 10px 8px 14px", background: "#FAFAF9", fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>
-                        Legacy FB — will use rate method below.
-                      </div>
-                    )}
+                    {expanded && renderEditableLines(fb, 14)}
                   </div>
                 );
               })}
@@ -5917,35 +6230,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           )}
         </div>
 
-        {/* Pricing — v18: only used for legacy FBs without billingLines[] */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>▸ 02 / PRICING</div>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 10, letterSpacing: "0.04em" }}>
-          ▸ ONLY USED FOR LEGACY FBs THAT DON'T HAVE THEIR OWN BILLING LINES · MODERN FBs USE EACH LINE'S OWN QTY × RATE
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 14 }}>
-          <div>
-            <label className="fbt-label">Method</label>
-            <select className="fbt-select" value={pricingMethod} onChange={(e) => setPricingMethod(e.target.value)}>
-              <option value="ton">Per Ton (tonnage × rate)</option>
-              <option value="load">Per Load (count × rate)</option>
-              <option value="hour">Per Hour (enter hours per truck)</option>
-            </select>
-          </div>
-          <div>
-            <label className="fbt-label">Rate {pricingMethod === "ton" ? "$/ton" : pricingMethod === "load" ? "$/load" : "$/hr"}</label>
-            <input className="fbt-input" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder={pricingMethod === "hour" ? "142.00" : "0.00"} />
-            {/* Auto-rate suggestion */}
-            {matchedBills.length > 0 && suggestedRateInfo.rates.length > 0 && (
-              <div className="fbt-mono" style={{ fontSize: 10, color: suggestedRateInfo.mixed ? "var(--hazard-deep)" : "var(--good)", marginTop: 4 }}>
-                {suggestedRateInfo.mixed ? (
-                  <>⚠ MIXED RATES DETECTED: ${suggestedRateInfo.uniqueRates.join(", $")} · PICK ONE OR SET MANUALLY</>
-                ) : (
-                  <>▸ RECALLED FROM {suggestedRateInfo.rates[0].source}: ${suggestedRateInfo.suggested}</>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* v18 Fix 2b: Removed 02 / PRICING section (Method + Rate). Billing lines on each FB
+            are the single source of truth now — edit them in the expanded row above. Legacy
+            FBs without billing lines will get their totals from whatever's in the billing lines
+            the user creates there. */}
 
         {/* Reconciliation warning banner — lists any unreconciled orders */}
         {matchedBills.length > 0 && reconcileIssues.length > 0 && (
@@ -6109,9 +6397,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14, marginBottom: 14 }}>
-          <div><label className="fbt-label">Payment Terms</label><textarea className="fbt-textarea" value={terms} onChange={(e) => setTerms(e.target.value)} /></div>
-          <div><label className="fbt-label">Notes / Memo</label><textarea className="fbt-textarea" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+          <div><label className="fbt-label">Notes / Memo</label><textarea className="fbt-textarea" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional internal note shown on invoice" /></div>
         </div>
+        {/* v18 Fix 2b: Removed per-invoice Payment Terms field. Terms come from Company Profile
+            → Default Terms, which applies to all invoices. Edit it once there. */}
 
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", cursor: "pointer", marginBottom: 18 }}>
           <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} />
@@ -6155,14 +6444,13 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
         <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
           {/* Visible hints if button can't be clicked */}
           {(() => {
-            // v18: rate is only required if ANY matched FB lacks billingLines (legacy FB).
-            // v16+ FBs use their own billing lines and don't need a global rate.
+            // v18 Fix 2b: rate is gone. Validation only checks for FBs + bill-to + that each FB has
+            // at least one billing line (user must have edited legacy FBs via the expand panel).
             const legacyFbs = matchedBills.filter((fb) => !Array.isArray(fb.billingLines) || fb.billingLines.length === 0);
-            const needsRate = legacyFbs.length > 0;
             const issues = [];
             if (matchedBills.length === 0) issues.push("No freight bills match your filters (date range / approved / invoice status)");
-            if (needsRate && !rate) issues.push(`Enter a rate — ${legacyFbs.length} legacy FB${legacyFbs.length !== 1 ? "s" : ""} without billing lines need a global rate`);
-            if (!billTo.name) issues.push("Select a customer or enter bill-to name in section 03 / BILL TO");
+            if (legacyFbs.length > 0) issues.push(`${legacyFbs.length} FB${legacyFbs.length !== 1 ? "s have" : " has"} no billing lines — expand each and add at least one line (HOURLY / LOAD / etc.)`);
+            if (!billTo.name) issues.push("Select a customer — its bill-to info auto-fills");
             if (issues.length === 0) return null;
             return (
               <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
@@ -6178,8 +6466,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
               onClick={() => {
                 if (matchedBills.length === 0) { onToast("NO FBs MATCH — CHECK FILTERS"); return; }
                 const legacyFbs = matchedBills.filter((fb) => !Array.isArray(fb.billingLines) || fb.billingLines.length === 0);
-                if (legacyFbs.length > 0 && (!rate || Number(rate) <= 0)) {
-                  onToast("ENTER A RATE — LEGACY FBs NEED A GLOBAL RATE");
+                if (legacyFbs.length > 0) {
+                  onToast(`${legacyFbs.length} FB${legacyFbs.length !== 1 ? "s need" : " needs"} billing lines — expand to add`);
                   return;
                 }
                 if (!billTo.name) { onToast("SELECT CUSTOMER OR BILL-TO NAME"); return; }
