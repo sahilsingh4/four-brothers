@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted } from "./db";
-import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Banknote, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save, Send } from "lucide-react";
+import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, Package, Mountain, BarChart3, History, Calendar, DollarSign, Banknote, Award, Briefcase, ShieldCheck, Clock, Save, Send } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -3864,13 +3864,56 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
   const rate = Number(pricing.rate) || 0;
 
+  // v16: render per-FB line items. Each FB gets a header row + one row per billing line.
+  // Legacy FBs (without billingLines) render a single row using the invoice-level rate.
   const rowsHtml = freightBills.map((fb, idx) => {
+    const fbDate = fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
+    const hasLines = Array.isArray(fb.billingLines) && fb.billingLines.length > 0;
+
+    if (hasLines) {
+      // Header row summarizing the FB
+      const fbLineHtml = `
+        <tr class="fb-header"${idx % 2 === 0 ? " data-alt='1'" : ""}>
+          <td><strong>FB #${esc(fb.freightBillNumber || "—")}</strong></td>
+          <td>${esc(fbDate)}</td>
+          <td>${esc(fb.truckNumber || "")}</td>
+          <td colspan="5">${esc(fb.driverName || "")}</td>
+        </tr>
+      `;
+      // One row per billing line
+      const lineRows = fb.billingLines.map((ln) => {
+        const unit = ln.code === "H" ? "hrs" : ln.code === "T" ? "tons" : ln.code === "L" ? "loads" : "ea";
+        const isBrok = ln.brokerable && Number(ln.brokeragePct) > 0;
+        const adjBadge = ln.isAdjustment ? ' <span style="color:#B45309;font-size:8pt;">(adj)</span>' : '';
+        const brokBadge = isBrok ? ` <span style="color:#B45309;font-size:8pt;">(Br ${ln.brokeragePct}%)</span>` : '';
+        return `
+          <tr class="fb-line">
+            <td colspan="3"></td>
+            <td style="padding-left:18px;">${esc(ln.item || ln.code || "")}${adjBadge}${brokBadge}</td>
+            <td class="r">${(Number(ln.qty) || 0).toFixed(2)}</td>
+            <td>${unit}</td>
+            <td class="r">${money(Number(ln.rate) || 0)}</td>
+            <td class="r"><strong>${money(Number(ln.net) || 0)}</strong></td>
+          </tr>
+        `;
+      }).join("");
+      // FB subtotal
+      const fbSubtotal = fb.billingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+      const fbSubtotalRow = fb.billingLines.length > 1 ? `
+        <tr class="fb-subtotal">
+          <td colspan="7" class="r" style="font-size:9pt;color:#44403C;">FB#${esc(fb.freightBillNumber || "—")} SUBTOTAL</td>
+          <td class="r" style="font-weight:700;border-top:1px solid #1C1917;">${money(fbSubtotal)}</td>
+        </tr>
+      ` : "";
+      return fbLineHtml + lineRows + fbSubtotalRow;
+    }
+
+    // LEGACY PATH — pre-v16 FB, render as single row using invoice rate/method
     let qty = 0, unitLabel = "";
     if (pricing.method === "ton") { qty = Number(fb.tonnage) || 0; unitLabel = "tons"; }
     else if (pricing.method === "load") { qty = Number(fb.loadCount) || 1; unitLabel = "loads"; }
     else if (pricing.method === "hour") { qty = Number(fb.hoursOverride || 0); unitLabel = "hrs"; }
     const amount = qty * rate;
-    const fbDate = fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
     return `<tr${idx % 2 === 0 ? " class='alt'" : ""}>
       <td>${esc(fb.freightBillNumber || "—")}</td>
       <td>${esc(fbDate)}</td>
@@ -3884,14 +3927,20 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
   }).join("");
 
   const subtotal = freightBills.reduce((s, fb) => {
+    // v16: sum from billingLines
+    if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) {
+      return s + fb.billingLines.reduce((ss, ln) => ss + (Number(ln.net) || 0), 0);
+    }
+    // LEGACY
     let qty = 0;
     if (pricing.method === "ton") qty = Number(fb.tonnage) || 0;
     else if (pricing.method === "load") qty = Number(fb.loadCount) || 1;
     else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
     return s + qty * rate;
   }, 0);
-  // FB-level reimbursable extras (tolls, dump, fuel, other paid by driver/sub)
+  // Legacy FB extras — only sum for FBs WITHOUT billingLines (new FBs include extras as lines)
   const fbExtrasSum = freightBills.reduce((s, fb) => {
+    if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) return s; // already in lines
     return s + (fb.extras || [])
       .filter((x) => x.reimbursable !== false)
       .reduce((ss, x) => ss + (Number(x.amount) || 0), 0);
@@ -3942,6 +3991,10 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
   table.items thead th.r, table.items td.r { text-align: right; }
   table.items td { padding: 8px 10px; font-size: 10pt; border-bottom: 1px solid #E7E5E4; }
   table.items tr.alt td { background: #FAFAF9; }
+  table.items tr.fb-header td { background: #1C1917; color: #FAFAF9; padding-top: 10px; padding-bottom: 6px; border-bottom: none; }
+  table.items tr.fb-header td strong { color: #F59E0B; font-size: 10pt; }
+  table.items tr.fb-line td { padding: 5px 10px; font-size: 9.5pt; background: #FAFAF9; border-bottom: 1px dotted #D6D3D1; }
+  table.items tr.fb-subtotal td { padding: 6px 10px; background: #F5F5F4; border-bottom: 2px solid #1C1917; }
   .totals { margin-left: auto; width: 50%; }
   .totals tr td { padding: 6px 10px; font-size: 10pt; }
   .totals tr td.label { text-align: right; color: #44403C; }
@@ -5033,6 +5086,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
     try {
       // 1. Unlock affected FBs — clear invoiceId and billingLockedAt so they can be invoiced again
+      const unlockFailures = [];
       for (const fb of affectedFbs) {
         try {
           await editFreightBill(fb.id, {
@@ -5040,7 +5094,18 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             invoiceId: null,
             billingLockedAt: null,
           });
-        } catch (e) { console.warn("Could not unlock FB", fb.id, e); }
+        } catch (e) {
+          console.error("Could not unlock FB", fb.id, e);
+          unlockFailures.push({ fbNum: fb.freightBillNumber || fb.id, err: e?.message || String(e) });
+        }
+      }
+
+      if (unlockFailures.length > 0) {
+        alert(
+          `⚠ Unlocked ${affectedFbs.length - unlockFailures.length} of ${affectedFbs.length} FBs.\n\nThese failed and are still locked:\n` +
+          unlockFailures.map((f) => `  • FB #${f.fbNum}: ${f.err}`).join("\n") +
+          "\n\nTry re-opening those FBs to force unlock manually."
+        );
       }
 
       // 2. Soft-delete the invoice
@@ -5051,7 +5116,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       setInvoices(next);
 
       const toastMsg = affectedFbs.length > 0
-        ? `INVOICE DELETED · ${affectedFbs.length} FB${affectedFbs.length !== 1 ? "S" : ""} UNLOCKED (RECOVERABLE 30 DAYS)`
+        ? `INVOICE DELETED · ${affectedFbs.length - unlockFailures.length} FB${(affectedFbs.length - unlockFailures.length) !== 1 ? "S" : ""} UNLOCKED (RECOVERABLE 30 DAYS)`
         : "INVOICE DELETED (RECOVERABLE 30 DAYS)";
       onToast(toastMsg);
     } catch (e) {
@@ -7103,39 +7168,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
 
-  // Billing + Pay GROSS calculators (live, based on current draft)
-  const billedGross = useMemo(() => {
-    const rate = Number(draft.billedRate) || 0;
-    const method = draft.billedMethod || "hour";
-    const qty = method === "hour" ? Number(draft.billedHours) || 0
-              : method === "ton"  ? Number(draft.billedTons)  || 0
-                                  : Number(draft.billedLoads) || 0;
-    const adj = (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    return { gross: qty * rate, adjustments: adj, total: qty * rate + adj, qty, rate, method };
-  }, [draft.billedHours, draft.billedTons, draft.billedLoads, draft.billedRate, draft.billedMethod, fb.billingAdjustments]);
-
-  const paidGross = useMemo(() => {
-    const rate = Number(draft.paidRate) || 0;
-    const method = draft.paidMethodSnapshot || "hour";
-    const qty = method === "hour" ? Number(draft.paidHours) || 0
-              : method === "ton"  ? Number(draft.paidTons)  || 0
-                                  : Number(draft.paidLoads) || 0;
-    const adj = (fb.payingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    return { gross: qty * rate, adjustments: adj, total: qty * rate + adj, qty, rate, method };
-  }, [draft.paidHours, draft.paidTons, draft.paidLoads, draft.paidRate, draft.paidMethodSnapshot, fb.payingAdjustments]);
-
-  // Copy billing → pay (for "SAME AS BILLING" button)
-  const copyBillingToPay = () => {
-    setDraft((d) => ({
-      ...d,
-      paidHours: d.billedHours,
-      paidTons: d.billedTons,
-      paidLoads: d.billedLoads,
-      paidRate: d.billedRate,
-      paidMethodSnapshot: d.billedMethod,
-    }));
-  };
-
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // LINE-ITEM HELPERS (v16 unified structure)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -7321,68 +7353,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     const net = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
     return { count: lines.length, gross, brokerableGross, brokerageAmt, net };
   }, [draft.payingLines]);
-
-  // Adjustment entry state (one form for each side)
-  // Structure: qty × rate = amount. Type: hours|rate|extras|other. applyBrokerage for pay side only.
-  const [billingAdjForm, setBillingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "", copyToPay: false });
-  const [payingAdjForm, setPayingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "", applyBrokerage: true });
-
-  const addBillingAdjustment = async () => {
-    const qty = Number(billingAdjForm.qty);
-    const rate = Number(billingAdjForm.rate);
-    if (!qty || !rate) { onToast("ENTER BOTH QTY AND RATE"); return; }
-    const amount = Number((qty * rate).toFixed(2));
-    const entry = {
-      id: Date.now(),
-      qty,
-      rate,
-      amount,
-      type: billingAdjForm.type,
-      note: billingAdjForm.note || "",
-      copyToPay: !!billingAdjForm.copyToPay,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser || "admin",
-    };
-    try {
-      await editFreightBill(fb.id, { ...fb, billingAdjustments: [...(fb.billingAdjustments || []), entry] });
-      setBillingAdjForm({ qty: "", rate: "", type: "rate", note: "", copyToPay: false });
-      onToast(entry.copyToPay ? "✓ BILLING ADJ ADDED (COPIED TO PAY)" : "✓ BILLING ADJ ADDED");
-    } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
-  };
-
-  const addPayingAdjustment = async () => {
-    const qty = Number(payingAdjForm.qty);
-    const rate = Number(payingAdjForm.rate);
-    if (!qty || !rate) { onToast("ENTER BOTH QTY AND RATE"); return; }
-    const amount = Number((qty * rate).toFixed(2));
-    const entry = {
-      id: Date.now(),
-      qty,
-      rate,
-      amount,
-      type: payingAdjForm.type,
-      note: payingAdjForm.note || "",
-      applyBrokerage: !!payingAdjForm.applyBrokerage,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser || "admin",
-    };
-    try {
-      await editFreightBill(fb.id, { ...fb, payingAdjustments: [...(fb.payingAdjustments || []), entry] });
-      setPayingAdjForm({ qty: "", rate: "", type: "rate", note: "", applyBrokerage: true });
-      onToast("✓ PAY ADJUSTMENT ADDED");
-    } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
-  };
-
-  const removeAdjustment = async (side, adjId) => {
-    if (!confirm("Remove this adjustment?")) return;
-    const key = side === "billing" ? "billingAdjustments" : "payingAdjustments";
-    const current = fb[key] || [];
-    const next = current.filter((a) => a.id !== adjId);
-    try {
-      await editFreightBill(fb.id, { ...fb, [key]: next });
-      onToast("ADJUSTMENT REMOVED");
-    } catch (e) { console.error(e); onToast("REMOVE FAILED"); }
-  };
 
   // Auto-calc hours from pickup/dropoff if both present
   const autoHours = useMemo(() => {
@@ -8581,6 +8551,10 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       table.fb-table td { padding: 6px 8px; border-bottom: 1px solid #E5E7EB; vertical-align: top; }
       table.fb-table tr:nth-child(even) td { background: #FAFAF9; }
       table.fb-table .r { text-align: right; }
+      table.fb-table tr.fb-header td { background: #1C1917 !important; color: #FAFAF9; padding-top: 8px; padding-bottom: 5px; }
+      table.fb-table tr.fb-header td strong { color: #F59E0B; font-size: 11px; }
+      table.fb-table tr.fb-line td { background: #FAFAF9 !important; padding: 4px 8px; font-size: 10.5px; border-bottom: 1px dotted #D1D5DB; }
+      table.fb-table tr.fb-subtotal td { background: #F3F4F6 !important; padding: 5px 8px; border-bottom: 2px solid #1C1917; }
       .extra-line { background: #FEF3C7 !important; font-size: 10px; padding: 3px 8px !important; color: #92400E; }
       .short-note { background: #FEE2E2 !important; font-size: 10px; padding: 3px 8px !important; color: #991B1B; font-style: italic; }
 
@@ -8660,26 +8634,45 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       <tbody>
         ${fbRows.map((r) => {
           const { fb, dispatch, calc, extrasList } = r;
-          // v16 PREFERRED PATH: render from payingLines[]
+          const fbDateStr = fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—";
+
+          // v16 PREFERRED PATH: render per-FB header + line breakdown + subtotal
           if (Array.isArray(calc.payingLines) && calc.payingLines.length > 0) {
-            return calc.payingLines.map((ln, idx) => {
+            // Header row for this FB
+            const fbHeaderRow = `
+              <tr class="fb-header">
+                <td><strong>FB #${esc(fb.freightBillNumber || "—")}</strong></td>
+                <td>${esc(fbDateStr)}</td>
+                <td colspan="5">${esc(dispatch?.code || "—")} · ${esc(dispatch?.jobName || "—")}</td>
+              </tr>
+            `;
+            // One row per pay line
+            const lineRows = calc.payingLines.map((ln) => {
               const unit = ln.code === "H" ? "hrs" : ln.code === "T" ? "tons" : ln.code === "L" ? "loads" : "";
-              const brokInfo = ln.brokerable && Number(ln.brokeragePct) > 0
-                ? ` <span style="color:#92400E;">(Br ${ln.brokeragePct}%)</span>`
-                : (ln.brokerable ? "" : ' <span style="color:#065F46;">(100%)</span>');
+              const isBrok = ln.brokerable && Number(ln.brokeragePct) > 0;
+              const adjBadge = ln.isAdjustment ? ' <span style="color:#B45309;font-size:8pt;">(adj)</span>' : '';
+              const brokBadge = isBrok ? ` <span style="color:#92400E;font-size:8pt;">(Br ${ln.brokeragePct}%)</span>` : ' <span style="color:#065F46;font-size:8pt;">(100%)</span>';
               return `
-                <tr>
-                  <td>${idx === 0 ? `<strong>${esc(fb.freightBillNumber || "—")}</strong>` : ""}</td>
-                  <td>${idx === 0 && fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}</td>
-                  <td>${idx === 0 ? `${esc(dispatch?.code || "—")} · ${esc(dispatch?.jobName || "—")}` : `<em style="color:#666;">&nbsp;&nbsp;${esc(ln.item || ln.code || "")}${brokInfo}</em>`}</td>
+                <tr class="fb-line">
+                  <td colspan="2"></td>
+                  <td style="padding-left:18px;">${esc(ln.item || ln.code || "")}${adjBadge}${brokBadge}</td>
                   <td class="r">${(Number(ln.qty) || 0).toFixed(2)}</td>
                   <td>${unit}</td>
                   <td class="r">${money(Number(ln.rate) || 0)}</td>
                   <td class="r"><strong>${money(Number(ln.net) || 0)}</strong></td>
                 </tr>
-                ${ln.note ? `<tr><td colspan="7" class="extra-line" style="color:#666;font-style:italic;">&nbsp;&nbsp;&nbsp;&nbsp;"${esc(ln.note)}"</td></tr>` : ""}
+                ${ln.note ? `<tr class="fb-line"><td colspan="7" style="padding-left:36px;color:#666;font-style:italic;font-size:9pt;">"${esc(ln.note)}"</td></tr>` : ""}
               `;
             }).join("");
+            // FB subtotal only shown when more than 1 line
+            const fbSubtotal = calc.payingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+            const fbSubtotalRow = calc.payingLines.length > 1 ? `
+              <tr class="fb-subtotal">
+                <td colspan="6" class="r" style="font-size:9pt;color:#44403C;">FB#${esc(fb.freightBillNumber || "—")} NET PAY</td>
+                <td class="r" style="font-weight:700;border-top:1px solid #1C1917;">${money(fbSubtotal)}</td>
+              </tr>
+            ` : "";
+            return fbHeaderRow + lineRows + fbSubtotalRow;
           }
 
           // LEGACY PATH: render from old extras/adjustments
@@ -8687,7 +8680,7 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
           return `
             <tr>
               <td><strong>${esc(fb.freightBillNumber || "—")}</strong></td>
-              <td>${fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—"}</td>
+              <td>${esc(fbDateStr)}</td>
               <td>${esc(dispatch?.code || "—")} · ${esc(dispatch?.jobName || "—")}</td>
               <td class="r">${calc.qty.toFixed(2)}</td>
               <td>${unit}</td>
@@ -9705,14 +9698,16 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
   // Unmark paid (soft lock release)
   const unmarkPaid = async (fb) => {
-    if (!confirm(`Un-mark FB #${fb.freightBillNumber || "(no #)"} as paid? This removes the payment record.`)) return;
+    if (!confirm(`Un-mark FB #${fb.freightBillNumber || "(no #)"} as paid?\n\nThis removes the payment record AND unlocks the pay side so you can edit pay lines again.`)) return;
     try {
       await editFreightBill(fb.id, {
         ...fb,
         paidAt: null, paidBy: "", paidMethod: "", paidCheckNumber: "",
         paidAmount: null, paidNotes: "",
+        // v17 fix: also clear the pay statement lock so admin can edit pay lines + regenerate stub
+        payStatementLockedAt: null,
       });
-      onToast("PAYMENT RECORD REMOVED");
+      onToast("PAYMENT REMOVED · PAY SIDE UNLOCKED");
     } catch (e) { console.error(e); onToast("FAILED"); }
   };
 
