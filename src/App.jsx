@@ -1429,9 +1429,9 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [] });
+  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
 
-  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "142", ratePerTon: "", notes: "", assignedDriverIds: [], assignments: [] });
+  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
 
   // Open the modal pre-filled with an existing order's data (edit mode)
   const openEditDispatch = (d) => {
@@ -1452,6 +1452,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       trucksExpected: d.trucksExpected || 1,
       ratePerHour: d.ratePerHour || "",
       ratePerTon: d.ratePerTon || "",
+      ratePerLoad: d.ratePerLoad || "",
       quarryId: d.quarryId || null,
       notes: d.notes || "",
       assignedDriverIds: d.assignedDriverIds || [],
@@ -2190,14 +2191,14 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                 // Look up fleet unit assigned to this driver (sync'd from Fleet tab)
                                 const fleetUnit = isDriver && c ? fleet.find((f) => f.driverId === c.id) : null;
                                 const resolvedTruck = fleetUnit?.unit || c?.defaultTruckNumber || "";
-                                // For drivers: auto-fill pay rate, method, and truck # from contact
-                                // unless already manually set on this assignment row
-                                const autoFill = isDriver && c ? {
+                                // Auto-fill pay rate/method from contact default (both drivers AND subs)
+                                // Only fill if the assignment field is empty
+                                const autoFill = c ? {
                                   payRate: (next[idx].payRate === "" || next[idx].payRate == null) && c.defaultPayRate != null
                                     ? String(c.defaultPayRate) : next[idx].payRate,
                                   payMethod: (!next[idx].payMethod || next[idx].payMethod === "hour") && c.defaultPayMethod
                                     ? c.defaultPayMethod : (next[idx].payMethod || "hour"),
-                                  truckNumber: (!next[idx].truckNumber) && resolvedTruck
+                                  truckNumber: isDriver && (!next[idx].truckNumber) && resolvedTruck
                                     ? resolvedTruck : next[idx].truckNumber,
                                 } : {};
                                 next[idx] = {
@@ -2366,13 +2367,29 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   <label className="fbt-label">Material<LockChip field="material" label="Material" /></label>
                   <input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} disabled={isFieldLocked("material")} />
                 </div>
-                <div>
-                  <label className="fbt-label">Rate $/hr<LockChip field="rate" label="Hourly Rate" /></label>
-                  <input className="fbt-input" type="number" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} />
+              </div>
+
+              {/* CUSTOMER BILL RATE — what we charge the customer. Sub/driver pay rate is set per-assignment below. */}
+              <div style={{ padding: 10, background: "#F0F9FF", border: "2px solid #0EA5E9", marginTop: 4 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+                  ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {projectId ? "(AUTO-FILLED FROM PROJECT DEFAULT WHERE APPLICABLE)" : ""}
                 </div>
-                <div>
-                  <label className="fbt-label">Rate $/ton (opt)<LockChip field="rate" label="Per-Ton Rate" /></label>
-                  <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+                  <div>
+                    <label className="fbt-label">Bill $/hr<LockChip field="rate" label="Hourly Bill Rate" /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 142.00" />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Bill $/ton<LockChip field="rate" label="Per-Ton Bill Rate" /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 14.50" />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Bill $/load<LockChip field="rate" label="Per-Load Bill Rate" /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerLoad} onChange={(e) => setDraft({ ...draft, ratePerLoad: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 450.00" />
+                  </div>
+                </div>
+                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
+                  ▸ SUB/DRIVER PAY RATE IS SET PER-ASSIGNMENT BELOW (SEPARATE FROM WHAT WE BILL CUSTOMER)
                 </div>
               </div>
               {quarries.length > 0 && (
@@ -8688,6 +8705,12 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                       const unpaidBrok = sub.brokerageApplies ? unpaidGross * (sub.brokeragePct / 100) : 0;
                       const unpaidNet = unpaidGross - unpaidBrok;
                       const isAllPaid = unpaidFbs.length === 0 && paidFbs.length > 0;
+                      // Missing-rate detection: any FB whose assignment has no payRate configured
+                      const missingRateFbs = sub.fbs.filter((x) => {
+                        const d = x.dispatch;
+                        const a = (d?.assignments || []).find((ax) => ax.aid === x.fb.assignmentId);
+                        return !a || !a.payRate || Number(a.payRate) <= 0;
+                      });
                       return (
                         <div key={sub.subKey} id={`payroll-sub-${sub.subId}`} style={{ border: "1.5px solid var(--steel)", background: isAllPaid ? "#F0FDF4" : "#FFF" }}>
                           <div
@@ -8824,6 +8847,22 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                           {/* Individual FBs */}
                           {sExp && (
                             <div style={{ padding: "0 10px 10px", display: "grid", gap: 4 }}>
+                              {/* Missing-rate warning — sub-level */}
+                              {missingRateFbs.length > 0 && (
+                                <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", marginBottom: 6 }}>
+                                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700, marginBottom: 4, letterSpacing: "0.08em" }}>
+                                    ⚠ {missingRateFbs.length} FB{missingRateFbs.length !== 1 ? "s" : ""} MISSING PAY RATE — SHOWING $0
+                                  </div>
+                                  <div style={{ fontSize: 10, color: "var(--concrete)", lineHeight: 1.5 }}>
+                                    The order assignment for {sub.subName} has no pay rate set. To fix: open the order (click FB# link), find the assignment row, and enter the pay rate. Future orders will auto-fill from this contact's default pay rate (set in Contacts tab).
+                                  </div>
+                                  {missingRateFbs.length > 0 && missingRateFbs[0].dispatch && (
+                                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
+                                      AFFECTED ORDERS: {[...new Set(missingRateFbs.map((x) => `#${x.dispatch.code}`))].join(", ")}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                               {sub.fbs.map((entry) => {
                                 const fb = entry.fb;
                                 const isPaid = !!fb.paidAt;
