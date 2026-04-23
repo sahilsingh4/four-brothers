@@ -211,6 +211,11 @@ const contactFromDB = (row) => ({
   defaultPayRate: row.default_pay_rate !== null && row.default_pay_rate !== undefined ? Number(row.default_pay_rate) : null,
   defaultPayMethod: row.default_pay_method || "hour",
   defaultTruckNumber: row.default_truck_number || "",
+  // 1099 / tax fields
+  taxId: row.tax_id || "",          // SSN or EIN (stored as-is; do not display full in UI)
+  taxIdType: row.tax_id_type || "", // 'ssn' | 'ein'
+  legalName: row.legal_name || "",  // Name on 1099 (if different from company/contact name)
+  is1099Eligible: !!row.is_1099_eligible,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -237,6 +242,10 @@ const contactToDB = (c) => ({
   default_pay_rate: c.defaultPayRate !== null && c.defaultPayRate !== undefined && c.defaultPayRate !== "" ? Number(c.defaultPayRate) : null,
   default_pay_method: c.defaultPayMethod || null,
   default_truck_number: c.defaultTruckNumber || null,
+  tax_id: c.taxId || null,
+  tax_id_type: c.taxIdType || null,
+  legal_name: c.legalName || null,
+  is_1099_eligible: !!c.is1099Eligible,
 });
 
 export const fetchContacts = async () => {

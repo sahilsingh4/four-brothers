@@ -3390,6 +3390,24 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
             <label className="fbt-label">USDOT / MC # (optional)</label>
             <input className="fbt-input" value={draft.usdot || ""} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="USDOT 1234567 · CA MCP" />
           </div>
+          <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+              ▸ TAX / PAYROLL IDENTIFIERS (SHOWN ON PAY STUBS & 1099s)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label className="fbt-label">Federal EIN</label>
+                <input className="fbt-input" value={draft.ein || ""} onChange={(e) => setDraft({ ...draft, ein: e.target.value })} placeholder="XX-XXXXXXX" />
+              </div>
+              <div>
+                <label className="fbt-label">CA Employer ID (EDD)</label>
+                <input className="fbt-input" value={draft.caEmployerId || ""} onChange={(e) => setDraft({ ...draft, caEmployerId: e.target.value })} placeholder="123-4567-8" />
+              </div>
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8 }}>
+              ▸ APPEARS ON PAY STUBS FOR 1099 MATCHING · STORED LOCALLY
+            </div>
+          </div>
           <div>
             <label className="fbt-label">Logo / Letterhead</label>
             <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
@@ -4699,7 +4717,9 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
     usdot: "", insurance: "", notes: "", favorite: false, drivesForId: null,
     brokerageApplies: false, brokeragePercent: 8,
     defaultPayRate: "", defaultPayMethod: "hour", defaultTruckNumber: "",
+    taxId: "", taxIdType: "", legalName: "", is1099Eligible: false,
   });
+  const [showTaxId, setShowTaxId] = useState(false); // masked by default
 
   const save = async () => {
     if (!draft.companyName && !draft.contactName) {
@@ -4899,6 +4919,76 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
                 ▸ WHEN WE PAY THIS {draft.type === "sub" ? "SUB" : "DRIVER"}, WE'LL SUBTRACT THIS % FROM THEIR GROSS PAY. LEAVE OFF IF BROKERAGE ISN'T INVOLVED.
               </div>
+            </div>
+          )}
+
+          {/* 1099 / Tax section — for subs and drivers */}
+          {(draft.type === "sub" || draft.type === "driver") && (
+            <div style={{ padding: 12, background: draft.is1099Eligible ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (draft.is1099Eligible ? "var(--good)" : "var(--concrete)") }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!draft.is1099Eligible}
+                  onChange={(e) => setDraft({ ...draft, is1099Eligible: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em", fontWeight: 700 }}>
+                  1099 ELIGIBLE — ISSUE 1099-NEC AT YEAR-END
+                </span>
+              </label>
+              {draft.is1099Eligible && (
+                <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                  <div>
+                    <label className="fbt-label">Legal Name (on 1099)</label>
+                    <input
+                      className="fbt-input"
+                      value={draft.legalName || ""}
+                      onChange={(e) => setDraft({ ...draft, legalName: e.target.value })}
+                      placeholder={draft.companyName || draft.contactName || "Full legal name"}
+                    />
+                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
+                      ▸ LEAVE BLANK TO USE CONTACT NAME · PUT DBA OR REGISTERED NAME IF DIFFERENT
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 100px", gap: 10, alignItems: "end" }}>
+                    <div>
+                      <label className="fbt-label">Tax ID Type</label>
+                      <select
+                        className="fbt-select"
+                        value={draft.taxIdType || ""}
+                        onChange={(e) => setDraft({ ...draft, taxIdType: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        <option value="ein">EIN</option>
+                        <option value="ssn">SSN</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="fbt-label">
+                        Tax ID {draft.taxIdType === "ssn" ? "(SSN)" : draft.taxIdType === "ein" ? "(EIN)" : ""}
+                      </label>
+                      <input
+                        className="fbt-input"
+                        type={showTaxId ? "text" : "password"}
+                        value={draft.taxId || ""}
+                        onChange={(e) => setDraft({ ...draft, taxId: e.target.value })}
+                        placeholder={draft.taxIdType === "ein" ? "XX-XXXXXXX" : draft.taxIdType === "ssn" ? "XXX-XX-XXXX" : "Select type first"}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowTaxId(!showTaxId)}
+                      className="btn-ghost"
+                      style={{ padding: "8px 10px", fontSize: 10 }}
+                    >
+                      {showTaxId ? "HIDE" : "SHOW"}
+                    </button>
+                  </div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", padding: 8, background: "#FEF3C7", border: "1px solid var(--hazard)", lineHeight: 1.5 }}>
+                    ⚠ SENSITIVE — STORED IN YOUR DATABASE, MASKED ON SCREEN BY DEFAULT · COLLECT VIA W-9 FROM THE CONTRACTOR · DO NOT SHARE THIS CONTACT EXPORT PUBLICLY
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -6394,7 +6484,7 @@ const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
 // ========== PAY STUB PDF GENERATOR ==========
 // Generates a one-page pay stub for a sub/driver covering a specific pay run (one check/payment)
 // Includes YTD summary + previous pay runs in current year
-const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokeragePct, brokerageApplies, allFreightBills, allDispatches, company, isHistorical = false }) => {
+const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokeragePct, brokerageApplies, allFreightBills, allDispatches, company, contact, isHistorical = false }) => {
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
   const methodLabel = { check: "Check", ach: "ACH / Bank Transfer", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
@@ -6461,7 +6551,30 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   });
   const ytdRuns = Array.from(ytdByDate.values()).sort((a, b) => b.date.localeCompare(a.date));
 
-  const ytdTotal = ytdFbs.reduce((s, fb) => s + (Number(fb.paidAmount) || 0), 0) + netPay;
+  // YTD gross breakdown — compute each prior FB's gross + brokerage separately
+  let ytdPriorGross = 0;
+  let ytdPriorBrok = 0;
+  let ytdPriorNet = 0;
+  ytdFbs.forEach((fb) => {
+    const d = allDispatches.find((x) => x.id === fb.dispatchId);
+    const calc = fbGross(fb, d);
+    const g = calc.gross;
+    const b = brokerageApplies ? g * (brokeragePct / 100) : 0;
+    ytdPriorGross += g;
+    ytdPriorBrok += b;
+    ytdPriorNet += (Number(fb.paidAmount) || 0);
+  });
+
+  const ytdGross = ytdPriorGross + gross;
+  const ytdBrokerage = ytdPriorBrok + brokerageAmt;
+  const ytdTotal = ytdPriorNet + netPay;
+
+  // Aggregate payment methods used YTD
+  const ytdMethods = new Map();
+  [...ytdFbs, ...fbs].forEach((fb) => {
+    const m = fb.paidMethod || "other";
+    ytdMethods.set(m, (ytdMethods.get(m) || 0) + (Number(fb.paidAmount) || 0));
+  });
 
   // Pay period: min/max dates of this run's FBs
   const fbDates = fbs.map((fb) => fb.submittedAt ? fb.submittedAt.slice(0, 10) : null).filter(Boolean).sort();
@@ -6528,6 +6641,7 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
           ${esc(company?.address || "Bay Point, CA 94565")}<br/>
           ${company?.phone ? `${esc(company.phone)}<br/>` : ""}
           ${company?.usdot ? `USDOT ${esc(company.usdot)}` : ""}${company?.mcNumber ? ` · MC ${esc(company.mcNumber)}` : ""}
+          ${company?.ein ? `<br/>EIN ${esc(company.ein)}` : ""}${company?.caEmployerId ? ` · CA ID ${esc(company.caEmployerId)}` : ""}
         </div>
       </div>
       <div style="text-align: right;">
@@ -6540,13 +6654,18 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
     <div class="payee-block">
       <div>
         <div class="label">Pay To</div>
-        <div class="value">${esc(subName)}</div>
-        <div class="small">${subKind === "driver" ? "Driver" : "Sub-Contractor"}</div>
+        <div class="value">${esc(contact?.legalName || subName)}</div>
+        ${contact?.legalName && contact.legalName !== subName ? `<div class="small">DBA ${esc(subName)}</div>` : ""}
+        <div class="small">${subKind === "driver" ? "Driver" : "Sub-Contractor"}${contact?.is1099Eligible ? " · 1099-NEC" : ""}</div>
+        ${contact?.address ? `<div class="small" style="margin-top:4px;">${esc(contact.address)}</div>` : ""}
+        ${contact?.taxId ? `<div class="small" style="margin-top:4px; font-family: 'Courier New', monospace;">${esc((contact.taxIdType || "ID").toUpperCase())}: ${esc(String(contact.taxId).replace(/.(?=.{4})/g, "•"))}</div>` : ""}
       </div>
       <div>
         <div class="label">Pay Period</div>
         <div class="value">${esc(payPeriod)}</div>
         <div class="small">${fbs.length} freight bill${fbs.length !== 1 ? "s" : ""}</div>
+        ${payRecord?.paidAt ? `<div class="small" style="margin-top:4px;">Check Date: ${esc(new Date(payRecord.paidAt).toLocaleDateString())}</div>` : ""}
+        ${payRecord?.paidCheckNumber ? `<div class="small">Check #: ${esc(payRecord.paidCheckNumber)}</div>` : ""}
       </div>
     </div>
 
@@ -6625,16 +6744,32 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
     `}
 
     <div class="ytd-box">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.08em;">Year-to-Date (${year})</div>
-          <div class="total">${money(ytdTotal)}</div>
-          <div style="font-size: 10px; color: #666;">Total paid to ${esc(subName)} in ${year}${ytdRuns.length > 0 ? ` · ${ytdRuns.length} prior pay run${ytdRuns.length !== 1 ? "s" : ""}` : ""}</div>
+      <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px;">Year-to-Date Summary (${year})</div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+        <tr>
+          <td style="padding: 4px 8px; border-bottom: 1px solid #E5E7EB;">Gross Earnings YTD</td>
+          <td style="padding: 4px 8px; border-bottom: 1px solid #E5E7EB; text-align: right;"><strong>${money(ytdGross)}</strong></td>
+        </tr>
+        ${brokerageApplies ? `
+          <tr>
+            <td style="padding: 4px 8px; border-bottom: 1px solid #E5E7EB; color: #991B1B;">Brokerage Withheld YTD (${brokeragePct}%)</td>
+            <td style="padding: 4px 8px; border-bottom: 1px solid #E5E7EB; text-align: right; color: #991B1B;"><strong>−${money(ytdBrokerage)}</strong></td>
+          </tr>
+        ` : ""}
+        <tr>
+          <td style="padding: 6px 8px; background: #F59E0B; color: #1C1917; font-weight: 700; font-size: 13px;">NET PAID YTD</td>
+          <td style="padding: 6px 8px; background: #F59E0B; color: #1C1917; font-weight: 700; font-size: 13px; text-align: right;">${money(ytdTotal)}</td>
+        </tr>
+      </table>
+      ${ytdMethods.size > 0 ? `
+        <div style="margin-top: 10px; font-size: 10px; color: #666;">
+          <strong>Payment method mix:</strong>
+          ${Array.from(ytdMethods.entries()).filter(([_, v]) => v > 0).map(([m, v]) => `${esc(methodLabel[m] || m)}: ${money(v)}`).join(" · ")}
         </div>
-      </div>
+      ` : ""}
       ${ytdRuns.length > 0 ? `
         <div class="ytd-list">
-          <div style="font-size: 10px; color: #666; margin-top: 8px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Previous Pay Runs:</div>
+          <div style="font-size: 10px; color: #666; margin-top: 10px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em;">Previous Pay Runs:</div>
           <table>
             <tr><th style="text-align:left;">Date</th><th style="text-align:left;">Method</th><th style="text-align:left;">Ref</th><th style="text-align:right;">FBs</th><th style="text-align:right;">Amount</th></tr>
             ${ytdRuns.map((r) => `
@@ -6650,6 +6785,12 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
         </div>
       ` : '<div style="font-size: 10px; color: #999; margin-top: 6px;">No prior pay runs this year.</div>'}
     </div>
+
+    ${contact?.is1099Eligible ? `
+      <div style="margin-top: 14px; padding: 10px 14px; background: #EFF6FF; border: 2px solid #2563EB; font-size: 10px; color: #1E40AF;">
+        <strong>📋 1099-NEC NOTICE:</strong> This contractor is classified as 1099-eligible. A Form 1099-NEC reporting total nonemployee compensation for ${year} will be issued by January 31, ${year + 1}. Keep this stub for your records.
+      </div>
+    ` : ""}
 
     <div class="footer">
       ${esc(company?.name || "4 Brothers Trucking, LLC")} · Pay Stub · ${esc(subName)} · ${esc(payDate)}${payRecord?.paidCheckNumber ? ` · Check #${esc(payRecord.paidCheckNumber)}` : ""}
@@ -7208,6 +7349,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                 allFreightBills: freightBills,
                 allDispatches: dispatches,
                 company,
+                contact: contacts.find((c) => c.id === stubOffer.target.subId) || null,
               });
               onToast("STUB OPENED — PRINT / SAVE AS PDF");
             } catch (e) {
@@ -7507,6 +7649,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                                         allFreightBills: freightBills,
                                         allDispatches: dispatches,
                                         company,
+                                        contact: contacts.find((c) => c.id === sub.subId) || null,
                                         isHistorical: true,
                                       });
                                       onToast(`STUB FOR ${sub.subName} (${latestDate})`);
