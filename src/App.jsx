@@ -5958,8 +5958,8 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
             </div>
           )}
 
-          {/* Brokerage section — for subs and drivers */}
-          {(draft.type === "sub" || draft.type === "driver") && (
+          {/* Brokerage section — ONLY for subs (drivers are never brokered) */}
+          {draft.type === "sub" && (
             <div style={{ padding: 12, background: draft.brokerageApplies ? "#FEF3C7" : "#F5F5F4", border: "2px solid " + (draft.brokerageApplies ? "var(--hazard)" : "var(--concrete)") }}>
               <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
                 <input
@@ -5991,7 +5991,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
                 </div>
               )}
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
-                ▸ WHEN WE PAY THIS {draft.type === "sub" ? "SUB" : "DRIVER"}, WE'LL SUBTRACT THIS % FROM THEIR GROSS PAY. LEAVE OFF IF BROKERAGE ISN'T INVOLVED.
+                ▸ WHEN WE PAY THIS SUB, WE'LL SUBTRACT THIS % FROM THEIR GROSS PAY (NOT FROM REIMBURSEMENTS). LEAVE OFF IF BROKERAGE ISN'T INVOLVED.
               </div>
             </div>
           )}
@@ -8271,9 +8271,9 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   const extrasTotal = fbRows.reduce((s, r) => s + r.calc.extrasSum, 0);
   const adjBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjBrokerable, 0);
   const adjNonBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjNonBrokerable, 0);
-  // Brokerable gross = base + extras + brokerable adjustments (brokerage % applies to this)
-  const grossForBrokerage = subtotal + extrasTotal + adjBrokerableTotal;
-  const gross = grossForBrokerage + adjNonBrokerableTotal;
+  // Brokerage applies ONLY to base + brokerable adjustments. Reimbursable extras pass through 100%.
+  const grossForBrokerage = subtotal + adjBrokerableTotal;
+  const gross = grossForBrokerage + extrasTotal + adjNonBrokerableTotal;
   const brokerageAmt = brokerageApplies ? grossForBrokerage * (brokeragePct / 100) : 0;
   const netPay = gross - brokerageAmt;
 
@@ -8469,12 +8469,6 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
         <span>Base Earnings (${fbs.length} FB${fbs.length !== 1 ? "s" : ""})</span>
         <strong>${money(subtotal)}</strong>
       </div>
-      ${extrasTotal > 0 ? `
-        <div class="totals-row">
-          <span>Reimbursable Extras (tolls / dump / fuel / etc)</span>
-          <strong>${money(extrasTotal)}</strong>
-        </div>
-      ` : ""}
       ${adjBrokerableTotal !== 0 ? `
         <div class="totals-row" style="color: ${adjBrokerableTotal >= 0 ? "#065F46" : "#991B1B"};">
           <span>Adjustments (subject to brokerage)</span>
@@ -8492,10 +8486,16 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
         </div>
       ` : `
         <div class="totals-row">
-          <span><strong>GROSS PAY</strong></span>
+          <span><strong>BASE PAY</strong></span>
           <strong>${money(grossForBrokerage)}</strong>
         </div>
       `}
+      ${extrasTotal > 0 ? `
+        <div class="totals-row">
+          <span>Reimbursable Extras (tolls / dump / fuel / etc) — paid 100%</span>
+          <strong>+${money(extrasTotal)}</strong>
+        </div>
+      ` : ""}
       ${adjNonBrokerableTotal !== 0 ? `
         <div class="totals-row" style="color: ${adjNonBrokerableTotal >= 0 ? "#065F46" : "#991B1B"};">
           <span>Adjustments (not subject to brokerage)</span>
@@ -8813,7 +8813,8 @@ const PayStatementModal = ({
   }, [freightBills, dispatches, contacts]);
 
   const selectedSub = subId ? contacts.find((c) => c.id === subId) : null;
-  const brokerageApplies = !!selectedSub?.brokerageApplies;
+  // Drivers never get brokerage — force-ignore even if flag is set
+  const brokerageApplies = selectedSub?.type === "sub" && !!selectedSub?.brokerageApplies;
   const brokeragePct = Number(selectedSub?.brokeragePercent) || 8;
 
   // FB rows for selected sub — only unpaid FBs
@@ -9185,15 +9186,18 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const adjustmentsSum = adjustmentsBrokerable + adjustmentsNonBrokerable;
 
-    // Reimbursable FB extras are added to gross (sub fronted the cost, gets paid back)
+    // Reimbursable FB extras are added to net pay (sub fronted the cost, gets paid back IN FULL — no brokerage cut)
     const extrasSum = (fb.extras || [])
       .filter((x) => x.reimbursable !== false)
       .reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
     return {
       gross: grossBeforeExtras + extrasSum + adjustmentsSum,
-      grossForBrokerage: grossBeforeExtras + extrasSum + adjustmentsBrokerable,  // brokerage applies to this
-      nonBrokerableAdj: adjustmentsNonBrokerable,
+      // Brokerage applies ONLY to base work + brokerable adjustments
+      // Reimbursable extras pass through at 100% (the sub/driver fronted cash for tolls/dump/fuel)
+      grossForBrokerage: grossBeforeExtras + adjustmentsBrokerable,
+      // Reimbursements + non-brokerable adjustments bypass brokerage
+      nonBrokerableAdj: adjustmentsNonBrokerable + extrasSum,
       qty, method, rate, assignment, extrasSum, grossBeforeExtras,
       adjustmentsSum, adjustmentsBrokerable, adjustmentsNonBrokerable,
     };
@@ -9274,7 +9278,10 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
       const subKey = calc.assignment.contactId || `anon_${calc.assignment.aid}`;
       const contact = contacts.find((c) => c.id === calc.assignment.contactId);
-      const brokerageApplies = contact?.brokerageApplies;
+      // IMPORTANT: Drivers never get brokerage applied, only subs.
+      // Force-ignore brokerage flag if this is a driver (belt-and-suspenders beyond UI hiding).
+      const isSub = calc.assignment.kind === "sub";
+      const brokerageApplies = isSub && !!contact?.brokerageApplies;
       const brokeragePct = Number(contact?.brokeragePercent ?? 8);
 
       if (!projectData.subs.has(subKey)) {
@@ -9544,10 +9551,12 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
             // Hand off to the existing PaidModal — build a compatible target shape
             const subName = sub?.companyName || sub?.contactName || "Sub";
             const subKind = sub?.type || "sub";
+            // Drivers never get brokerage
+            const isSub = subKind === "sub";
             const payTargetData = {
               projectName: "Multi-project",
               subName, subId, subKind,
-              brokerageApplies: !!sub?.brokerageApplies,
+              brokerageApplies: isSub && !!sub?.brokerageApplies,
               brokeragePct: Number(sub?.brokeragePercent) || 8,
               gross: totals.gross,
               brokerageAmt: totals.brokerageAmt,
