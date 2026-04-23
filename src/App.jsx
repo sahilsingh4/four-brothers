@@ -6972,7 +6972,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
   // Adjustment entry state (one form for each side)
   // Structure: qty × rate = amount. Type: hours|rate|extras|other. applyBrokerage for pay side only.
-  const [billingAdjForm, setBillingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "" });
+  const [billingAdjForm, setBillingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "", copyToPay: false });
   const [payingAdjForm, setPayingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "", applyBrokerage: true });
 
   const addBillingAdjustment = async () => {
@@ -6987,13 +6987,14 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       amount,
       type: billingAdjForm.type,
       note: billingAdjForm.note || "",
+      copyToPay: !!billingAdjForm.copyToPay,
       createdAt: new Date().toISOString(),
       createdBy: currentUser || "admin",
     };
     try {
       await editFreightBill(fb.id, { ...fb, billingAdjustments: [...(fb.billingAdjustments || []), entry] });
-      setBillingAdjForm({ qty: "", rate: "", type: "rate", note: "" });
-      onToast("✓ BILLING ADJUSTMENT ADDED");
+      setBillingAdjForm({ qty: "", rate: "", type: "rate", note: "", copyToPay: false });
+      onToast(entry.copyToPay ? "✓ BILLING ADJ ADDED (COPIED TO PAY)" : "✓ BILLING ADJ ADDED");
     } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
   };
 
@@ -7368,6 +7369,18 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           />
                           REIMB
                         </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--good)", fontWeight: x.copyToPay ? 700 : 400 }} title="Copy this charge to the sub/driver's pay side (reimburse them 100%)">
+                          <input
+                            type="checkbox"
+                            checked={!!x.copyToPay}
+                            onChange={(e) => {
+                              const next = [...draft.extras];
+                              next[idx] = { ...next[idx], copyToPay: e.target.checked };
+                              setDraft({ ...draft, extras: next });
+                            }}
+                          />
+                          → PAY
+                        </label>
                         <button
                           onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, i) => i !== idx) })}
                           className="btn-danger"
@@ -7555,11 +7568,31 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                             </span>
                           )}
                           <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
+                          {adj.copyToPay && (
+                            <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 8, padding: "1px 5px", marginLeft: 4 }}>
+                              → PAY
+                            </span>
+                          )}
                           {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
                           <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
                             {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
                           </div>
                         </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, cursor: "pointer", color: "var(--good)" }} title="Copy this adjustment to sub/driver pay (100%)">
+                          <input
+                            type="checkbox"
+                            checked={!!adj.copyToPay}
+                            onChange={async (e) => {
+                              const checked = e.target.checked;
+                              const nextAdj = (fb.billingAdjustments || []).map((a) => a.id === adj.id ? { ...a, copyToPay: checked } : a);
+                              try {
+                                await editFreightBill(fb.id, { ...fb, billingAdjustments: nextAdj });
+                                onToast(checked ? "→ PAY" : "BILLING-ONLY");
+                              } catch (err) { console.error(err); onToast("UPDATE FAILED"); }
+                            }}
+                          />
+                          → PAY
+                        </label>
                         <button
                           onClick={() => removeAdjustment("billing", adj.id)}
                           style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", fontSize: 11, padding: 2 }}
@@ -7629,12 +7662,22 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           + ADD
                         </button>
                       </div>
-                      {/* Live auto-calc */}
-                      {billingAdjForm.qty && billingAdjForm.rate && (
-                        <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", marginTop: 4, textAlign: "right" }}>
-                          = {fmt$(Number(billingAdjForm.qty) * Number(billingAdjForm.rate))}
-                        </div>
-                      )}
+                      {/* Live auto-calc + copy-to-pay toggle */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--good)" }} title="Copy this adjustment to sub/driver pay (100%)">
+                          <input
+                            type="checkbox"
+                            checked={!!billingAdjForm.copyToPay}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, copyToPay: e.target.checked })}
+                          />
+                          → COPY TO PAY
+                        </label>
+                        {billingAdjForm.qty && billingAdjForm.rate && (
+                          <span className="fbt-mono" style={{ fontSize: 9, color: "#0369A1" }}>
+                            = {fmt$(Number(billingAdjForm.qty) * Number(billingAdjForm.rate))}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
               </div>
