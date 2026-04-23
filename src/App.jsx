@@ -6823,9 +6823,12 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
 const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, invoices = [], onClose, onToast, currentUser }) => {
   const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
   const project = dispatch ? projects.find((p) => p.id === dispatch.projectId) : null;
+  const assignment = dispatch ? (dispatch.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
   const invoiceOnFb = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
-  const lockedOnInvoice = !!fb.invoiceId;
-  const lockedAsPaid = !!fb.paidAt || !!fb.customerPaidAt;
+  const lockedOnInvoice = !!fb.invoiceId || !!fb.billingLockedAt;
+  const lockedAsPaid = !!fb.paidAt || !!fb.customerPaidAt || !!fb.payStatementLockedAt;
+  const billingSnapshotLocked = !!fb.billingLockedAt || !!fb.invoiceId;
+  const paySnapshotLocked = !!fb.payStatementLockedAt;
   const [unlocked, setUnlocked] = useState(false); // admin can request unlock
   const [draft, setDraft] = useState({
     freightBillNumber: fb.freightBillNumber || "",
@@ -6844,9 +6847,66 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     photos: fb.photos || [],
     extras: fb.extras || [],
     minHoursApplied: !!fb.minHoursApplied,
+
+    // BILLING SNAPSHOT — what we charge customer
+    // Default: existing snapshot, or seed from submitted qty + dispatch rate
+    billedHours: fb.billedHours != null ? String(fb.billedHours) : (fb.hoursBilled != null ? String(fb.hoursBilled) : ""),
+    billedTons: fb.billedTons != null ? String(fb.billedTons) : (fb.tonnage != null ? String(fb.tonnage) : ""),
+    billedLoads: fb.billedLoads != null ? String(fb.billedLoads) : (fb.loadCount != null ? String(fb.loadCount) : ""),
+    billedRate: fb.billedRate != null ? String(fb.billedRate) : (
+      dispatch?.ratePerHour ? String(dispatch.ratePerHour) :
+      dispatch?.ratePerTon ? String(dispatch.ratePerTon) :
+      dispatch?.ratePerLoad ? String(dispatch.ratePerLoad) : ""
+    ),
+    billedMethod: fb.billedMethod || (
+      dispatch?.ratePerHour ? "hour" :
+      dispatch?.ratePerTon ? "ton" :
+      dispatch?.ratePerLoad ? "load" : "hour"
+    ),
+
+    // PAY SNAPSHOT — what sub/driver gets paid
+    // Default: existing snapshot, or seed from submitted qty + assignment payRate
+    paidHours: fb.paidHours != null ? String(fb.paidHours) : (fb.hoursBilled != null ? String(fb.hoursBilled) : ""),
+    paidTons: fb.paidTons != null ? String(fb.paidTons) : (fb.tonnage != null ? String(fb.tonnage) : ""),
+    paidLoads: fb.paidLoads != null ? String(fb.paidLoads) : (fb.loadCount != null ? String(fb.loadCount) : ""),
+    paidRate: fb.paidRate != null ? String(fb.paidRate) : (assignment?.payRate ? String(assignment.payRate) : ""),
+    paidMethodSnapshot: fb.paidMethodSnapshot || assignment?.payMethod || "hour",
   });
   const [saving, setSaving] = useState(false);
   const [lightbox, setLightbox] = useState(null);
+
+  // Billing + Pay GROSS calculators (live, based on current draft)
+  const billedGross = useMemo(() => {
+    const rate = Number(draft.billedRate) || 0;
+    const method = draft.billedMethod || "hour";
+    const qty = method === "hour" ? Number(draft.billedHours) || 0
+              : method === "ton"  ? Number(draft.billedTons)  || 0
+                                  : Number(draft.billedLoads) || 0;
+    const adj = (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    return { gross: qty * rate, adjustments: adj, total: qty * rate + adj, qty, rate, method };
+  }, [draft.billedHours, draft.billedTons, draft.billedLoads, draft.billedRate, draft.billedMethod, fb.billingAdjustments]);
+
+  const paidGross = useMemo(() => {
+    const rate = Number(draft.paidRate) || 0;
+    const method = draft.paidMethodSnapshot || "hour";
+    const qty = method === "hour" ? Number(draft.paidHours) || 0
+              : method === "ton"  ? Number(draft.paidTons)  || 0
+                                  : Number(draft.paidLoads) || 0;
+    const adj = (fb.payingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    return { gross: qty * rate, adjustments: adj, total: qty * rate + adj, qty, rate, method };
+  }, [draft.paidHours, draft.paidTons, draft.paidLoads, draft.paidRate, draft.paidMethodSnapshot, fb.payingAdjustments]);
+
+  // Copy billing → pay (for "SAME AS BILLING" button)
+  const copyBillingToPay = () => {
+    setDraft((d) => ({
+      ...d,
+      paidHours: d.billedHours,
+      paidTons: d.billedTons,
+      paidLoads: d.billedLoads,
+      paidRate: d.billedRate,
+      paidMethodSnapshot: d.billedMethod,
+    }));
+  };
 
   // Auto-calc hours from pickup/dropoff if both present
   const autoHours = useMemo(() => {
@@ -6872,6 +6932,20 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         tonnage: draft.tonnage ? Number(draft.tonnage) : null,
         loadCount: Number(draft.loadCount) || 1,
         hoursBilled: actualH,
+
+        // Persist BILLING snapshot (unless already locked by invoice)
+        billedHours: billingSnapshotLocked && fb.billedHours != null ? fb.billedHours : (draft.billedHours !== "" ? Number(draft.billedHours) : null),
+        billedTons:  billingSnapshotLocked && fb.billedTons  != null ? fb.billedTons  : (draft.billedTons  !== "" ? Number(draft.billedTons)  : null),
+        billedLoads: billingSnapshotLocked && fb.billedLoads != null ? fb.billedLoads : (draft.billedLoads !== "" ? Number(draft.billedLoads) : null),
+        billedRate:  billingSnapshotLocked && fb.billedRate  != null ? fb.billedRate  : (draft.billedRate  !== "" ? Number(draft.billedRate)  : null),
+        billedMethod: billingSnapshotLocked && fb.billedMethod ? fb.billedMethod : (draft.billedMethod || null),
+
+        // Persist PAY snapshot (unless already locked by pay statement)
+        paidHours: paySnapshotLocked && fb.paidHours != null ? fb.paidHours : (draft.paidHours !== "" ? Number(draft.paidHours) : null),
+        paidTons:  paySnapshotLocked && fb.paidTons  != null ? fb.paidTons  : (draft.paidTons  !== "" ? Number(draft.paidTons)  : null),
+        paidLoads: paySnapshotLocked && fb.paidLoads != null ? fb.paidLoads : (draft.paidLoads !== "" ? Number(draft.paidLoads) : null),
+        paidRate:  paySnapshotLocked && fb.paidRate  != null ? fb.paidRate  : (draft.paidRate  !== "" ? Number(draft.paidRate)  : null),
+        paidMethodSnapshot: paySnapshotLocked && fb.paidMethodSnapshot ? fb.paidMethodSnapshot : (draft.paidMethodSnapshot || null),
       };
 
       // If admin confirmed min-hours, stamp audit
@@ -6880,12 +6954,10 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         patch.minHoursApprovedBy = currentUser || "admin";
         patch.minHoursApprovedAt = new Date().toISOString();
       } else if (!belowMin) {
-        // Actual hours >= min → unneeded, clear the flag
         patch.minHoursApplied = false;
         patch.minHoursApprovedBy = null;
         patch.minHoursApprovedAt = null;
       } else {
-        // belowMin but not confirmed — keep flag as is
         patch.minHoursApplied = !!draft.minHoursApplied;
       }
 
@@ -7250,6 +7322,179 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "", amount: "", reimbursable: true }] })}>
                 <Plus size={11} style={{ marginRight: 3 }} /> OTHER
               </button>
+            </div>
+          </div>
+
+          {/* ━━ BILLING + PAY SNAPSHOT DUAL PANEL ━━
+              Billing = what we charge customer (locked on invoice)
+              Pay     = what we pay sub/driver (locked on pay statement) */}
+          <div style={{ borderTop: "3px double var(--steel)", paddingTop: 14 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
+              ▸ BILLING &amp; PAY SNAPSHOT (REVIEW BEFORE APPROVAL)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
+              {/* ─── BILLING SIDE ─── */}
+              <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "var(--steel)") }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700 }}>
+                    🏢 BILL TO CUSTOMER
+                  </div>
+                  {billingSnapshotLocked && (
+                    <span className="chip" style={{ background: "#0EA5E9", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                      <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED
+                    </span>
+                  )}
+                </div>
+                {billingSnapshotLocked && (
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 8 }}>
+                    {invoiceOnFb ? `On invoice ${invoiceOnFb.invoiceNumber}` : "Locked"} · ADD ADJUSTMENTS TO CORRECT
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <select
+                    className="fbt-select"
+                    style={{ padding: "5px 8px", fontSize: 11 }}
+                    value={draft.billedMethod || "hour"}
+                    onChange={(e) => setDraft({ ...draft, billedMethod: e.target.value })}
+                    disabled={billingSnapshotLocked}
+                  >
+                    <option value="hour">$/hr</option>
+                    <option value="ton">$/ton</option>
+                    <option value="load">$/load</option>
+                  </select>
+                  <input
+                    className="fbt-input"
+                    type="number" step="0.01"
+                    style={{ padding: "5px 8px", fontSize: 11, width: 90 }}
+                    placeholder="rate"
+                    value={draft.billedRate || ""}
+                    onChange={(e) => setDraft({ ...draft, billedRate: e.target.value })}
+                    disabled={billingSnapshotLocked}
+                  />
+                </div>
+                <div>
+                  <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+                    {draft.billedMethod === "ton" ? "TONS" : draft.billedMethod === "load" ? "LOADS" : "HOURS"}
+                  </label>
+                  <input
+                    className="fbt-input"
+                    type="number" step="0.01"
+                    style={{ padding: "5px 8px", fontSize: 11 }}
+                    value={draft.billedMethod === "ton" ? (draft.billedTons || "") : draft.billedMethod === "load" ? (draft.billedLoads || "") : (draft.billedHours || "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (draft.billedMethod === "ton") setDraft({ ...draft, billedTons: v });
+                      else if (draft.billedMethod === "load") setDraft({ ...draft, billedLoads: v });
+                      else setDraft({ ...draft, billedHours: v });
+                    }}
+                    disabled={billingSnapshotLocked}
+                  />
+                </div>
+                <div style={{ marginTop: 8, padding: 8, background: "#F0F9FF", border: "1px solid #0EA5E9" }}>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1" }}>GROSS</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#0369A1" }}>
+                    {fmt$(billedGross.gross)}
+                  </div>
+                  {billedGross.adjustments !== 0 && (
+                    <>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 4 }}>
+                        ADJUSTMENTS: {billedGross.adjustments > 0 ? "+" : ""}{fmt$(billedGross.adjustments)}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>
+                        NET: {fmt$(billedGross.total)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* ─── PAY SIDE ─── */}
+              <div style={{ padding: 12, background: paySnapshotLocked ? "#F0FDF4" : "#FFF", border: "2px solid " + (paySnapshotLocked ? "var(--good)" : "var(--steel)") }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                    🚚 PAY SUB / DRIVER
+                  </div>
+                  {!paySnapshotLocked && (
+                    <button
+                      type="button"
+                      onClick={copyBillingToPay}
+                      style={{ background: "var(--hazard)", color: "var(--steel)", border: "1px solid var(--hazard-deep)", fontSize: 9, padding: "3px 8px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.08em" }}
+                      title="Copy hours/tons/loads and rate from billing side"
+                    >
+                      ⇦ SAME AS BILLING
+                    </button>
+                  )}
+                  {paySnapshotLocked && (
+                    <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                      <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED
+                    </span>
+                  )}
+                </div>
+                {paySnapshotLocked && (
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 8 }}>
+                    Pay statement generated · ADD ADJUSTMENTS TO CORRECT
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <select
+                    className="fbt-select"
+                    style={{ padding: "5px 8px", fontSize: 11 }}
+                    value={draft.paidMethodSnapshot || "hour"}
+                    onChange={(e) => setDraft({ ...draft, paidMethodSnapshot: e.target.value })}
+                    disabled={paySnapshotLocked}
+                  >
+                    <option value="hour">$/hr</option>
+                    <option value="ton">$/ton</option>
+                    <option value="load">$/load</option>
+                  </select>
+                  <input
+                    className="fbt-input"
+                    type="number" step="0.01"
+                    style={{ padding: "5px 8px", fontSize: 11, width: 90 }}
+                    placeholder="rate"
+                    value={draft.paidRate || ""}
+                    onChange={(e) => setDraft({ ...draft, paidRate: e.target.value })}
+                    disabled={paySnapshotLocked}
+                  />
+                </div>
+                <div>
+                  <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+                    {draft.paidMethodSnapshot === "ton" ? "TONS" : draft.paidMethodSnapshot === "load" ? "LOADS" : "HOURS"}
+                  </label>
+                  <input
+                    className="fbt-input"
+                    type="number" step="0.01"
+                    style={{ padding: "5px 8px", fontSize: 11 }}
+                    value={draft.paidMethodSnapshot === "ton" ? (draft.paidTons || "") : draft.paidMethodSnapshot === "load" ? (draft.paidLoads || "") : (draft.paidHours || "")}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (draft.paidMethodSnapshot === "ton") setDraft({ ...draft, paidTons: v });
+                      else if (draft.paidMethodSnapshot === "load") setDraft({ ...draft, paidLoads: v });
+                      else setDraft({ ...draft, paidHours: v });
+                    }}
+                    disabled={paySnapshotLocked}
+                  />
+                </div>
+                <div style={{ marginTop: 8, padding: 8, background: "#F0FDF4", border: "1px solid var(--good)" }}>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>GROSS</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--good)" }}>
+                    {fmt$(paidGross.gross)}
+                  </div>
+                  {paidGross.adjustments !== 0 && (
+                    <>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 4 }}>
+                        ADJUSTMENTS: {paidGross.adjustments > 0 ? "+" : ""}{fmt$(paidGross.adjustments)}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>
+                        NET: {fmt$(paidGross.total)}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
+              ▸ ONCE APPROVED, THESE VALUES ARE LOCKED INTO THE FB. INVOICE LOCKS BILLING. PAY STATEMENT LOCKS PAY. FURTHER CHANGES REQUIRE ADJUSTMENTS.
             </div>
           </div>
 
