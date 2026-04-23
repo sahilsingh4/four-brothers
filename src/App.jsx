@@ -4697,16 +4697,38 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     const r = Number(rate) || 0;
     let subtotal = 0;
     let fbExtrasSum = 0;
+    let billingAdjSum = 0;
     matchedBills.forEach((fb) => {
+      // PREFER BILLED SNAPSHOT from FB approval — this is the authoritative billed amount
+      const hasSnapshot = fb.billedRate != null && fb.billedMethod;
       let qty = 0;
-      if (pricingMethod === "ton") qty = Number(fb.tonnage) || 0;
-      else if (pricingMethod === "load") qty = Number(fb.loadCount) || 1;
-      else if (pricingMethod === "hour") {
-        const manual = hoursOverride[fb.id];
-        if (manual !== undefined && manual !== "") qty = Number(manual) || 0;
-        else qty = billableHoursForInvoice(fb);
+      let fbRate = r;
+      const method = hasSnapshot ? fb.billedMethod : pricingMethod;
+
+      if (hasSnapshot) {
+        // Use snapshot values directly
+        if (method === "ton") qty = Number(fb.billedTons) || 0;
+        else if (method === "load") qty = Number(fb.billedLoads) || 0;
+        else if (method === "hour") qty = Number(fb.billedHours) || 0;
+        // Allow manual hours override on invoice to still work — invoice rate takes precedence if set
+        if (pricingMethod === "hour" && hoursOverride[fb.id] !== undefined && hoursOverride[fb.id] !== "") {
+          qty = Number(hoursOverride[fb.id]) || 0;
+        }
+      } else {
+        // Legacy: live compute from fb fields
+        if (pricingMethod === "ton") qty = Number(fb.tonnage) || 0;
+        else if (pricingMethod === "load") qty = Number(fb.loadCount) || 1;
+        else if (pricingMethod === "hour") {
+          const manual = hoursOverride[fb.id];
+          if (manual !== undefined && manual !== "") qty = Number(manual) || 0;
+          else qty = billableHoursForInvoice(fb);
+        }
       }
-      subtotal += qty * r;
+      subtotal += qty * fbRate;
+
+      // Billing adjustments from FB (post-lock corrections)
+      billingAdjSum += (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
       // Sum reimbursable FB-level extras (tolls/dump/fuel/other paid by driver/sub)
       (fb.extras || []).forEach((x) => {
         if (x.reimbursable !== false) fbExtrasSum += Number(x.amount) || 0;
@@ -4715,7 +4737,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     const ef = Number(extraFees) || 0;
     const extrasSum = (extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
     const d = Number(discount) || 0;
-    return { subtotal, extrasSum, fbExtrasSum, total: subtotal + ef + extrasSum + fbExtrasSum - d };
+    return {
+      subtotal, extrasSum, fbExtrasSum, billingAdjSum,
+      total: subtotal + ef + extrasSum + fbExtrasSum + billingAdjSum - d,
+    };
   }, [matchedBills, rate, pricingMethod, hoursOverride, extraFees, discount, extras]);
 
   // Reconciliation check — any source order for these FBs that isn't reconciled?
@@ -4880,15 +4905,27 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       let hoursChanged = 0;
       let rateChanged = 0;
       const newRate = Number(rate);
+      const lockStamp = new Date().toISOString();
       for (const fb of billsToInvoice) {
-        const patch = { ...fb, invoiceId: realId };
+        const patch = { ...fb, invoiceId: realId, billingLockedAt: lockStamp };
 
-        // Per-FB customer rate snapshot (for future invoices + audit trail)
+        // Per-FB customer rate snapshot (legacy — still useful for audit)
         if (newRate > 0 && (Number(fb.customerRate) !== newRate || fb.customerRateMethod !== pricingMethod)) {
           patch.customerRate = newRate;
           patch.customerRateMethod = pricingMethod;
           rateChanged++;
         }
+
+        // Billing snapshot — stamp from current invoice values (if not already set at approval)
+        // This ensures even FBs approved before snapshot model get their billing locked in
+        if (!fb.billedRate) patch.billedRate = newRate;
+        if (!fb.billedMethod) patch.billedMethod = pricingMethod;
+        if (pricingMethod === "hour" && fb.billedHours == null) {
+          const manual = hoursOverride[fb.id];
+          patch.billedHours = (manual !== undefined && manual !== "") ? Number(manual) : (Number(fb.hoursBilled) || 0);
+        }
+        if (pricingMethod === "ton" && fb.billedTons == null) patch.billedTons = Number(fb.tonnage) || 0;
+        if (pricingMethod === "load" && fb.billedLoads == null) patch.billedLoads = Number(fb.loadCount) || 1;
 
         // Flow edited hours back to fb.hoursBilled (affects payroll for hour-paid subs)
         if (pricingMethod === "hour") {
@@ -4898,6 +4935,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             const oldHours = Number(fb.hoursBilled) || 0;
             if (Math.abs(newHours - oldHours) > 0.001) {
               patch.hoursBilled = newHours;
+              patch.billedHours = newHours; // keep snapshot consistent
               hoursChanged++;
             }
           }
@@ -8481,6 +8519,7 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSucce
       const grossByFb = fbs.map((x) => x.adjustedGross !== undefined ? x.adjustedGross : x.gross);
       const grossSum = grossByFb.reduce((s, v) => s + v, 0) || 1;
       const totalAmt = Number(form.amount);
+      const lockStamp = new Date().toISOString();
 
       const paidFbs = [];
       for (let i = 0; i < fbs.length; i++) {
@@ -8490,6 +8529,14 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSucce
           ...entry.fb,
           ...stamp,
           paidAmount: Number(share.toFixed(2)),
+          // Lock pay snapshot — pay statement generated, no more editing hours/rate directly
+          payStatementLockedAt: entry.fb.payStatementLockedAt || lockStamp,
+          // Ensure snapshot exists for FBs that were approved pre-v15
+          paidRate: entry.fb.paidRate != null ? entry.fb.paidRate : entry.rate,
+          paidMethodSnapshot: entry.fb.paidMethodSnapshot || entry.method,
+          paidHours: entry.fb.paidHours != null ? entry.fb.paidHours : (entry.method === "hour" ? entry.qty : null),
+          paidTons: entry.fb.paidTons != null ? entry.fb.paidTons : (entry.method === "ton" ? entry.qty : null),
+          paidLoads: entry.fb.paidLoads != null ? entry.fb.paidLoads : (entry.method === "load" ? entry.qty : null),
         };
         await editFreightBill(entry.fb.id, updatedFb);
         paidFbs.push(updatedFb);
