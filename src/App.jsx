@@ -2050,6 +2050,39 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     });
   }, [dispatches, freightBills, search]);
 
+  // v18: group dispatches by day — key = YYYY-MM-DD of the "order date"
+  // (order date is `date` field if present, else createdAt, else submittedAt).
+  // Within each day, sort newest first. Days themselves are sorted newest first.
+  const groupedByDay = useMemo(() => {
+    const dayKey = (d) => {
+      const ts = d.date || d.createdAt || d.submittedAt || new Date().toISOString();
+      return (ts || "").slice(0, 10); // YYYY-MM-DD
+    };
+    const groups = {};
+    filteredDispatches.forEach((d) => {
+      const k = dayKey(d);
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(d);
+    });
+    // Sort each day's orders: most-recently-created first
+    Object.values(groups).forEach((arr) => {
+      arr.sort((a, b) => (b.createdAt || b.submittedAt || "").localeCompare(a.createdAt || a.submittedAt || ""));
+    });
+    // Return as array of { date, orders }, newest day first
+    return Object.keys(groups).sort((a, b) => b.localeCompare(a)).map((k) => ({ date: k, orders: groups[k] }));
+  }, [filteredDispatches]);
+
+  // Human-friendly date label: "Today", "Yesterday", or "Mon, Apr 22, 2026"
+  const dayLabel = (iso) => {
+    if (!iso) return "—";
+    const today = todayISO();
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+    if (iso === today) return "Today";
+    if (iso === yesterday) return "Yesterday";
+    const d = new Date(iso + "T00:00:00");
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  };
+
   return (
     <div style={{ display: "grid", gap: 24 }}>
       {lightbox && <Lightbox src={lightbox} onClose={() => setLightbox(null)} />}
@@ -3171,8 +3204,23 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
           <div className="fbt-mono" style={{ fontSize: 13 }}>{search ? "NO MATCHES FOR THAT SEARCH" : "NO DISPATCHES YET — CREATE ONE ABOVE"}</div>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          {filteredDispatches.map((d) => {
+        <div style={{ display: "grid", gap: 28 }}>
+          {groupedByDay.map((group) => (
+            <div key={group.date}>
+              {/* Day header */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, paddingBottom: 8, borderBottom: "2px solid var(--steel)" }}>
+                <Calendar size={16} style={{ color: "var(--hazard-deep)" }} />
+                <h3 className="fbt-display" style={{ fontSize: 16, margin: 0, letterSpacing: "0.02em" }}>{dayLabel(group.date)}</h3>
+                <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                  {group.date}
+                </span>
+                <span className="fbt-mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                  {group.orders.length} ORDER{group.orders.length !== 1 ? "S" : ""}
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gap: 14 }}>
+                {group.orders.map((d) => {
             const bills = fbForDispatch(d.id);
             const pct = d.trucksExpected ? Math.min(100, (bills.length / d.trucksExpected) * 100) : 0;
             const unreadOnThis = bills.filter((fb) => unreadSet.has(fb.id)).length;
@@ -3266,7 +3314,10 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 </div>
               </div>
             );
-          })}
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -7698,6 +7749,52 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     }
   };
 
+  // v18: Soft-delete FB from the edit modal (admin can remove spam/duplicate submissions).
+  // Enforces the same cascade rules as DispatchesTab.removeFreightBill — blocks if
+  // the FB is on an invoice, marked paid, or customer-paid. Goes to Recovery tab (30 days).
+  const handleDelete = async () => {
+    // Cascade check
+    const blockers = [];
+    if (fb.invoiceId) {
+      const inv = invoices.find((i) => i.id === fb.invoiceId);
+      blockers.push(`• On invoice ${inv?.invoiceNumber || fb.invoiceId} — remove from that invoice first`);
+    }
+    if (fb.paidAt) {
+      const amt = fb.paidAmount ? ` ($${Number(fb.paidAmount).toFixed(2)})` : "";
+      blockers.push(`• Paid to sub/driver${amt} on ${new Date(fb.paidAt).toLocaleDateString()} — unmark paid first`);
+    }
+    if (fb.customerPaidAt) {
+      blockers.push(`• Customer has paid this FB — unmark customer payment first`);
+    }
+
+    if (blockers.length > 0) {
+      alert([
+        `✗ Cannot delete FB#${fb.freightBillNumber || "—"}.`,
+        ``,
+        `This freight bill has downstream records:`,
+        ...blockers,
+        ``,
+        `Clear these first, then try again.`,
+      ].join("\n"));
+      return;
+    }
+
+    if (!confirm(`Delete FB#${fb.freightBillNumber || "—"}?\n\nThis is a SOFT delete. The FB stays recoverable for 30 days in the Recovery tab.`)) return;
+    const reason = prompt('Reason for deletion (optional — e.g. "spam", "duplicate", "test submission"):') || "";
+
+    setSaving(true);
+    try {
+      await deleteFreightBill(fb.id, { deletedBy: "admin", reason });
+      onToast("✓ FB DELETED (RECOVERABLE 30 DAYS)");
+      onClose();
+    } catch (e) {
+      console.error("Delete failed:", e);
+      alert("Delete failed: " + (e?.message || String(e)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const unapprove = async () => {
     if (!confirm("Move back to pending? Customer will no longer see this FB.")) return;
     setSaving(true);
@@ -8287,6 +8384,24 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                 <X size={16} /> REJECT
               </button>
             )}
+            <button
+              onClick={handleDelete}
+              disabled={saving || !!fb.invoiceId || !!fb.paidAt || !!fb.customerPaidAt}
+              title={
+                fb.invoiceId ? "Can't delete — FB is on an invoice" :
+                fb.paidAt ? "Can't delete — FB is paid to sub/driver" :
+                fb.customerPaidAt ? "Can't delete — customer has paid this FB" :
+                "Soft-delete this FB (recoverable for 30 days)"
+              }
+              className="btn-ghost"
+              style={{
+                borderColor: "var(--safety)",
+                color: "var(--safety)",
+                opacity: (!!fb.invoiceId || !!fb.paidAt || !!fb.customerPaidAt) ? 0.4 : 1,
+              }}
+            >
+              <Trash2 size={14} style={{ marginRight: 4 }} /> DELETE
+            </button>
             <button onClick={onClose} className="btn-ghost" style={{ marginLeft: "auto" }}>CANCEL</button>
           </div>
         </div>
