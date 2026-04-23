@@ -1411,6 +1411,40 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       ...a,
       aid: a.aid || `a${Date.now().toString(36).slice(-4)}${idx}`, // stable short ID
     }));
+
+    // DOUBLE-ASSIGNMENT CHECK — warn if any driver is on another non-closed order
+    // Check both individual driver assignments AND drivers-under-sub assignments
+    const driverAssignmentIds = assignments
+      .filter((a) => a.kind === "driver" && a.contactId)
+      .map((a) => a.contactId);
+
+    const conflicts = [];
+    for (const driverId of driverAssignmentIds) {
+      const otherOrders = dispatches.filter((d) => {
+        if (editingId && d.id === editingId) return false; // skip this order if editing
+        if (d.status === "closed") return false;
+        return (d.assignments || []).some((a) => a.kind === "driver" && a.contactId === driverId);
+      });
+      if (otherOrders.length > 0) {
+        const contact = contacts.find((c) => c.id === driverId);
+        const driverName = contact?.companyName || contact?.contactName || "Driver";
+        conflicts.push({
+          driverName,
+          orders: otherOrders.map((o) => ({ code: o.code, date: o.date, status: o.status })),
+        });
+      }
+    }
+
+    if (conflicts.length > 0) {
+      const msgLines = conflicts.map((c) =>
+        `⚠ ${c.driverName} is already on: ${c.orders.map((o) => `#${o.code} (${o.date})`).join(", ")}`
+      );
+      const proceed = confirm(
+        `DRIVER DOUBLE-ASSIGNMENT DETECTED:\n\n${msgLines.join("\n\n")}\n\nAssign anyway?`
+      );
+      if (!proceed) return;
+    }
+
     const assignmentsTrucks = assignments.reduce((s, a) => s + (Number(a.trucks) || 0), 0);
     const finalTrucksExpected = assignmentsTrucks > 0
       ? assignmentsTrucks
@@ -1924,45 +1958,6 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   </div>
                 );
               })()}
-              <div>
-                <label className="fbt-label">Sub-Contractor / Crew</label>
-                {contacts.filter((c) => c.type === "sub").length > 0 ? (
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <select
-                      className="fbt-select"
-                      style={{ flex: 1, minWidth: 180 }}
-                      value={draft.subContractorId || ""}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        if (!id) { setDraft({ ...draft, subContractorId: "", subContractor: "" }); return; }
-                        const c = contacts.find((x) => String(x.id) === id);
-                        if (c) setDraft({ ...draft, subContractorId: c.id, subContractor: c.companyName || c.contactName });
-                      }}
-                    >
-                      <option value="">— Internal (no sub) —</option>
-                      {contacts
-                        .filter((c) => c.type === "sub")
-                        .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
-                          </option>
-                        ))}
-                    </select>
-                    <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>OR</span>
-                    <input
-                      className="fbt-input"
-                      style={{ flex: 1, minWidth: 120 }}
-                      value={draft.subContractorId ? "" : (draft.subContractor || "")}
-                      onChange={(e) => setDraft({ ...draft, subContractor: e.target.value, subContractorId: "" })}
-                      placeholder="Type new name"
-                      disabled={!!draft.subContractorId}
-                    />
-                  </div>
-                ) : (
-                  <input className="fbt-input" value={draft.subContractor || ""} onChange={(e) => setDraft({ ...draft, subContractor: e.target.value })} placeholder="Leave blank if internal · add contacts to see a picker" />
-                )}
-              </div>
 
               {/* SUB-CONTRACTORS & DRIVERS (unified) */}
               <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14, position: "relative" }}>
