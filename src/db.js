@@ -645,7 +645,7 @@ export const hardDeleteInvoice = async (id) => {
 // Call this periodically (e.g., on app load or nightly cron) to keep the tables clean.
 export const autoPurgeDeleted = async (daysOld = 30) => {
   const cutoff = new Date(Date.now() - daysOld * 24 * 60 * 60 * 1000).toISOString();
-  const results = { dispatches: 0, freightBills: 0, invoices: 0, errors: [] };
+  const results = { dispatches: 0, freightBills: 0, invoices: 0, quotes: 0, errors: [] };
 
   try {
     const { error, count } = await supabase
@@ -676,6 +676,17 @@ export const autoPurgeDeleted = async (daysOld = 30) => {
     if (error) results.errors.push({ table: "invoices", error: error.message });
     else results.invoices = count || 0;
   } catch (e) { results.errors.push({ table: "invoices", error: String(e) }); }
+
+  // v18: include quotes in auto-purge
+  try {
+    const { error, count } = await supabase
+      .from("quotes")
+      .delete({ count: "exact" })
+      .not("deleted_at", "is", null)
+      .lt("deleted_at", cutoff);
+    if (error) results.errors.push({ table: "quotes", error: error.message });
+    else results.quotes = count || 0;
+  } catch (e) { results.errors.push({ table: "quotes", error: String(e) }); }
 
   return results;
 };

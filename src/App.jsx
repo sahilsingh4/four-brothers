@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes } from "./db";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes, fetchDeletedQuotes, recoverQuote, hardDeleteQuote } from "./db";
 import {
   hoursFromTimes as mathHoursFromTimes,
   computeLineNet as mathComputeLineNet,
@@ -12534,6 +12534,264 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
   );
 };
 
+// ========================================================================
+// RECOVERY TAB (v17/v18) — browse and restore soft-deleted items
+// ========================================================================
+// Shows soft-deleted dispatches, freight bills, invoices, and quotes.
+// Items past the 30-day recovery window are flagged as "will auto-purge soon."
+// Admin can RECOVER (restore to active) or DELETE PERMANENTLY (bypass auto-purge).
+// ========================================================================
+
+const RecoveryTab = ({ onToast }) => {
+  const [deletedDispatches, setDeletedDispatches] = useState([]);
+  const [deletedFBs, setDeletedFBs] = useState([]);
+  const [deletedInvoices, setDeletedInvoices] = useState([]);
+  const [deletedQuotes, setDeletedQuotes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+
+  const refreshAll = async () => {
+    setLoading(true);
+    try {
+      const [d, f, i, q] = await Promise.all([
+        fetchDeletedDispatches(),
+        fetchDeletedFreightBills(),
+        fetchDeletedInvoices(),
+        fetchDeletedQuotes(),
+      ]);
+      setDeletedDispatches(d);
+      setDeletedFBs(f);
+      setDeletedInvoices(i);
+      setDeletedQuotes(q);
+    } catch (e) {
+      console.error("Recovery fetch failed:", e);
+      onToast("COULDN'T LOAD DELETED ITEMS");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { refreshAll(); }, []);
+
+  // Is this deletion past the 30-day recovery window?
+  const isExpired = (deletedAt) => {
+    if (!deletedAt) return false;
+    const ageMs = Date.now() - new Date(deletedAt).getTime();
+    return ageMs > 30 * 24 * 60 * 60 * 1000;
+  };
+  const daysUntilPurge = (deletedAt) => {
+    if (!deletedAt) return null;
+    const ageMs = Date.now() - new Date(deletedAt).getTime();
+    const remain = 30 - Math.floor(ageMs / (24 * 60 * 60 * 1000));
+    return remain;
+  };
+
+  const fmtDeletedAt = (iso) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  };
+
+  const handleRecover = async (type, id, label) => {
+    if (!confirm(`Recover ${label}?\n\nThis will restore it to active records.`)) return;
+    setBusyId(`${type}-${id}`);
+    try {
+      if (type === "dispatch") await recoverDispatch(id);
+      else if (type === "fb") await recoverFreightBill(id);
+      else if (type === "invoice") await recoverInvoice(id);
+      else if (type === "quote") await recoverQuote(id);
+      onToast(`✓ RECOVERED ${label.toUpperCase()}`);
+      await refreshAll();
+    } catch (e) {
+      console.error("Recover failed:", e);
+      alert("Recover failed: " + (e?.message || String(e)));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleHardDelete = async (type, id, label) => {
+    if (!confirm(`⚠ PERMANENTLY delete ${label}?\n\nThis CANNOT be undone. Usually auto-purge handles this after 30 days.\n\nContinue?`)) return;
+    const confirm2 = prompt(`Type DELETE (all caps) to confirm permanent deletion of ${label}:`);
+    if (confirm2 !== "DELETE") { onToast("CANCELLED"); return; }
+    setBusyId(`${type}-${id}`);
+    try {
+      if (type === "dispatch") await hardDeleteDispatch(id);
+      else if (type === "fb") await hardDeleteFreightBill(id);
+      else if (type === "invoice") await hardDeleteInvoice(id);
+      else if (type === "quote") await hardDeleteQuote(id);
+      onToast(`✓ PERMANENTLY DELETED`);
+      await refreshAll();
+    } catch (e) {
+      console.error("Hard delete failed:", e);
+      alert("Permanent delete failed: " + (e?.message || String(e)));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Row renderer: one item in a group
+  const renderRow = ({ type, id, title, sub, deletedAt, deletedBy, deleteReason, label }) => {
+    const expired = isExpired(deletedAt);
+    const days = daysUntilPurge(deletedAt);
+    const busy = busyId === `${type}-${id}`;
+    return (
+      <div key={`${type}-${id}`} style={{ padding: "12px 14px", background: expired ? "#FEF2F2" : "#FAFAF9", border: `1.5px solid ${expired ? "var(--safety)" : "var(--concrete)"}`, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <div className="fbt-display" style={{ fontSize: 14, margin: 0 }}>{title}</div>
+          {sub && <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3, letterSpacing: "0.04em" }}>{sub}</div>}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, color: "var(--concrete)", letterSpacing: "0.06em", marginTop: 6, textTransform: "uppercase" }}>
+            <span>DELETED {fmtDeletedAt(deletedAt)}</span>
+            {deletedBy && <span>· BY {deletedBy}</span>}
+            {deleteReason && <span>· "{deleteReason}"</span>}
+          </div>
+          {expired ? (
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginTop: 6, fontWeight: 700 }}>
+              ⚠ EXPIRED — WILL AUTO-PURGE ON NEXT APP BOOT
+            </div>
+          ) : days !== null && days <= 7 && (
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", marginTop: 6, fontWeight: 700 }}>
+              ⏱ PURGES IN {days} DAY{days !== 1 ? "S" : ""}
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button onClick={() => handleRecover(type, id, label)} disabled={busy} className="btn-primary" style={{ padding: "6px 12px", fontSize: 11, background: "var(--good)", color: "#FFF" }}>
+            <RefreshCw size={11} style={{ marginRight: 4 }} /> RECOVER
+          </button>
+          <button onClick={() => handleHardDelete(type, id, label)} disabled={busy} className="btn-ghost" style={{ padding: "6px 12px", fontSize: 11, borderColor: "var(--safety)", color: "var(--safety)" }}>
+            <Trash2 size={11} style={{ marginRight: 4 }} /> PURGE
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const groupCard = (title, items, renderItem) => (
+    <div className="fbt-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, paddingBottom: 8, borderBottom: "2px solid var(--steel)" }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>{title}</h3>
+        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+          {items.length} ITEM{items.length !== 1 ? "S" : ""}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.08em", padding: "16px 0", fontStyle: "italic" }}>
+          NOTHING HERE — NO {title.replace("DELETED ", "")} DELETED
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          {items.map(renderItem)}
+        </div>
+      )}
+    </div>
+  );
+
+  const totalDeleted = deletedDispatches.length + deletedFBs.length + deletedInvoices.length + deletedQuotes.length;
+  const totalExpired = [...deletedDispatches, ...deletedFBs, ...deletedInvoices, ...deletedQuotes].filter((x) => isExpired(x.deletedAt)).length;
+
+  return (
+    <div style={{ display: "grid", gap: 24 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
+        <h2 className="fbt-display" style={{ fontSize: 22, margin: 0 }}>RECOVERY</h2>
+        <span className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+          SOFT-DELETED ITEMS · RECOVERABLE FOR 30 DAYS
+        </span>
+        <button onClick={refreshAll} disabled={loading} className="btn-ghost" style={{ marginLeft: "auto", fontSize: 11, padding: "6px 12px" }}>
+          <RefreshCw size={11} style={{ marginRight: 4 }} /> REFRESH
+        </button>
+      </div>
+
+      {/* Summary stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{totalDeleted}</div>
+          <div className="stat-label">TOTAL DELETED</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{deletedDispatches.length}</div>
+          <div className="stat-label">DISPATCHES</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{deletedFBs.length}</div>
+          <div className="stat-label">FREIGHT BILLS</div>
+        </div>
+        <div className="fbt-card" style={{ padding: 16 }}>
+          <div className="stat-num">{deletedInvoices.length + deletedQuotes.length}</div>
+          <div className="stat-label">INVOICES + QUOTES</div>
+        </div>
+        {totalExpired > 0 && (
+          <div className="fbt-card" style={{ padding: 16, background: "#FEF2F2", border: "2px solid var(--safety)" }}>
+            <div className="stat-num" style={{ color: "var(--safety)" }}>{totalExpired}</div>
+            <div className="stat-label" style={{ color: "var(--safety)" }}>EXPIRED · WILL PURGE</div>
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
+          <div className="fbt-mono anim-roll" style={{ fontSize: 13, letterSpacing: "0.2em", color: "var(--hazard-deep)" }}>▸ LOADING RECOVERY DATA…</div>
+        </div>
+      ) : totalDeleted === 0 ? (
+        <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
+          <CheckCircle2 size={32} style={{ opacity: 0.4, marginBottom: 8, color: "var(--good)" }} />
+          <div className="fbt-display" style={{ fontSize: 14 }}>NOTHING IN RECOVERY</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.08em", marginTop: 6 }}>
+            WHEN YOU DELETE DISPATCHES, FBS, INVOICES, OR QUOTES, THEY'LL APPEAR HERE FOR 30 DAYS
+          </div>
+        </div>
+      ) : (
+        <>
+          {groupCard("DELETED DISPATCHES", deletedDispatches, (d) => renderRow({
+            type: "dispatch",
+            id: d.id,
+            title: `Order #${d.code || d.id.slice(0, 8)} — ${d.jobName || "—"}`,
+            sub: `${d.pickup || "—"} → ${d.dropoff || "—"} · ${d.trucksExpected || 0} truck${d.trucksExpected !== 1 ? "s" : ""}`,
+            deletedAt: d.deletedAt,
+            deletedBy: d.deletedBy,
+            deleteReason: d.deleteReason,
+            label: `Order #${d.code || d.id.slice(0, 8)}`,
+          }))}
+
+          {groupCard("DELETED FREIGHT BILLS", deletedFBs, (fb) => renderRow({
+            type: "fb",
+            id: fb.id,
+            title: `FB #${fb.freightBillNumber || fb.id.slice(0, 8)}`,
+            sub: `${fb.driverName || "—"} · Truck ${fb.truckNumber || "—"}${fb.tonnage ? ` · ${fb.tonnage} tons` : ""}${fb.loadCount ? ` · ${fb.loadCount} loads` : ""}`,
+            deletedAt: fb.deletedAt,
+            deletedBy: fb.deletedBy,
+            deleteReason: fb.deleteReason,
+            label: `FB #${fb.freightBillNumber || fb.id.slice(0, 8)}`,
+          }))}
+
+          {groupCard("DELETED INVOICES", deletedInvoices, (inv) => renderRow({
+            type: "invoice",
+            id: inv.id,
+            title: `Invoice ${inv.invoiceNumber || inv.id.slice(0, 8)}`,
+            sub: `${inv.clientName || "—"}${inv.totalAmount ? ` · $${Number(inv.totalAmount).toFixed(2)}` : ""}${inv.fbIds ? ` · ${inv.fbIds.length} FB${inv.fbIds.length !== 1 ? "s" : ""}` : ""}`,
+            deletedAt: inv.deletedAt,
+            deletedBy: inv.deletedBy,
+            deleteReason: inv.deleteReason,
+            label: `Invoice ${inv.invoiceNumber || inv.id.slice(0, 8)}`,
+          }))}
+
+          {groupCard("DELETED QUOTES", deletedQuotes, (q) => renderRow({
+            type: "quote",
+            id: q.id,
+            title: `${q.name || "—"}${q.company ? ` — ${q.company}` : ""}`,
+            sub: `${q.email || "—"}${q.phone ? ` · ${q.phone}` : ""}${q.service ? ` · ${q.service}` : ""}`,
+            deletedAt: q.deletedAt,
+            deletedBy: q.deletedBy,
+            deleteReason: q.deleteReason,
+            label: `quote from ${q.name || "—"}`,
+          }))}
+        </>
+      )}
+    </div>
+  );
+};
+
 const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
@@ -14170,6 +14428,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
     { k: "fleet", l: "Fleet", ico: <Truck size={16} /> },
     { k: "materials", l: "Materials", ico: <Mountain size={16} /> },
     { k: "reports", l: "Reports", ico: <BarChart3 size={16} /> },
+    { k: "recovery", l: "Recovery", ico: <History size={16} /> },
     { k: "data", l: "Data", ico: <Database size={16} /> },
   ];
 
@@ -14227,6 +14486,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
         {tab === "reports" && <ReportsTab dispatches={dispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
+        {tab === "recovery" && <RecoveryTab onToast={onToast} />}
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
       </div>
     </div>
@@ -14313,7 +14573,7 @@ export default function App() {
       // v17: Auto-purge soft-deleted rows older than 30 days (fire-and-forget).
       // Runs once on app load. Safe to run multiple times — idempotent.
       autoPurgeDeleted(30).then((r) => {
-        const total = (r.dispatches || 0) + (r.freightBills || 0) + (r.invoices || 0);
+        const total = (r.dispatches || 0) + (r.freightBills || 0) + (r.invoices || 0) + (r.quotes || 0);
         if (total > 0) {
           console.log(`[auto-purge] Removed ${total} old soft-deleted row(s):`, r);
         }
