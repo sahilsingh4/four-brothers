@@ -2372,7 +2372,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               {/* CUSTOMER BILL RATE — what we charge the customer. Sub/driver pay rate is set per-assignment below. */}
               <div style={{ padding: 10, background: "#F0F9FF", border: "2px solid #0EA5E9", marginTop: 4 }}>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
-                  ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {projectId ? "(AUTO-FILLED FROM PROJECT DEFAULT WHERE APPLICABLE)" : ""}
+                  ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {draft.projectId ? "(AUTO-FILLED FROM PROJECT DEFAULT WHERE APPLICABLE)" : ""}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
                   <div>
@@ -11889,7 +11889,7 @@ const HomeTab = ({
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("home");
   const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
+  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
@@ -12572,7 +12572,7 @@ export default function App() {
         <>
           <Dashboard
             state={{ logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
             onToast={showToast}
             onExit={() => setView("public")}
             onLogout={handleLogout}
