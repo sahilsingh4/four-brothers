@@ -7063,6 +7063,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
   // Add a new billing line
   const addBillingLine = (seed = {}) => {
+    const contactPct = getContactBrokeragePct(); // from contact default (0 if not sub with brokerage)
     const newLine = recomputeLine({
       id: Date.now(),
       code: seed.code || "",
@@ -7070,7 +7071,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       qty: seed.qty != null ? Number(seed.qty) : 0,
       rate: seed.rate != null ? Number(seed.rate) : 0,
       brokerable: !!seed.brokerable,
-      brokeragePct: seed.brokerable ? getContactBrokeragePct() : 0,
+      // Always show 8% default (or contact's % if set) even when brokerable=false so admin can see what it'd be
+      brokeragePct: contactPct > 0 ? contactPct : 8,
       copyToPay: !!seed.copyToPay,
       note: seed.note || "",
       createdAt: new Date().toISOString(),
@@ -7100,6 +7102,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
   // Add/update/delete paying lines — same shape but NO copyToPay field, optional sourceBillingLineId
   const addPayingLine = (seed = {}) => {
+    const contactPct = getContactBrokeragePct();
     const newLine = recomputeLine({
       id: Date.now() + Math.floor(Math.random() * 1000),
       code: seed.code || "",
@@ -7107,7 +7110,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       qty: seed.qty != null ? Number(seed.qty) : 0,
       rate: seed.rate != null ? Number(seed.rate) : 0,
       brokerable: seed.brokerable != null ? !!seed.brokerable : (assignment?.kind === "sub"),
-      brokeragePct: (seed.brokerable || assignment?.kind === "sub") ? getContactBrokeragePct() : 0,
+      // Always show 8% default (or contact's % if set) even when brokerable=false so admin can see what it'd be
+      brokeragePct: contactPct > 0 ? contactPct : 8,
       sourceBillingLineId: seed.sourceBillingLineId || null,
       note: seed.note || "",
       createdAt: new Date().toISOString(),
@@ -7385,7 +7389,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
   return (
     <div className="modal-bg" onClick={onClose}>
-      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1100 }}>
         {lightbox && (
           <div onClick={(e) => { e.stopPropagation(); setLightbox(null); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
             <img src={lightbox} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} alt="" />
@@ -7548,161 +7552,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             <textarea className="fbt-textarea" value={draft.adminNotes} onChange={(e) => setDraft({ ...draft, adminNotes: e.target.value })} placeholder="Why I corrected hours, any flags, etc." style={{ minHeight: 50, background: "#FEF3C7" }} />
           </div>
 
-          {/* Extras — tolls / dump / fuel / other */}
-          <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700 }}>
-              ▸ EXTRAS (TOLLS · DUMP · FUEL · OTHER) {draft.extras?.length > 0 ? `(${draft.extras.length})` : ""}
-            </div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8, lineHeight: 1.4 }}>
-              Reimbursable = customer pays us, we pay the sub back for it.
-            </div>
-            {(draft.extras || []).length > 0 && (
-              <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
-                {draft.extras.map((x, idx) => {
-                  const hasQtyRate = (Number(x.qty) > 0) && (Number(x.rate) > 0);
-                  return (
-                    <div key={idx} style={{ border: "1px solid var(--concrete)", padding: 8, background: "#FFF" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr auto auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                        <select
-                          className="fbt-select"
-                          style={{ padding: "6px 8px", fontSize: 11 }}
-                          value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const next = [...draft.extras];
-                            next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
-                            setDraft({ ...draft, extras: next });
-                          }}
-                        >
-                          <option value="Tolls">Tolls</option>
-                          <option value="Dump Fees">Dump Fees</option>
-                          <option value="Fuel Surcharge">Fuel</option>
-                          <option value="Other">Other</option>
-                        </select>
-                        <input
-                          className="fbt-input"
-                          style={{ padding: "6px 10px", fontSize: 12 }}
-                          placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Description" : "Describe"}
-                          value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
-                          onChange={(e) => {
-                            const next = [...draft.extras];
-                            const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
-                            if (isOther) next[idx] = { ...next[idx], label: e.target.value };
-                            else next[idx] = { ...next[idx], note: e.target.value };
-                            setDraft({ ...draft, extras: next });
-                          }}
-                        />
-                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer" }}>
-                          <input
-                            type="checkbox"
-                            checked={x.reimbursable !== false}
-                            onChange={(e) => {
-                              const next = [...draft.extras];
-                              next[idx] = { ...next[idx], reimbursable: e.target.checked };
-                              setDraft({ ...draft, extras: next });
-                            }}
-                          />
-                          REIMB
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--good)", fontWeight: x.copyToPay ? 700 : 400 }} title="Copy this charge to the sub/driver's pay side (reimburse them 100%)">
-                          <input
-                            type="checkbox"
-                            checked={!!x.copyToPay}
-                            onChange={(e) => {
-                              const next = [...draft.extras];
-                              next[idx] = { ...next[idx], copyToPay: e.target.checked };
-                              setDraft({ ...draft, extras: next });
-                            }}
-                          />
-                          → PAY
-                        </label>
-                        <button
-                          onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, i) => i !== idx) })}
-                          className="btn-danger"
-                          style={{ padding: "6px 10px", fontSize: 11 }}
-                          type="button"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" }}>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>QTY</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01" min="0"
-                            placeholder="—"
-                            style={{ padding: "5px 8px", fontSize: 11 }}
-                            value={x.qty || ""}
-                            onChange={(e) => {
-                              const next = [...draft.extras];
-                              const newQty = e.target.value;
-                              next[idx] = { ...next[idx], qty: newQty };
-                              if (newQty && next[idx].rate) {
-                                next[idx].amount = (Number(newQty) * Number(next[idx].rate)).toFixed(2);
-                              }
-                              setDraft({ ...draft, extras: next });
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>RATE $</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01" min="0"
-                            placeholder="—"
-                            style={{ padding: "5px 8px", fontSize: 11 }}
-                            value={x.rate || ""}
-                            onChange={(e) => {
-                              const next = [...draft.extras];
-                              const newRate = e.target.value;
-                              next[idx] = { ...next[idx], rate: newRate };
-                              if (newRate && next[idx].qty) {
-                                next[idx].amount = (Number(next[idx].qty) * Number(newRate)).toFixed(2);
-                              }
-                              setDraft({ ...draft, extras: next });
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 9, color: hasQtyRate ? "var(--good)" : "var(--concrete)", letterSpacing: "0.08em", fontWeight: 700 }}>
-                            AMOUNT $ {hasQtyRate ? "(AUTO)" : ""}
-                          </label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01" min="0"
-                            placeholder="$0.00"
-                            style={{ padding: "5px 8px", fontSize: 11, background: hasQtyRate ? "#F0FDF4" : "#FFF", fontWeight: 700 }}
-                            value={x.amount || ""}
-                            onChange={(e) => {
-                              const next = [...draft.extras];
-                              next[idx] = { ...next[idx], amount: e.target.value };
-                              setDraft({ ...draft, extras: next });
-                            }}
-                            title={hasQtyRate ? "Auto-calculated from qty × rate — override to set manually" : "Enter amount directly"}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Tolls", amount: "", reimbursable: true }] })}>
-                <Plus size={11} style={{ marginRight: 3 }} /> TOLLS
-              </button>
-              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Dump Fees", amount: "", reimbursable: true }] })}>
-                <Plus size={11} style={{ marginRight: 3 }} /> DUMP
-              </button>
-              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "Fuel Surcharge", amount: "", reimbursable: true }] })}>
-                <Plus size={11} style={{ marginRight: 3 }} /> FUEL
-              </button>
-              <button type="button" className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10 }} onClick={() => setDraft({ ...draft, extras: [...(draft.extras || []), { label: "", amount: "", reimbursable: true }] })}>
-                <Plus size={11} style={{ marginRight: 3 }} /> OTHER
-              </button>
-            </div>
-          </div>
 
           </fieldset>
 
@@ -7797,8 +7646,24 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updateBillingLine(ln.id, { brokerable: e.target.checked })}
                             disabled={billingSnapshotLocked} />
                         </td>
-                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--concrete)" }}>
-                          {ln.brokerable ? `${ln.brokeragePct || 0}%` : "—"}
+                        <td style={{ padding: "4px 6px", textAlign: "right" }}>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
+                            value={ln.brokeragePct ?? 8}
+                            onChange={(e) => updateBillingLine(ln.id, { brokeragePct: e.target.value === "" ? 0 : Number(e.target.value) })}
+                            disabled={billingSnapshotLocked || !ln.brokerable}
+                            style={{
+                              width: 48, padding: "3px 4px", fontSize: 10, textAlign: "right",
+                              fontFamily: "inherit",
+                              border: "1px solid #BAE6FD",
+                              background: (!ln.brokerable || billingSnapshotLocked) ? "#F5F5F4" : "#FFF",
+                              color: ln.brokerable ? "var(--steel)" : "var(--concrete)",
+                              opacity: ln.brokerable ? 1 : 0.55,
+                            }}
+                          />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "#0369A1" }}>{fmt$(ln.net)}</td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
@@ -7912,8 +7777,24 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                             disabled={paySnapshotLocked || assignment?.kind !== "sub"}
                             title={assignment?.kind !== "sub" ? "Brokerage only applies to subs" : "Apply brokerage to this line"} />
                         </td>
-                        <td style={{ padding: "4px 6px", textAlign: "right", color: "var(--concrete)" }}>
-                          {ln.brokerable ? `${ln.brokeragePct || 0}%` : "—"}
+                        <td style={{ padding: "4px 6px", textAlign: "right" }}>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="100"
+                            value={ln.brokeragePct ?? 8}
+                            onChange={(e) => updatePayingLine(ln.id, { brokeragePct: e.target.value === "" ? 0 : Number(e.target.value) })}
+                            disabled={paySnapshotLocked || !ln.brokerable || assignment?.kind !== "sub"}
+                            style={{
+                              width: 48, padding: "3px 4px", fontSize: 10, textAlign: "right",
+                              fontFamily: "inherit",
+                              border: "1px solid #86EFAC",
+                              background: (!ln.brokerable || paySnapshotLocked) ? "#F5F5F4" : "#FFF",
+                              color: ln.brokerable ? "var(--steel)" : "var(--concrete)",
+                              opacity: ln.brokerable ? 1 : 0.55,
+                            }}
+                          />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "var(--good)" }}>{fmt$(ln.net)}</td>
                         <td style={{ padding: "4px 2px", textAlign: "center" }}>
@@ -7963,420 +7844,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             </div>
           </div>
 
-          {/* ━━ OLD DUAL SNAPSHOT PANEL (kept for backward compat, Session 3 will remove) ━━ */}
-          {/* ━━ BILLING + PAY SNAPSHOT DUAL PANEL ━━
-              Billing = what we charge customer (locked on invoice)
-              Pay     = what we pay sub/driver (locked on pay statement) */}
-          <div style={{ borderTop: "3px double var(--steel)", paddingTop: 14 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
-              ▸ BILLING &amp; PAY SNAPSHOT (REVIEW BEFORE APPROVAL)
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
-              {/* ─── BILLING SIDE ─── */}
-              <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "var(--steel)") }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700 }}>
-                    🏢 BILL TO CUSTOMER
-                  </div>
-                  {billingSnapshotLocked && (
-                    <span className="chip" style={{ background: "#0EA5E9", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
-                      <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED
-                    </span>
-                  )}
-                </div>
-                {billingSnapshotLocked && (
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 8 }}>
-                    {invoiceOnFb ? `On invoice ${invoiceOnFb.invoiceNumber}` : "Locked"} · ADD ADJUSTMENTS TO CORRECT
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                  <select
-                    className="fbt-select"
-                    style={{ padding: "5px 8px", fontSize: 11 }}
-                    value={draft.billedMethod || "hour"}
-                    onChange={(e) => setDraft({ ...draft, billedMethod: e.target.value })}
-                    disabled={billingSnapshotLocked}
-                  >
-                    <option value="hour">$/hr</option>
-                    <option value="ton">$/ton</option>
-                    <option value="load">$/load</option>
-                  </select>
-                  <input
-                    className="fbt-input"
-                    type="number" step="0.01"
-                    style={{ padding: "5px 8px", fontSize: 11, width: 90 }}
-                    placeholder="rate"
-                    value={draft.billedRate || ""}
-                    onChange={(e) => setDraft({ ...draft, billedRate: e.target.value })}
-                    disabled={billingSnapshotLocked}
-                  />
-                </div>
-                <div>
-                  <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
-                    {draft.billedMethod === "ton" ? "TONS" : draft.billedMethod === "load" ? "LOADS" : "HOURS"}
-                  </label>
-                  <input
-                    className="fbt-input"
-                    type="number" step="0.01"
-                    style={{ padding: "5px 8px", fontSize: 11 }}
-                    value={draft.billedMethod === "ton" ? (draft.billedTons || "") : draft.billedMethod === "load" ? (draft.billedLoads || "") : (draft.billedHours || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (draft.billedMethod === "ton") setDraft({ ...draft, billedTons: v });
-                      else if (draft.billedMethod === "load") setDraft({ ...draft, billedLoads: v });
-                      else setDraft({ ...draft, billedHours: v });
-                    }}
-                    disabled={billingSnapshotLocked}
-                  />
-                </div>
-                <div style={{ marginTop: 8, padding: 8, background: "#F0F9FF", border: "1px solid #0EA5E9" }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1" }}>GROSS</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#0369A1" }}>
-                    {fmt$(billedGross.gross)}
-                  </div>
-                  {billedGross.adjustments !== 0 && (
-                    <>
-                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 4 }}>
-                        ADJUSTMENTS: {billedGross.adjustments > 0 ? "+" : ""}{fmt$(billedGross.adjustments)}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>
-                        NET: {fmt$(billedGross.total)}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Billing adjustments list + add form — always visible */}
-                <div style={{ marginTop: 10, borderTop: "1px dashed #0EA5E9", paddingTop: 10 }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                    ▸ BILLING ADJUSTMENTS ({(fb.billingAdjustments || []).length})
-                  </div>
-                    {(fb.billingAdjustments || []).map((adj) => (
-                      <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #BAE6FD", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
-                          {adj.qty != null && adj.rate != null && (
-                            <span style={{ color: "var(--concrete)", marginLeft: 6, fontSize: 9 }}>
-                              ({adj.qty} × ${adj.rate})
-                            </span>
-                          )}
-                          <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
-                          {adj.copyToPay && (
-                            <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 8, padding: "1px 5px", marginLeft: 4 }}>
-                              → PAY
-                            </span>
-                          )}
-                          {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
-                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
-                            {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                        <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, cursor: "pointer", color: "var(--good)" }} title="Copy this adjustment to sub/driver pay (100%)">
-                          <input
-                            type="checkbox"
-                            checked={!!adj.copyToPay}
-                            onChange={async (e) => {
-                              const checked = e.target.checked;
-                              const nextAdj = (fb.billingAdjustments || []).map((a) => a.id === adj.id ? { ...a, copyToPay: checked } : a);
-                              try {
-                                await editFreightBill(fb.id, { ...fb, billingAdjustments: nextAdj });
-                                onToast(checked ? "→ PAY" : "BILLING-ONLY");
-                              } catch (err) { console.error(err); onToast("UPDATE FAILED"); }
-                            }}
-                          />
-                          → PAY
-                        </label>
-                        <button
-                          onClick={() => removeAdjustment("billing", adj.id)}
-                          style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", fontSize: 11, padding: 2 }}
-                          title="Remove"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
-                    <div style={{ marginTop: 6, padding: 8, background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
-                      <div className="fbt-mono" style={{ fontSize: 8, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                        ▸ NEW BILLING ADJUSTMENT (QTY × RATE = AMOUNT)
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr auto", gap: 4, alignItems: "end" }}>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>QTY</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="+/-"
-                            value={billingAdjForm.qty}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, qty: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>RATE $</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="0.00"
-                            value={billingAdjForm.rate}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, rate: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>COMPONENT</label>
-                          <select
-                            className="fbt-select"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            value={billingAdjForm.type}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, type: e.target.value })}
-                          >
-                            <option value="rate">Rate</option>
-                            <option value="hours">Hours/Qty</option>
-                            <option value="extras">Extras</option>
-                            <option value="other">Other</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>NOTE</label>
-                          <input
-                            className="fbt-input"
-                            type="text"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="reason"
-                            value={billingAdjForm.note}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, note: e.target.value })}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={addBillingAdjustment}
-                          style={{ padding: "4px 8px", fontSize: 10, background: "#0EA5E9", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}
-                        >
-                          + ADD
-                        </button>
-                      </div>
-                      {/* Live auto-calc + copy-to-pay toggle */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--good)" }} title="Copy this adjustment to sub/driver pay (100%)">
-                          <input
-                            type="checkbox"
-                            checked={!!billingAdjForm.copyToPay}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, copyToPay: e.target.checked })}
-                          />
-                          → COPY TO PAY
-                        </label>
-                        {billingAdjForm.qty && billingAdjForm.rate && (
-                          <span className="fbt-mono" style={{ fontSize: 9, color: "#0369A1" }}>
-                            = {fmt$(Number(billingAdjForm.qty) * Number(billingAdjForm.rate))}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-              </div>
-
-              {/* ─── PAY SIDE ─── */}
-              <div style={{ padding: 12, background: paySnapshotLocked ? "#F0FDF4" : "#FFF", border: "2px solid " + (paySnapshotLocked ? "var(--good)" : "var(--steel)") }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700 }}>
-                    🚚 PAY SUB / DRIVER
-                  </div>
-                  {!paySnapshotLocked && (
-                    <button
-                      type="button"
-                      onClick={copyBillingToPay}
-                      style={{ background: "var(--hazard)", color: "var(--steel)", border: "1px solid var(--hazard-deep)", fontSize: 9, padding: "3px 8px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.08em" }}
-                      title="Copy hours/tons/loads and rate from billing side"
-                    >
-                      ⇦ SAME AS BILLING
-                    </button>
-                  )}
-                  {paySnapshotLocked && (
-                    <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
-                      <Lock size={9} style={{ marginRight: 3, verticalAlign: "middle" }} />LOCKED
-                    </span>
-                  )}
-                </div>
-                {paySnapshotLocked && (
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 8 }}>
-                    Pay statement generated · ADD ADJUSTMENTS TO CORRECT
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                  <select
-                    className="fbt-select"
-                    style={{ padding: "5px 8px", fontSize: 11 }}
-                    value={draft.paidMethodSnapshot || "hour"}
-                    onChange={(e) => setDraft({ ...draft, paidMethodSnapshot: e.target.value })}
-                    disabled={paySnapshotLocked}
-                  >
-                    <option value="hour">$/hr</option>
-                    <option value="ton">$/ton</option>
-                    <option value="load">$/load</option>
-                  </select>
-                  <input
-                    className="fbt-input"
-                    type="number" step="0.01"
-                    style={{ padding: "5px 8px", fontSize: 11, width: 90 }}
-                    placeholder="rate"
-                    value={draft.paidRate || ""}
-                    onChange={(e) => setDraft({ ...draft, paidRate: e.target.value })}
-                    disabled={paySnapshotLocked}
-                  />
-                </div>
-                <div>
-                  <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
-                    {draft.paidMethodSnapshot === "ton" ? "TONS" : draft.paidMethodSnapshot === "load" ? "LOADS" : "HOURS"}
-                  </label>
-                  <input
-                    className="fbt-input"
-                    type="number" step="0.01"
-                    style={{ padding: "5px 8px", fontSize: 11 }}
-                    value={draft.paidMethodSnapshot === "ton" ? (draft.paidTons || "") : draft.paidMethodSnapshot === "load" ? (draft.paidLoads || "") : (draft.paidHours || "")}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (draft.paidMethodSnapshot === "ton") setDraft({ ...draft, paidTons: v });
-                      else if (draft.paidMethodSnapshot === "load") setDraft({ ...draft, paidLoads: v });
-                      else setDraft({ ...draft, paidHours: v });
-                    }}
-                    disabled={paySnapshotLocked}
-                  />
-                </div>
-                <div style={{ marginTop: 8, padding: 8, background: "#F0FDF4", border: "1px solid var(--good)" }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>GROSS</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--good)" }}>
-                    {fmt$(paidGross.gross)}
-                  </div>
-                  {paidGross.adjustments !== 0 && (
-                    <>
-                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 4 }}>
-                        ADJUSTMENTS: {paidGross.adjustments > 0 ? "+" : ""}{fmt$(paidGross.adjustments)}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>
-                        NET: {fmt$(paidGross.total)}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Pay adjustments list + add form — always visible */}
-                <div style={{ marginTop: 10, borderTop: "1px dashed var(--good)", paddingTop: 10 }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                    ▸ PAY ADJUSTMENTS ({(fb.payingAdjustments || []).length})
-                  </div>
-                    {(fb.payingAdjustments || []).map((adj) => (
-                      <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #86EFAC", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
-                          {adj.qty != null && adj.rate != null && (
-                            <span style={{ color: "var(--concrete)", marginLeft: 6, fontSize: 9 }}>
-                              ({adj.qty} × ${adj.rate})
-                            </span>
-                          )}
-                          <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
-                          {adj.applyBrokerage && (
-                            <span className="chip" style={{ background: "var(--hazard)", fontSize: 8, padding: "1px 5px", marginLeft: 4 }}>
-                              BROK
-                            </span>
-                          )}
-                          {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
-                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
-                            {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => removeAdjustment("paying", adj.id)}
-                          style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", fontSize: 11, padding: 2 }}
-                          title="Remove"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
-                    <div style={{ marginTop: 6, padding: 8, background: "#F0FDF4", border: "1px solid #86EFAC" }}>
-                      <div className="fbt-mono" style={{ fontSize: 8, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
-                        ▸ NEW PAY ADJUSTMENT (QTY × RATE = AMOUNT)
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr auto", gap: 4, alignItems: "end" }}>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>QTY</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="+/-"
-                            value={payingAdjForm.qty}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, qty: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>RATE $</label>
-                          <input
-                            className="fbt-input"
-                            type="number" step="0.01"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="0.00"
-                            value={payingAdjForm.rate}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, rate: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>COMPONENT</label>
-                          <select
-                            className="fbt-select"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            value={payingAdjForm.type}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, type: e.target.value })}
-                          >
-                            <option value="rate">Rate</option>
-                            <option value="hours">Hours/Qty</option>
-                            <option value="extras">Extras</option>
-                            <option value="other">Other</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>NOTE</label>
-                          <input
-                            className="fbt-input"
-                            type="text"
-                            style={{ padding: "4px 6px", fontSize: 10 }}
-                            placeholder="reason"
-                            value={payingAdjForm.note}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, note: e.target.value })}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={addPayingAdjustment}
-                          style={{ padding: "4px 8px", fontSize: 10, background: "var(--good)", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}
-                        >
-                          + ADD
-                        </button>
-                      </div>
-                      {/* Brokerage toggle (pay side only) + live auto-calc */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--steel)" }}>
-                          <input
-                            type="checkbox"
-                            checked={!!payingAdjForm.applyBrokerage}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, applyBrokerage: e.target.checked })}
-                          />
-                          APPLY BROKERAGE %
-                        </label>
-                        {payingAdjForm.qty && payingAdjForm.rate && (
-                          <span className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>
-                            = {fmt$(Number(payingAdjForm.qty) * Number(payingAdjForm.rate))}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-              </div>
-            </div>
-            <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
-              ▸ ONCE APPROVED, THESE VALUES ARE LOCKED INTO THE FB. INVOICE LOCKS BILLING. PAY STATEMENT LOCKS PAY. FURTHER CHANGES REQUIRE ADJUSTMENTS.
-            </div>
-          </div>
 
           {/* Photos — admin can add, view, or remove */}
           <div>
@@ -13096,6 +12563,46 @@ const HomeTab = ({
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
+  // Day view state — which day's orders admin is looking at
+  const [viewDate, setViewDate] = useState(todayStr);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // Orders for the currently-viewed day (ignore search)
+  const ordersForDay = useMemo(() => {
+    return dispatches
+      .filter((d) => d.date === viewDate)
+      .sort((a, b) => (a.code || "").localeCompare(b.code || ""));
+  }, [dispatches, viewDate]);
+
+  // Search results — global across ALL dispatches, ignoring day filter
+  const searchResults = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return [];
+    return dispatches
+      .filter((d) => {
+        const hay = [
+          d.code, d.jobName, d.clientName, d.pickup, d.dropoff, d.material, d.notes,
+          d.date,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(q);
+      })
+      .sort((a, b) => (b.date || "").localeCompare(a.date || "")) // newest first
+      .slice(0, 30);
+  }, [dispatches, searchTerm]);
+
+  // Date nav helpers
+  const shiftDate = (days) => {
+    const d = new Date(viewDate + "T12:00:00"); // noon to dodge DST edge cases
+    d.setDate(d.getDate() + days);
+    setViewDate(d.toISOString().slice(0, 10));
+  };
+  const dateLabel = (() => {
+    const d = new Date(viewDate + "T12:00:00");
+    if (isNaN(d)) return viewDate;
+    const isToday = viewDate === todayStr;
+    return (isToday ? "TODAY · " : "") + d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).toUpperCase();
+  })();
+
   // SECTION 1: Pending FB reviews
   const pendingFbs = useMemo(() =>
     freightBills.filter((fb) => (fb.status || "pending") === "pending")
@@ -13311,6 +12818,200 @@ const HomeTab = ({
         <div className="fbt-card" style={{ padding: 16 }}>
           <div className="stat-num">{mtd.activeProjectsCount}</div>
           <div className="stat-label">Active Projects</div>
+        </div>
+      </div>
+
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          DAY VIEW — orders for selected day + global search
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      <div className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", background: "var(--steel)", color: "var(--cream)", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          {/* Date navigation */}
+          <button
+            type="button"
+            onClick={() => shiftDate(-1)}
+            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700 }}
+            title="Previous day"
+          >
+            ◀
+          </button>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.12em" }}>
+              ▸ ORDERS ON DAY
+            </div>
+            <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1.2 }}>{dateLabel}</div>
+          </div>
+          <input
+            type="date"
+            value={viewDate}
+            onChange={(e) => setViewDate(e.target.value)}
+            style={{ padding: "5px 8px", border: "1.5px solid var(--cream)", background: "var(--cream)", color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}
+            title="Jump to date"
+          />
+          <button
+            type="button"
+            onClick={() => setViewDate(todayStr)}
+            disabled={viewDate === todayStr}
+            style={{
+              background: viewDate === todayStr ? "transparent" : "var(--hazard)",
+              color: viewDate === todayStr ? "var(--concrete)" : "var(--steel)",
+              border: "2px solid " + (viewDate === todayStr ? "var(--concrete)" : "var(--hazard-deep)"),
+              padding: "4px 12px",
+              cursor: viewDate === todayStr ? "default" : "pointer",
+              fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700,
+              letterSpacing: "0.08em",
+            }}
+          >
+            TODAY
+          </button>
+          <button
+            type="button"
+            onClick={() => shiftDate(1)}
+            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700 }}
+            title="Next day"
+          >
+            ▶
+          </button>
+        </div>
+
+        {/* Search bar */}
+        <div style={{ padding: "10px 18px", background: "#F5F5F4", borderBottom: "1.5px solid var(--steel)", display: "flex", alignItems: "center", gap: 10 }}>
+          <Search size={14} style={{ color: "var(--concrete)" }} />
+          <input
+            type="text"
+            placeholder="Search ANY order (customer, job, code, material, date…) — ignores the day filter"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ flex: 1, padding: "6px 10px", border: "1.5px solid var(--concrete)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, background: "#FFF" }}
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              className="btn-ghost"
+              style={{ padding: "4px 10px", fontSize: 10 }}
+            >
+              CLEAR
+            </button>
+          )}
+        </div>
+
+        {/* Content — either search results OR day orders */}
+        <div style={{ padding: "14px 18px" }}>
+          {searchTerm ? (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+                ▸ SEARCH RESULTS ({searchResults.length}{searchResults.length >= 30 ? "+" : ""}) · "{searchTerm}"
+              </div>
+              {searchResults.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>
+                  No orders match "{searchTerm}". Try different keywords.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 4 }}>
+                  {searchResults.map((d) => {
+                    const fbCount = freightBills.filter((fb) => fb.dispatchId === d.id).length;
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => onJumpTab("dispatches", { dispatchId: d.id })}
+                        style={{
+                          padding: "8px 12px", background: "#FFF", border: "1.5px solid var(--steel)",
+                          cursor: "pointer", display: "grid",
+                          gridTemplateColumns: "90px 70px 1fr 1fr 80px", gap: 10, alignItems: "center",
+                          fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                        }}
+                      >
+                        <strong>#{d.code}</strong>
+                        <span style={{ color: "var(--concrete)", fontSize: 10 }}>{d.date}</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.jobName || "—"}</span>
+                        <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.clientName || "—"}</span>
+                        <span style={{ textAlign: "right" }}>
+                          {fbCount > 0 && (
+                            <span className="chip" style={{ background: "var(--steel)", color: "#FFF", fontSize: 9, padding: "1px 6px" }}>
+                              {fbCount} FB{fbCount !== 1 ? "s" : ""}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+                ▸ ORDERS THIS DAY ({ordersForDay.length})
+              </div>
+              {ordersForDay.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>
+                  No orders scheduled for this day.
+                  <br />
+                  <button
+                    type="button"
+                    onClick={() => onJumpTab("dispatches")}
+                    className="btn-ghost"
+                    style={{ marginTop: 8, padding: "4px 10px", fontSize: 10 }}
+                  >
+                    + NEW ORDER
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 4 }}>
+                  {ordersForDay.map((d) => {
+                    const fbs = freightBills.filter((fb) => fb.dispatchId === d.id);
+                    const approvedFbCount = fbs.filter((fb) => fb.status === "approved").length;
+                    const pendingFbCount = fbs.filter((fb) => (fb.status || "pending") === "pending").length;
+                    const expected = Number(d.trucksExpected) || (d.assignments || []).reduce((s, a) => s + (Number(a.trucks) || 0), 0);
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => onJumpTab("dispatches", { dispatchId: d.id })}
+                        style={{
+                          padding: "10px 14px", background: "#FFF", border: "2px solid var(--steel)",
+                          cursor: "pointer", display: "grid",
+                          gridTemplateColumns: "90px 1fr 1fr 150px", gap: 12, alignItems: "center",
+                          fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                        }}
+                      >
+                        <strong style={{ fontSize: 14, color: "var(--hazard-deep)" }}>#{d.code}</strong>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{d.jobName || "—"}</div>
+                          <div style={{ fontSize: 10, color: "var(--concrete)" }}>{d.clientName || "—"}</div>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--concrete)" }}>FROM:</span> {d.pickup || "—"}
+                          </div>
+                          <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ color: "var(--concrete)" }}>TO:</span> {d.dropoff || "—"}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {expected > 0 && (
+                            <span className="chip" style={{ background: "var(--steel)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                              {expected} TRUCK{expected !== 1 ? "S" : ""}
+                            </span>
+                          )}
+                          {pendingFbCount > 0 && (
+                            <span className="chip" style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                              {pendingFbCount} PEND
+                            </span>
+                          )}
+                          {approvedFbCount > 0 && (
+                            <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>
+                              {approvedFbCount} ✓
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
 
