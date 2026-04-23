@@ -255,6 +255,71 @@ const fbToDB = (fb) => ({
   paying_lines: Array.isArray(fb.payingLines) ? fb.payingLines : [],
 });
 
+// v18 SAFETY FIX: partial-patch helper. Unlike fbToDB (which builds every column and sends
+// NULLs for missing fields), this only includes columns whose source key is actually present
+// in the patch. Prevents catastrophic data loss when a caller passes {billingLines: [...]}
+// without spreading the full FB — previously that wiped dispatch_id, driver_name, status, etc.
+const fbPatchToDB = (patch) => {
+  const out = {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(patch, k);
+  const numOrNull = (v) => (v === "" || v === null || v === undefined) ? null : Number(v);
+  const strOrNull = (v) => (v === "" || v === null || v === undefined) ? null : v;
+
+  if (has("dispatchId"))            out.dispatch_id = patch.dispatchId;
+  if (has("assignmentId"))          out.assignment_id = patch.assignmentId || null;
+  if (has("freightBillNumber"))     out.freight_bill_number = strOrNull(patch.freightBillNumber);
+  if (has("driverName"))            out.driver_name = strOrNull(patch.driverName);
+  if (has("driverId"))              out.driver_id = patch.driverId ? Number(patch.driverId) : null;
+  if (has("truckNumber"))           out.truck_number = strOrNull(patch.truckNumber);
+  if (has("material"))              out.material = strOrNull(patch.material);
+  if (has("tonnage"))               out.tonnage = numOrNull(patch.tonnage);
+  if (has("loadCount"))             out.load_count = Number(patch.loadCount) || 1;
+  if (has("pickupTime"))            out.pickup_time = strOrNull(patch.pickupTime);
+  if (has("dropoffTime"))           out.dropoff_time = strOrNull(patch.dropoffTime);
+  if (has("notes"))                 out.notes = strOrNull(patch.notes);
+  if (has("photos"))                out.photos = patch.photos || [];
+  if (has("status"))                out.status = patch.status;
+  if (has("adminNotes"))            out.admin_notes = strOrNull(patch.adminNotes);
+  if (has("approvedAt"))            out.approved_at = patch.approvedAt || null;
+  if (has("approvedBy"))            out.approved_by = patch.approvedBy || null;
+  if (has("jobNameOverride"))       out.job_name_override = strOrNull(patch.jobNameOverride);
+  if (has("description"))           out.description = strOrNull(patch.description);
+  if (has("hoursBilled"))           out.hours_billed = numOrNull(patch.hoursBilled);
+  if (has("paidAt"))                out.paid_at = patch.paidAt || null;
+  if (has("paidBy"))                out.paid_by = patch.paidBy || null;
+  if (has("paidMethod"))            out.paid_method = patch.paidMethod || null;
+  if (has("paidCheckNumber"))       out.paid_check_number = strOrNull(patch.paidCheckNumber);
+  if (has("paidAmount"))            out.paid_amount = numOrNull(patch.paidAmount);
+  if (has("paidNotes"))             out.paid_notes = strOrNull(patch.paidNotes);
+  if (has("invoiceId"))             out.invoice_id = patch.invoiceId || null;
+  if (has("customerPaidAt"))        out.customer_paid_at = patch.customerPaidAt || null;
+  if (has("customerPaidAmount"))    out.customer_paid_amount = numOrNull(patch.customerPaidAmount);
+  if (has("extras"))                out.extras = patch.extras || [];
+  if (has("minHoursApplied"))       out.min_hours_applied = !!patch.minHoursApplied;
+  if (has("minHoursApprovedBy"))    out.min_hours_approved_by = patch.minHoursApprovedBy || null;
+  if (has("minHoursApprovedAt"))    out.min_hours_approved_at = patch.minHoursApprovedAt || null;
+  if (has("customerRate"))          out.customer_rate = numOrNull(patch.customerRate);
+  if (has("customerRateMethod"))    out.customer_rate_method = patch.customerRateMethod || null;
+  if (has("billedHours"))           out.billed_hours = numOrNull(patch.billedHours);
+  if (has("billedTons"))            out.billed_tons = numOrNull(patch.billedTons);
+  if (has("billedLoads"))           out.billed_loads = numOrNull(patch.billedLoads);
+  if (has("billedRate"))            out.billed_rate = numOrNull(patch.billedRate);
+  if (has("billedMethod"))          out.billed_method = patch.billedMethod || null;
+  if (has("billingAdjustments"))    out.billing_adjustments = patch.billingAdjustments || [];
+  if (has("billingLockedAt"))       out.billing_locked_at = patch.billingLockedAt || null;
+  if (has("paidHours"))             out.paid_hours = numOrNull(patch.paidHours);
+  if (has("paidTons"))              out.paid_tons = numOrNull(patch.paidTons);
+  if (has("paidLoads"))             out.paid_loads = numOrNull(patch.paidLoads);
+  if (has("paidRate"))              out.paid_rate = numOrNull(patch.paidRate);
+  if (has("paidMethodSnapshot"))    out.pay_snapshot_method = patch.paidMethodSnapshot || null;
+  if (has("payingAdjustments"))     out.paying_adjustments = patch.payingAdjustments || [];
+  if (has("payStatementLockedAt"))  out.pay_statement_locked_at = patch.payStatementLockedAt || null;
+  if (has("billingLines"))          out.billing_lines = Array.isArray(patch.billingLines) ? patch.billingLines : [];
+  if (has("payingLines"))           out.paying_lines = Array.isArray(patch.payingLines) ? patch.payingLines : [];
+
+  return out;
+};
+
 export const fetchFreightBills = async () => {
   const { data, error } = await supabase
     .from("freight_bills")
@@ -283,9 +348,17 @@ export const insertFreightBill = async (fb) => {
 };
 
 export const updateFreightBill = async (id, patch) => {
+  // v18 SAFETY: use fbPatchToDB (only includes fields in the patch) instead of fbToDB
+  // (which builds every column and sends NULL for missing fields). This prevents data loss
+  // when a caller passes a partial patch like {billingLines: [...]} without spreading the full FB.
+  const dbPatch = fbPatchToDB(patch);
+  if (Object.keys(dbPatch).length === 0) {
+    console.warn("updateFreightBill: empty patch, nothing to update");
+    return null;
+  }
   const { data, error } = await supabase
     .from("freight_bills")
-    .update(fbToDB(patch))
+    .update(dbPatch)
     .eq("id", id)
     .select()
     .single();
