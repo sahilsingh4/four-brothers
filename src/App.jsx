@@ -4698,24 +4698,33 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     let subtotal = 0;
     let fbExtrasSum = 0;
     let billingAdjSum = 0;
+
     matchedBills.forEach((fb) => {
-      // PREFER BILLED SNAPSHOT from FB approval — this is the authoritative billed amount
+      // v16 PREFERRED PATH: use billingLines[] sum(net) as authoritative FB billing total
+      const hasLines = Array.isArray(fb.billingLines) && fb.billingLines.length > 0;
+
+      if (hasLines) {
+        // Sum the net of every billing line (already computed with brokerage if applicable)
+        const linesTotal = fb.billingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+        subtotal += linesTotal;
+        // billingLines replaces extras + adjustments, so don't double-count
+        return;
+      }
+
+      // LEGACY PATH: old snapshot + extras + adjustments (pre-v16 FBs)
       const hasSnapshot = fb.billedRate != null && fb.billedMethod;
       let qty = 0;
       let fbRate = r;
       const method = hasSnapshot ? fb.billedMethod : pricingMethod;
 
       if (hasSnapshot) {
-        // Use snapshot values directly
         if (method === "ton") qty = Number(fb.billedTons) || 0;
         else if (method === "load") qty = Number(fb.billedLoads) || 0;
         else if (method === "hour") qty = Number(fb.billedHours) || 0;
-        // Allow manual hours override on invoice to still work — invoice rate takes precedence if set
         if (pricingMethod === "hour" && hoursOverride[fb.id] !== undefined && hoursOverride[fb.id] !== "") {
           qty = Number(hoursOverride[fb.id]) || 0;
         }
       } else {
-        // Legacy: live compute from fb fields
         if (pricingMethod === "ton") qty = Number(fb.tonnage) || 0;
         else if (pricingMethod === "load") qty = Number(fb.loadCount) || 1;
         else if (pricingMethod === "hour") {
@@ -4726,14 +4735,15 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       }
       subtotal += qty * fbRate;
 
-      // Billing adjustments from FB (post-lock corrections)
+      // Legacy billing adjustments
       billingAdjSum += (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
-      // Sum reimbursable FB-level extras (tolls/dump/fuel/other paid by driver/sub)
+      // Legacy reimbursable FB-level extras
       (fb.extras || []).forEach((x) => {
         if (x.reimbursable !== false) fbExtrasSum += Number(x.amount) || 0;
       });
     });
+
     const ef = Number(extraFees) || 0;
     const extrasSum = (extras || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
     const d = Number(discount) || 0;
@@ -8241,6 +8251,44 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   // Helper: compute gross for an FB (same logic as payroll — prefer pay snapshot)
   const fbGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
+
+    // v16 PREFERRED PATH: payingLines[]
+    const hasLines = Array.isArray(fb.payingLines) && fb.payingLines.length > 0;
+    if (hasLines) {
+      const brokerableLines = fb.payingLines.filter((ln) => ln.brokerable);
+      const nonBrokerableLines = fb.payingLines.filter((ln) => !ln.brokerable);
+
+      const baseGross = brokerableLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+      const extrasSum = nonBrokerableLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+      const totalGross = baseGross + extrasSum;
+
+      // Pull a primary display rate/qty from the first "H"/"T"/"L" line
+      const primary = fb.payingLines.find((ln) => ln.code === "H" || ln.code === "T" || ln.code === "L") || fb.payingLines[0];
+      const displayMethod = primary?.code === "H" ? "hour" : primary?.code === "T" ? "ton" : primary?.code === "L" ? "load" : "hour";
+      const displayRate = Number(primary?.rate) || 0;
+      const displayQty = Number(primary?.qty) || 0;
+
+      return {
+        gross: totalGross,
+        qty: displayQty,
+        method: displayMethod,
+        rate: displayRate,
+        extrasSum,
+        baseGross,
+        // For rendering line items on the stub
+        payingLines: fb.payingLines,
+        extras: [],
+        adjustments: [],
+        adjBrokerable: 0,
+        adjNonBrokerable: 0,
+        billingAdjCopiedToPay: 0,
+        billingAdjustmentsCopied: [],
+        // Pre-computed net so the stub doesn't have to re-apply brokerage
+        netFromLines: fb.payingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0),
+      };
+    }
+
+    // LEGACY PATH
     const hasSnapshot = fb.paidRate != null && fb.paidMethodSnapshot;
     const rate = hasSnapshot ? Number(fb.paidRate) : (Number(assignment?.payRate) || 0);
     const method = hasSnapshot ? fb.paidMethodSnapshot : (assignment?.payMethod || "hour");
@@ -8265,13 +8313,10 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       else if (method === "load") qty = Number(fb.loadCount) || 1;
     }
     const baseGross = qty * rate;
-    // Only extras explicitly copied to pay flow through (not just "reimbursable" on the bill)
     const extrasSum = (fb.extras || []).filter((x) => x.copyToPay === true).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    // Billing adjustments flagged copy-to-pay flow through as non-brokerable pay additions
     const billingAdjCopiedToPay = (fb.billingAdjustments || [])
       .filter((a) => a.copyToPay === true)
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
-    // Pay adjustments split by brokerage flag
     const adjustments = fb.payingAdjustments || [];
     const adjBrokerable = adjustments.filter((a) => a.applyBrokerage !== false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const adjNonBrokerable = adjustments.filter((a) => a.applyBrokerage === false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
@@ -8281,7 +8326,6 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       extras: fb.extras || [],
       adjustments, adjBrokerable, adjNonBrokerable,
       billingAdjCopiedToPay,
-      // Expose billing adjustments with copy flag so the stub can render them as line items
       billingAdjustmentsCopied: (fb.billingAdjustments || []).filter((a) => a.copyToPay === true),
     };
   };
@@ -9187,8 +9231,44 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
   const calcGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
 
-    // PREFER PAY SNAPSHOT — locked values from FB approval
-    // Fall back to live assignment-based calc for backward compat (pre-v15 FBs)
+    // v16 PREFERRED PATH: payingLines[] are the authoritative pay values
+    // Each line already has gross + net (with brokerage applied) pre-computed
+    const hasLines = Array.isArray(fb.payingLines) && fb.payingLines.length > 0;
+
+    if (hasLines) {
+      // Split lines into brokerable vs not — brokerage applies only to flagged lines
+      const brokerableLines = fb.payingLines.filter((ln) => ln.brokerable);
+      const nonBrokerableLines = fb.payingLines.filter((ln) => !ln.brokerable);
+
+      const brokerableGross = brokerableLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+      const nonBrokerableGross = nonBrokerableLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0);
+
+      // Sum of each line's individual net (line already deducted its own brokerage)
+      const totalNet = fb.payingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+
+      // Derive a "weighted avg" method + rate + qty for display purposes (pick the first or dominant)
+      const primary = fb.payingLines.find((ln) => ln.code === "H" || ln.code === "T" || ln.code === "L") || fb.payingLines[0];
+      const displayMethod = primary?.code === "H" ? "hour" : primary?.code === "T" ? "ton" : primary?.code === "L" ? "load" : "hour";
+      const displayRate = Number(primary?.rate) || 0;
+      const displayQty = Number(primary?.qty) || 0;
+
+      return {
+        gross: brokerableGross + nonBrokerableGross,         // total gross before any brokerage deduction
+        // grossForBrokerage = amount that brokerage % applies to (sum of brokerable line gross)
+        grossForBrokerage: brokerableGross,
+        // nonBrokerableAdj = amount that passes through at 100% (reimbursements + non-brokerable lines)
+        nonBrokerableAdj: nonBrokerableGross,
+        qty: displayQty, method: displayMethod, rate: displayRate,
+        assignment,
+        extrasSum: 0, grossBeforeExtras: brokerableGross,
+        adjustmentsSum: 0, adjustmentsBrokerable: 0, adjustmentsNonBrokerable: 0,
+        billingAdjCopiedToPay: 0,
+        // New: pre-computed net from lines (gold-standard — already includes per-line brokerage)
+        netFromLines: totalNet,
+      };
+    }
+
+    // LEGACY PATH: snapshot + extras + adjustments (pre-v16 FBs)
     const hasSnapshot = fb.paidRate != null && fb.paidMethodSnapshot;
     const rate = hasSnapshot ? Number(fb.paidRate) : (Number(assignment?.payRate) || 0);
     const method = hasSnapshot ? fb.paidMethodSnapshot : (assignment?.payMethod || "hour");
@@ -9199,12 +9279,10 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
     let qty = 0;
     if (hasSnapshot) {
-      // Read qty from snapshot matching the method
       if (method === "hour") qty = Number(fb.paidHours) || 0;
       else if (method === "ton") qty = Number(fb.paidTons) || 0;
       else if (method === "load") qty = Number(fb.paidLoads) || 0;
     } else {
-      // Live calc — legacy path
       if (method === "hour") {
         if (fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "") qty = Number(fb.hoursBilled);
         else if (fb.pickupTime && fb.dropoffTime) {
@@ -9221,9 +9299,6 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
     const grossBeforeExtras = qty * rate;
 
-    // Paying adjustments split by brokerage flag
-    // - brokerable: rolls into gross, brokerage % deducts off it
-    // - nonBrokerable: added to net AFTER brokerage (doesn't participate in brokerage calc)
     const adjustmentsBrokerable = (fb.payingAdjustments || [])
       .filter((a) => a.applyBrokerage !== false)
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
@@ -9232,23 +9307,17 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
     const adjustmentsSum = adjustmentsBrokerable + adjustmentsNonBrokerable;
 
-    // FB extras ONLY flow to pay when admin explicitly checked "→ PAY" on that extra.
-    // Default is false — extras stay on the customer bill only.
     const extrasSum = (fb.extras || [])
       .filter((x) => x.copyToPay === true)
       .reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
-    // Billing adjustments flagged "copy to pay" also flow to pay side, 100%, no brokerage cut
     const billingAdjCopiedToPay = (fb.billingAdjustments || [])
       .filter((a) => a.copyToPay === true)
       .reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
     return {
       gross: grossBeforeExtras + extrasSum + adjustmentsSum + billingAdjCopiedToPay,
-      // Brokerage applies ONLY to base work + brokerable adjustments
-      // Reimbursements + copied-from-billing always pass through at 100%
       grossForBrokerage: grossBeforeExtras + adjustmentsBrokerable,
-      // Non-brokerable adjustments + copy-to-pay extras + copy-to-pay billing adjustments bypass brokerage
       nonBrokerableAdj: adjustmentsNonBrokerable + extrasSum + billingAdjCopiedToPay,
       qty, method, rate, assignment, extrasSum, grossBeforeExtras,
       adjustmentsSum, adjustmentsBrokerable, adjustmentsNonBrokerable,
