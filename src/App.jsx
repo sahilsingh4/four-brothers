@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
-import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Banknote, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save } from "lucide-react";
+import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Banknote, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save, Send } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -1120,6 +1120,48 @@ const printDriverSheet = async (dispatch, url, onToast) => {
 const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [editingLock, setEditingLock] = useState({ level: 0, reason: "" });
+  const [overriddenFields, setOverriddenFields] = useState({}); // { fieldName: "reason" }
+  const [overrideTarget, setOverrideTarget] = useState(null); // { field, label } for modal
+
+  // Check if a field is currently locked (not yet overridden)
+  // field names: 'assignments', 'rate', 'material', 'job', 'all'
+  const isFieldLocked = (field) => {
+    if (!editingId || editingLock.level === 0) return false;
+    if (overriddenFields[field]) return false;
+    // Level 1: assignments only locked
+    if (editingLock.level === 1) return field === "assignments";
+    // Level 2: assignments + rate + material + job
+    if (editingLock.level === 2) return ["assignments", "rate", "material", "job"].includes(field);
+    // Level 3: everything
+    if (editingLock.level === 3) return true;
+    return false;
+  };
+
+  const openOverride = (field, label) => {
+    setOverrideTarget({ field, label });
+  };
+
+  // Small lock badge component for form fields
+  const LockChip = ({ field, label }) => {
+    if (!isFieldLocked(field)) {
+      if (overriddenFields[field]) {
+        return <span className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", marginLeft: 6, fontWeight: 700 }}>🔓 OVERRIDE: {overriddenFields[field].slice(0, 30)}{overriddenFields[field].length > 30 ? "…" : ""}</span>;
+      }
+      return null;
+    }
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.preventDefault(); openOverride(field, label); }}
+        className="btn-ghost"
+        style={{ padding: "2px 8px", fontSize: 9, marginLeft: 6, background: "#FEF2F2", borderColor: "var(--safety)", color: "var(--safety)" }}
+        title="Click to override with reason"
+      >
+        🔒 UNLOCK
+      </button>
+    );
+  };
   const [activeDispatch, setActiveDispatch] = useState(null);
   const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
 
@@ -1149,6 +1191,8 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   // Open the modal pre-filled with an existing order's data (edit mode)
   const openEditDispatch = (d) => {
     setEditingId(d.id);
+    setEditingLock(lockStateFor(d)); // stash the lock state for the form to use
+    setOverriddenFields({}); // reset override flags per edit session
     setDraft({
       date: d.date || todayISO(),
       jobName: d.jobName || "",
@@ -1167,6 +1211,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       notes: d.notes || "",
       assignedDriverIds: d.assignedDriverIds || [],
       assignments: d.assignments || [],
+      lockOverrides: d.lockOverrides || [],
     });
     setShowNew(true);
   };
@@ -1201,6 +1246,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         assignedDriverIds: assignedIds,
         assignedDriverNames: assignedNames,
         assignments,
+        lockOverrides: draft.lockOverrides || existing.lockOverrides || [],
         updatedAt: new Date().toISOString(),
         // Preserve: id, code, createdAt, status
         id: existing.id,
@@ -1258,14 +1304,97 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   };
 
   const toggleStatus = async (id) => {
-    const next = dispatches.map((d) => d.id === id ? { ...d, status: d.status === "open" ? "closed" : "open" } : d);
+    const next = dispatches.map((d) => d.id === id ? { ...d, status: d.status === "open" ? "closed" : (d.status === "sent" ? "closed" : "open") } : d);
     await setDispatches(next);
+  };
+
+  // Mark order as dispatched (status → sent)
+  const markDispatched = async (id) => {
+    const next = dispatches.map((d) => {
+      if (d.id !== id) return d;
+      if (d.status === "sent" || d.status === "closed") return d;
+      return { ...d, status: "sent" };
+    });
+    await setDispatches(next);
+    onToast("✓ MARKED AS DISPATCHED");
+  };
+
+  // Compute the lock state for a dispatch
+  // Returns { level, reason, hasApprovedFbs, hasInvoicedFbs }
+  //   level: 0=draft (none), 1=sent (assignments locked), 2=approved (rate/material/job locked), 3=invoiced (full lock)
+  const lockStateFor = (d) => {
+    const bills = freightBills.filter((fb) => fb.dispatchId === d.id);
+    const hasApprovedFbs = bills.some((fb) => fb.status === "approved");
+    const hasInvoicedFbs = bills.some((fb) => fb.invoiceId);
+    let level = 0;
+    let reason = "";
+    if (hasInvoicedFbs) { level = 3; reason = "FBs invoiced"; }
+    else if (hasApprovedFbs) { level = 2; reason = "FBs approved"; }
+    else if (d.status === "sent") { level = 1; reason = "Dispatched"; }
+    else if (d.status === "closed") { level = 3; reason = "Order closed"; }
+    return { level, reason, hasApprovedFbs, hasInvoicedFbs };
   };
 
   const copyLink = (code) => {
     const url = `${window.location.origin}${window.location.pathname}#/submit/${code}`;
     try { navigator.clipboard.writeText(url); onToast("LINK COPIED"); }
     catch { prompt("Copy this link:", url); }
+  };
+
+  // Build SMS/Email text with order details
+  // For drivers (kind=driver): NO rate shown. For subs: include rate + method.
+  const buildDispatchText = (dispatch, assignment = null) => {
+    const url = assignment?.aid
+      ? `${window.location.origin}${window.location.pathname}#/submit/${dispatch.code}/a/${assignment.aid}`
+      : `${window.location.origin}${window.location.pathname}#/submit/${dispatch.code}`;
+
+    const project = projects.find((p) => p.id === dispatch.projectId);
+    const customer = contacts.find((c) => c.id === dispatch.clientId);
+    const customerName = customer?.companyName || dispatch.clientName || "";
+    const primeName = project?.primeContractor || "";
+
+    const lines = [];
+    lines.push(`${company?.name || "4 BROTHERS TRUCKING"} — ORDER #${dispatch.code}`);
+    lines.push(`Date: ${dispatch.date || "TBD"}`);
+    if (customerName) lines.push(`Customer: ${customerName}`);
+    if (primeName) lines.push(`Prime: ${primeName}`);
+    if (dispatch.jobName) lines.push(`Job: ${dispatch.jobName}`);
+    if (dispatch.pickup) lines.push(`PICKUP: ${dispatch.pickup}`);
+    if (dispatch.dropoff) lines.push(`DROPOFF: ${dispatch.dropoff}`);
+    if (dispatch.material) lines.push(`Material: ${dispatch.material}`);
+
+    // Rate section — SUBS ONLY (not individual drivers)
+    if (assignment && assignment.kind === "sub" && assignment.payRate) {
+      const method = assignment.payMethod || "hour";
+      const methodLabel = method === "hour" ? "/hr" : method === "ton" ? "/ton" : "/load";
+      const minH = project?.minimumHours;
+      lines.push(`Rate: $${assignment.payRate}${methodLabel}${method === "hour" && minH ? ` (${minH}hr min)` : ""}`);
+      if (assignment.trucks > 1) lines.push(`Trucks: ${assignment.trucks}`);
+    }
+
+    if (dispatch.notes) lines.push(`Notes: ${dispatch.notes}`);
+
+    lines.push("");
+    lines.push("Submit scale tickets here:");
+    lines.push(url);
+
+    return lines.join("\n");
+  };
+
+  // Copy the full dispatch text (with details) for a specific assignment
+  const copyDispatchText = (dispatch, assignment = null) => {
+    const text = buildDispatchText(dispatch, assignment);
+    try { navigator.clipboard.writeText(text); onToast("TEXT COPIED — PASTE INTO SMS/EMAIL"); }
+    catch { prompt("Copy this text:", text); }
+  };
+
+  // SMS intent — opens the phone's messaging app
+  const smsDispatch = (dispatch, assignment, phone) => {
+    if (!phone) { onToast("NO PHONE NUMBER"); return; }
+    const text = buildDispatchText(dispatch, assignment);
+    const cleanPhone = phone.replace(/[^0-9+]/g, "");
+    const url = `sms:${cleanPhone}?&body=${encodeURIComponent(text)}`;
+    window.location.href = url;
   };
 
   const fbForDispatch = (id) => freightBills.filter((fb) => fb.dispatchId === id);
@@ -1302,6 +1431,61 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         <button onClick={() => { setEditingId(null); resetDraft(); setShowNew(true); }} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
       </div>
 
+      {/* Override lock modal */}
+      {overrideTarget && (
+        <div className="modal-bg" onClick={() => setOverrideTarget(null)} style={{ zIndex: 110 }}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div style={{ padding: "16px 22px", background: "var(--safety)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>OVERRIDE LOCK</div>
+                <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{overrideTarget.label}</h3>
+              </div>
+              <button onClick={() => setOverrideTarget(null)} style={{ background: "transparent", border: "none", color: "#FFF", cursor: "pointer" }}><X size={20} /></button>
+            </div>
+            <div style={{ padding: 22 }}>
+              <p style={{ fontSize: 13, lineHeight: 1.5, margin: "0 0 14px" }}>
+                ⚠ This field is locked because <strong>{editingLock.reason}</strong>.
+                Editing it may have downstream consequences (invoices, payroll).
+              </p>
+              <label className="fbt-label">Reason for Override *</label>
+              <textarea
+                id="override-reason-input"
+                className="fbt-textarea"
+                style={{ minHeight: 70 }}
+                placeholder="e.g. Customer changed terms mid-job — rate adjusted per email 4/22"
+                autoFocus
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button
+                  className="btn-primary"
+                  style={{ background: "var(--safety)", color: "#FFF", borderColor: "var(--safety)" }}
+                  onClick={() => {
+                    const val = document.getElementById("override-reason-input")?.value?.trim() || "";
+                    if (!val) { onToast("REASON REQUIRED"); return; }
+                    const entry = {
+                      field: overrideTarget.field,
+                      reason: val,
+                      by: "admin",
+                      at: new Date().toISOString(),
+                    };
+                    setOverriddenFields({ ...overriddenFields, [overrideTarget.field]: val });
+                    setDraft((prev) => ({
+                      ...prev,
+                      lockOverrides: [...(prev.lockOverrides || []), entry],
+                    }));
+                    onToast(`🔓 ${overrideTarget.label} UNLOCKED`);
+                    setOverrideTarget(null);
+                  }}
+                >
+                  🔓 UNLOCK THIS FIELD
+                </button>
+                <button className="btn-ghost" onClick={() => setOverrideTarget(null)}>CANCEL</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNew && (
         <div className="modal-bg" onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }}>
           <div className="modal-body" onClick={(e) => e.stopPropagation()}>
@@ -1309,12 +1493,37 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>{editingId ? "EDIT ORDER" : "NEW ORDER"}</h3>
               <button onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
             </div>
+
+            {/* Lock banner (only shown when editing a locked order) */}
+            {editingId && editingLock.level > 0 && (() => {
+              const lockedFieldList = [];
+              if (editingLock.level >= 1) lockedFieldList.push("assignments (sub/driver/rate)");
+              if (editingLock.level >= 2) lockedFieldList.push("material", "rate", "job");
+              if (editingLock.level >= 3) lockedFieldList.push("ALL FIELDS");
+              const bg = editingLock.level === 3 ? "var(--safety)" : editingLock.level === 2 ? "var(--hazard)" : "var(--concrete)";
+              return (
+                <div style={{ padding: "12px 24px", background: "#FEF2F2", borderBottom: "3px solid " + bg }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <Lock size={16} style={{ color: bg }} />
+                    <span className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>
+                      {editingLock.level === 1 && "ORDER DISPATCHED"}
+                      {editingLock.level === 2 && "FBs APPROVED ON THIS ORDER"}
+                      {editingLock.level === 3 && (editingLock.hasInvoicedFbs ? "FBs INVOICED" : "ORDER COMPLETE")}
+                      {" — LOCKED FIELDS: "}{lockedFieldList.join(", ").toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
+                    ▸ CLICK 🔓 UNLOCK NEXT TO ANY LOCKED FIELD TO OVERRIDE WITH A REASON (AUDIT STAMPED)
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ padding: 24, display: "grid", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
                 <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
               </div>
-              <div><label className="fbt-label">Job Name *</label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" /></div>
+              <div><label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" /></label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} /></div>
               <div>
                 <label className="fbt-label">Customer (for tracking link & billing)</label>
                 {contacts.filter((c) => c.type === "customer").length > 0 ? (
@@ -1438,13 +1647,31 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               </div>
 
               {/* SUB-CONTRACTORS & DRIVERS (unified) */}
-              <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14 }}>
+              <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14, position: "relative" }}>
                 <label className="fbt-label">
                   Sub-Contractors & Drivers{draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
+                  <LockChip field="assignments" label="Assignments" />
                 </label>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
                   ▸ ADD EACH SUB AND/OR DRIVER WORKING THIS ORDER · DRIVER = 1 TRUCK · SUB = TRUCK COUNT YOU ENTER · DRIVER PAY RATE + TRUCK # AUTO-FILL FROM CONTACT
                 </div>
+                {/* Dimmed overlay if locked */}
+                {isFieldLocked("assignments") && (
+                  <div style={{
+                    position: "absolute", top: 28, left: 0, right: 0, bottom: 0,
+                    background: "rgba(245, 245, 244, 0.75)", pointerEvents: "auto",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    zIndex: 10, cursor: "not-allowed",
+                  }}
+                  onClick={() => openOverride("assignments", "Assignments")}
+                  >
+                    <div style={{ padding: 14, background: "#FFF", border: "2px solid var(--safety)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, textAlign: "center" }}>
+                      <Lock size={20} style={{ color: "var(--safety)", marginBottom: 6 }} />
+                      <div style={{ fontWeight: 700, color: "var(--safety)" }}>ASSIGNMENTS LOCKED</div>
+                      <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>CLICK TO OVERRIDE WITH REASON</div>
+                    </div>
+                  </div>
+                )}
                 {(draft.assignments || []).length > 0 && (
                   <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
                     {draft.assignments.map((a, idx) => {
@@ -1599,9 +1826,18 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 <div><label className="fbt-label">Dropoff</label><input className="fbt-input" value={draft.dropoff} onChange={(e) => setDraft({ ...draft, dropoff: e.target.value })} /></div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
-                <div><label className="fbt-label">Material</label><input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} /></div>
-                <div><label className="fbt-label">Rate $/hr</label><input className="fbt-input" type="number" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} /></div>
-                <div><label className="fbt-label">Rate $/ton (opt)</label><input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} /></div>
+                <div>
+                  <label className="fbt-label">Material<LockChip field="material" label="Material" /></label>
+                  <input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} disabled={isFieldLocked("material")} />
+                </div>
+                <div>
+                  <label className="fbt-label">Rate $/hr<LockChip field="rate" label="Hourly Rate" /></label>
+                  <input className="fbt-input" type="number" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} />
+                </div>
+                <div>
+                  <label className="fbt-label">Rate $/ton (opt)<LockChip field="rate" label="Per-Ton Rate" /></label>
+                  <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} />
+                </div>
               </div>
               {quarries.length > 0 && (
                 <div>
@@ -1736,6 +1972,14 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button className="btn-primary" onClick={() => copyLink(d.code)} style={{ padding: "8px 16px", fontSize: 11 }}><Share2 size={12} /> COPY LINK</button>
+                        <button
+                          className="btn-primary"
+                          onClick={() => copyDispatchText(d)}
+                          style={{ padding: "8px 16px", fontSize: 11, background: "var(--good)", borderColor: "var(--good)", color: "#FFF" }}
+                          title="Copy full dispatch text with job details"
+                        >
+                          <Mail size={12} /> COPY TEXT
+                        </button>
                         <button className="btn-ghost" onClick={() => printDriverSheet(d, shareUrl, onToast)} style={{ padding: "8px 16px", fontSize: 11 }}><Printer size={12} style={{ marginRight: 4 }} /> PRINT SHEET</button>
                       </div>
                       <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", lineHeight: 1.5, marginTop: 4 }}>
@@ -1827,9 +2071,27 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                               >
                                 <Link2 size={11} style={{ marginRight: 3 }} /> COPY
                               </button>
+                              <button
+                                className="btn-ghost"
+                                style={{ padding: "5px 10px", fontSize: 10, background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}
+                                onClick={() => copyDispatchText(d, a)}
+                                title="Copy the full dispatch text (customer, pickup, dropoff, material, rate) ready to paste into SMS/email"
+                              >
+                                <FileText size={11} style={{ marginRight: 3 }} /> COPY TEXT
+                              </button>
+                              {contact?.phone && (
+                                <button
+                                  className="btn-ghost"
+                                  style={{ padding: "5px 10px", fontSize: 10, background: "var(--hazard)", color: "var(--steel)", borderColor: "var(--hazard-deep)" }}
+                                  onClick={() => smsDispatch(d, a, contact.phone)}
+                                  title="Open phone's messaging app pre-filled with dispatch details"
+                                >
+                                  <Send size={11} style={{ marginRight: 3 }} /> SMS w/ DETAILS
+                                </button>
+                              )}
                               {smsLink && (
                                 <a href={smsLink} className="btn-ghost" style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none" }}>
-                                  <MessageSquare size={11} style={{ marginRight: 3 }} /> TEXT
+                                  <MessageSquare size={11} style={{ marginRight: 3 }} /> TEXT (LINK ONLY)
                                 </a>
                               )}
                               {emailLink && (
@@ -1913,10 +2175,53 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   <div><strong>PICKUP:</strong> {d.pickup || "—"}</div>
                   <div><strong>DROPOFF:</strong> {d.dropoff || "—"}</div>
                   <div><strong>TRUCKS:</strong> {bills.length} / {d.trucksExpected}</div>
-                  <div><strong>STATUS:</strong> <span style={{ color: d.status === "open" ? "var(--good)" : "var(--concrete)" }}>● {d.status}</span></div>
+                  <div>
+                    <strong>STATUS:</strong>{" "}
+                    {(() => {
+                      const status = d.status === "closed" ? "complete" : d.status === "sent" ? "sent" : "draft";
+                      const color = status === "complete" ? "var(--concrete)" : status === "sent" ? "var(--hazard)" : "var(--good)";
+                      return <span style={{ color, fontWeight: 700 }}>● {status.toUpperCase()}</span>;
+                    })()}
+                  </div>
                 </div>
+
+                {/* Lock badge */}
+                {(() => {
+                  const lock = lockStateFor(d);
+                  if (lock.level === 0) return null;
+                  const bg = lock.level === 3 ? "var(--safety)" : lock.level === 2 ? "var(--hazard)" : "var(--concrete)";
+                  return (
+                    <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid " + bg, marginBottom: 14, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <Lock size={16} style={{ color: bg }} />
+                      <span className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>
+                        {lock.level === 1 && "DISPATCHED — ASSIGNMENTS LOCKED"}
+                        {lock.level === 2 && "FBs APPROVED — RATE / MATERIAL / JOB LOCKED"}
+                        {lock.level === 3 && (lock.hasInvoicedFbs ? "FBs INVOICED — FULLY LOCKED" : "ORDER CLOSED")}
+                      </span>
+                      <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginLeft: "auto" }}>
+                        {lock.reason} · edit via override button below
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-                  <button className="btn-ghost" onClick={() => toggleStatus(d.id)}>{d.status === "open" ? "CLOSE" : "REOPEN"} DISPATCH</button>
+                  {/* Mark dispatched — only for draft/open */}
+                  {(d.status === "open" || !d.status || d.status === "draft") && (
+                    <button
+                      className="btn-primary"
+                      style={{ background: "var(--hazard)", color: "var(--steel)", borderColor: "var(--hazard-deep)" }}
+                      onClick={async () => {
+                        if (!confirm(`Mark Order #${d.code} as DISPATCHED?\n\nThis locks the driver/sub assignments. You can still override later if needed.`)) return;
+                        await markDispatched(d.id);
+                      }}
+                    >
+                      <Send size={14} /> MARK AS DISPATCHED
+                    </button>
+                  )}
+                  <button className="btn-ghost" onClick={() => toggleStatus(d.id)}>
+                    {d.status === "closed" ? "REOPEN" : "CLOSE / COMPLETE"}
+                  </button>
                 </div>
                 <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ SUBMITTED FREIGHT BILLS ({bills.length})</div>
                 {bills.length === 0 ? (
@@ -1995,7 +2300,11 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                        <span className="chip" style={{ background: d.status === "open" ? "var(--good)" : "var(--concrete)", color: "#FFF", borderColor: "var(--steel)" }}>● {d.status}</span>
+                        {(() => {
+                          const status = d.status === "closed" ? "complete" : d.status === "sent" ? "sent" : "draft";
+                          const bg = status === "complete" ? "var(--concrete)" : status === "sent" ? "var(--hazard)" : "var(--good)";
+                          return <span className="chip" style={{ background: bg, color: status === "sent" ? "var(--steel)" : "#FFF", borderColor: "var(--steel)" }}>● {status.toUpperCase()}</span>;
+                        })()}
                         <span className="chip" style={{ background: "var(--hazard)" }}>#{d.code}</span>
                         <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>{fmtDate(d.date)}</span>
                       </div>

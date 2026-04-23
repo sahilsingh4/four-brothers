@@ -27,6 +27,7 @@ const dispatchFromDB = (row) => ({
   quarryId: row.quarry_id,
   notes: row.notes || "",
   status: row.status || "open",
+  lockOverrides: row.lock_overrides || [],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -52,6 +53,7 @@ const dispatchToDB = (d) => ({
   quarry_id: d.quarryId || null,
   notes: d.notes || null,
   status: d.status || "open",
+  lock_overrides: d.lockOverrides || [],
 });
 
 export const fetchDispatches = async () => {
