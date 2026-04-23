@@ -870,9 +870,27 @@ export const fetchDeletedQuotes = async () => {
 };
 
 export const insertQuote = async (q) => {
-  const { data, error } = await supabase.from("quotes").insert(quoteToDB(q)).select().single();
+  // IMPORTANT: do NOT chain .select().single() here — that would require SELECT
+  // permission on the inserted row, which we deliberately restrict to authenticated
+  // admin users only. Anonymous visitors submitting from the public site only have
+  // INSERT permission, so we skip the SELECT-after-INSERT pattern.
+  //
+  // For the admin UI, the quote will show up via the realtime subscription
+  // (which runs under the authenticated admin JWT and CAN read).
+  //
+  // We return a local copy of the quote with a client-generated ID-ish value for
+  // optimistic UI. The real row ID will come through the realtime event.
+  const payload = quoteToDB(q);
+  const { error } = await supabase.from("quotes").insert(payload);
   if (error) { console.error("insertQuote:", error); throw error; }
-  return quoteFromDB(data);
+  // Return the input back, minus the DB-only fields. The actual row with real ID
+  // will arrive via the subscribeToQuotes realtime callback for admin UI.
+  return {
+    ...q,
+    submittedAt: q.submittedAt || new Date().toISOString(),
+    status: q.status || "new",
+    revisions: q.revisions || [],
+  };
 };
 
 export const updateQuote = async (id, patch) => {
