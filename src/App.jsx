@@ -8785,6 +8785,309 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSucce
   );
 };
 
+// ========== PAY STATEMENT MODAL ==========
+// Sub-first flow: pick sub → see all unpaid FBs with BILLED vs PAID columns → check which to include → generate pay statement
+const PayStatementModal = ({
+  contacts, freightBills, dispatches, invoices, company, editFreightBill, onClose, onToast, onComplete, currentUser
+}) => {
+  const [subId, setSubId] = useState(null);
+
+  // All possible pay recipients = sub contacts + driver contacts who have pay rate or FBs
+  const payRecipients = useMemo(() => {
+    const byId = new Map();
+    // Build a list from FB assignments (anyone who has appeared as an assignment gets listed)
+    freightBills.forEach((fb) => {
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const a = (d?.assignments || []).find((ax) => ax.aid === fb.assignmentId);
+      if (!a?.contactId) return;
+      const c = contacts.find((x) => x.id === a.contactId);
+      if (!c) return;
+      if (!byId.has(c.id)) {
+        byId.set(c.id, { id: c.id, name: c.companyName || c.contactName, kind: c.type, unpaidCount: 0, totalCount: 0 });
+      }
+      const entry = byId.get(c.id);
+      entry.totalCount++;
+      if (!fb.paidAt) entry.unpaidCount++;
+    });
+    return Array.from(byId.values()).sort((a, b) => b.unpaidCount - a.unpaidCount || a.name.localeCompare(b.name));
+  }, [freightBills, dispatches, contacts]);
+
+  const selectedSub = subId ? contacts.find((c) => c.id === subId) : null;
+  const brokerageApplies = !!selectedSub?.brokerageApplies;
+  const brokeragePct = Number(selectedSub?.brokeragePercent) || 8;
+
+  // FB rows for selected sub — only unpaid FBs
+  const subFbRows = useMemo(() => {
+    if (!subId) return [];
+    return freightBills
+      .filter((fb) => {
+        if (fb.paidAt) return false;
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        const a = (d?.assignments || []).find((ax) => ax.aid === fb.assignmentId);
+        return a?.contactId === subId;
+      })
+      .map((fb) => {
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        const a = (d?.assignments || []).find((ax) => ax.aid === fb.assignmentId);
+
+        // BILLED side: prefer snapshot, else dispatch rate
+        const hasBillSnap = fb.billedRate != null && fb.billedMethod;
+        const billMethod = hasBillSnap ? fb.billedMethod : (d?.ratePerHour ? "hour" : d?.ratePerTon ? "ton" : d?.ratePerLoad ? "load" : "hour");
+        const billRate = hasBillSnap ? Number(fb.billedRate)
+          : billMethod === "hour" ? Number(d?.ratePerHour || 0)
+          : billMethod === "ton"  ? Number(d?.ratePerTon || 0)
+          : Number(d?.ratePerLoad || 0);
+        const billQty = hasBillSnap
+          ? (billMethod === "hour" ? Number(fb.billedHours) : billMethod === "ton" ? Number(fb.billedTons) : Number(fb.billedLoads))
+          : (billMethod === "hour" ? Number(fb.hoursBilled) : billMethod === "ton" ? Number(fb.tonnage) : Number(fb.loadCount)) || 0;
+        const billBase = billRate * billQty;
+        const billAdj = (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+
+        // PAID side: prefer snapshot, else assignment
+        const hasPaySnap = fb.paidRate != null && fb.paidMethodSnapshot;
+        const payMethod = hasPaySnap ? fb.paidMethodSnapshot : (a?.payMethod || "hour");
+        const payRate = hasPaySnap ? Number(fb.paidRate) : Number(a?.payRate || 0);
+        const payQty = hasPaySnap
+          ? (payMethod === "hour" ? Number(fb.paidHours) : payMethod === "ton" ? Number(fb.paidTons) : Number(fb.paidLoads))
+          : (payMethod === "hour" ? Number(fb.hoursBilled) : payMethod === "ton" ? Number(fb.tonnage) : Number(fb.loadCount)) || 0;
+        const payBase = payRate * payQty;
+        const payExtras = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        const payAdjBrok = (fb.payingAdjustments || []).filter((x) => x.applyBrokerage !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        const payAdjNon = (fb.payingAdjustments || []).filter((x) => x.applyBrokerage === false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+        const payGross = payBase + payExtras + payAdjBrok + payAdjNon;
+        const payGrossForBrok = payBase + payExtras + payAdjBrok;
+
+        // Customer-pay status
+        const invoice = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
+        const custPaid = !!fb.customerPaidAt;
+        const invoiced = !!fb.invoiceId;
+
+        return {
+          fb, dispatch: d, assignment: a,
+          billMethod, billRate, billQty, billBase, billAdj, billTotal: billBase + billAdj,
+          payMethod, payRate, payQty, payBase, payExtras, payAdjBrok, payAdjNon, payGross, payGrossForBrok,
+          invoice, invoiced, custPaid,
+        };
+      })
+      .sort((a, b) => (a.fb.submittedAt || "").localeCompare(b.fb.submittedAt || ""));
+  }, [subId, freightBills, dispatches, invoices]);
+
+  // Selection state — default to all customer-paid FBs, skip advance
+  const [selected, setSelected] = useState(new Set());
+  useEffect(() => {
+    // When sub changes, default-select ready (customer-paid) FBs
+    const ready = subFbRows.filter((r) => r.custPaid).map((r) => r.fb.id);
+    setSelected(new Set(ready));
+  }, [subId, subFbRows.length]);
+
+  const toggle = (fbId) => {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(fbId)) n.delete(fbId);
+      else n.add(fbId);
+      return n;
+    });
+  };
+  const selectAll = () => setSelected(new Set(subFbRows.map((r) => r.fb.id)));
+  const selectNone = () => setSelected(new Set());
+  const selectReady = () => setSelected(new Set(subFbRows.filter((r) => r.custPaid).map((r) => r.fb.id)));
+
+  // Totals based on selected
+  const totals = useMemo(() => {
+    const selectedRows = subFbRows.filter((r) => selected.has(r.fb.id));
+    const grossForBrok = selectedRows.reduce((s, r) => s + r.payGrossForBrok, 0);
+    const nonBrokAdj = selectedRows.reduce((s, r) => s + r.payAdjNon, 0);
+    const gross = grossForBrok + nonBrokAdj;
+    const brokerageAmt = brokerageApplies ? grossForBrok * (brokeragePct / 100) : 0;
+    const net = gross - brokerageAmt;
+    return { count: selectedRows.length, grossForBrok, nonBrokAdj, gross, brokerageAmt, net };
+  }, [subFbRows, selected, brokerageApplies, brokeragePct]);
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040, maxHeight: "94vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>CREATE PAY STATEMENT</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>
+              {selectedSub ? (selectedSub.companyName || selectedSub.contactName) : "Pick a sub / driver"}
+            </h3>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+          {/* Step 1: pick sub */}
+          {!subId && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ STEP 1 / PICK RECIPIENT ({payRecipients.length})</div>
+              {payRecipients.length === 0 ? (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--concrete)", border: "2px dashed var(--concrete)" }}>
+                  No subs or drivers with freight bills yet.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+                  {payRecipients.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => setSubId(r.id)}
+                      disabled={r.unpaidCount === 0}
+                      className="fbt-card"
+                      style={{
+                        padding: 12, textAlign: "left", cursor: r.unpaidCount > 0 ? "pointer" : "not-allowed",
+                        border: "2px solid var(--steel)", background: r.unpaidCount > 0 ? "#FFF" : "#F5F5F4",
+                        opacity: r.unpaidCount > 0 ? 1 : 0.5,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <span className="chip" style={{ background: r.kind === "driver" ? "#FFF" : "var(--hazard)", fontSize: 9, padding: "2px 6px" }}>
+                          {r.kind === "driver" ? "DRIVER" : "SUB"}
+                        </span>
+                        <div className="fbt-display" style={{ fontSize: 14, lineHeight: 1.2 }}>{r.name}</div>
+                      </div>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: r.unpaidCount > 0 ? "var(--safety)" : "var(--concrete)" }}>
+                        {r.unpaidCount} UNPAID · {r.totalCount} TOTAL FB{r.totalCount !== 1 ? "s" : ""}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Step 2: FB list */}
+          {subId && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ STEP 2 / SELECT FREIGHT BILLS ({subFbRows.length} UNPAID)</div>
+                <button onClick={() => setSubId(null)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>◀ CHANGE RECIPIENT</button>
+              </div>
+              {subFbRows.length === 0 ? (
+                <div style={{ padding: 32, textAlign: "center", color: "var(--concrete)", border: "2px dashed var(--concrete)" }}>
+                  No unpaid FBs for this recipient.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                    <button onClick={selectAll} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>SELECT ALL</button>
+                    <button onClick={selectReady} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>SELECT CUSTOMER-PAID ONLY</button>
+                    <button onClick={selectNone} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }}>SELECT NONE</button>
+                  </div>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    {/* Column header */}
+                    <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 1fr 1fr 80px", gap: 6, padding: "6px 8px", fontSize: 9, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", letterSpacing: "0.08em", borderBottom: "1.5px solid var(--steel)" }}>
+                      <span></span>
+                      <span>FB / ORDER</span>
+                      <span style={{ color: "#0369A1" }}>🏢 BILLED (CUSTOMER)</span>
+                      <span style={{ color: "var(--good)" }}>🚚 PAY (SUB)</span>
+                      <span style={{ textAlign: "right" }}>STATUS</span>
+                    </div>
+                    {subFbRows.map((r) => {
+                      const isSel = selected.has(r.fb.id);
+                      return (
+                        <div
+                          key={r.fb.id}
+                          onClick={() => toggle(r.fb.id)}
+                          style={{
+                            display: "grid", gridTemplateColumns: "28px 1fr 1fr 1fr 80px", gap: 6,
+                            padding: 8, cursor: "pointer",
+                            background: isSel ? "#F0FDF4" : "#FFF",
+                            border: "1.5px solid " + (isSel ? "var(--good)" : "var(--steel)"),
+                            fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div>
+                            <input type="checkbox" checked={isSel} onChange={() => {}} style={{ width: 16, height: 16, pointerEvents: "none" }} />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700 }}>FB#{r.fb.freightBillNumber || "—"}</div>
+                            <div style={{ fontSize: 10, color: "var(--concrete)" }}>
+                              {r.fb.submittedAt ? new Date(r.fb.submittedAt).toLocaleDateString() : "—"} · Order #{r.dispatch?.code}
+                            </div>
+                          </div>
+                          <div style={{ color: "#0369A1" }}>
+                            <div>{r.billQty.toFixed(2)} {r.billMethod} × ${r.billRate.toFixed(2)}</div>
+                            <div style={{ fontWeight: 700 }}>{fmt$(r.billTotal)}</div>
+                            {r.billAdj !== 0 && <div style={{ fontSize: 9, color: "var(--concrete)" }}>(adj {r.billAdj >= 0 ? "+" : ""}{fmt$(r.billAdj)})</div>}
+                          </div>
+                          <div style={{ color: "var(--good)" }}>
+                            <div>{r.payQty.toFixed(2)} {r.payMethod} × ${r.payRate.toFixed(2)}</div>
+                            <div style={{ fontWeight: 700 }}>{fmt$(r.payGross)}</div>
+                            {r.payExtras > 0 && <div style={{ fontSize: 9, color: "var(--concrete)" }}>(extras +{fmt$(r.payExtras)})</div>}
+                            {(r.payAdjBrok + r.payAdjNon) !== 0 && <div style={{ fontSize: 9, color: "var(--concrete)" }}>(adj {(r.payAdjBrok + r.payAdjNon) >= 0 ? "+" : ""}{fmt$(r.payAdjBrok + r.payAdjNon)})</div>}
+                          </div>
+                          <div style={{ textAlign: "right", fontSize: 9 }}>
+                            {r.custPaid ? (
+                              <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 5px" }}>✓ CUST PAID</span>
+                            ) : r.invoiced ? (
+                              <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 5px" }}>INVOICED</span>
+                            ) : (
+                              <span className="chip" style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 5px" }}>ADVANCE</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Totals + actions footer (visible once a sub is picked) */}
+        {subId && subFbRows.length > 0 && (
+          <div style={{ padding: 16, background: "var(--steel)", color: "var(--cream)", borderTop: "2px solid var(--hazard)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontFamily: "JetBrains Mono, monospace", fontSize: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, color: "var(--concrete)" }}>SELECTED</div>
+                <div style={{ fontWeight: 700 }}>{totals.count} FB{totals.count !== 1 ? "s" : ""}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: "var(--concrete)" }}>GROSS</div>
+                <div style={{ fontWeight: 700 }}>{fmt$(totals.gross)}</div>
+              </div>
+              {brokerageApplies && (
+                <div>
+                  <div style={{ fontSize: 9, color: "var(--concrete)" }}>BROKERAGE ({brokeragePct}%)</div>
+                  <div style={{ fontWeight: 700, color: "var(--hazard)" }}>−{fmt$(totals.brokerageAmt)}</div>
+                </div>
+              )}
+              <div>
+                <div style={{ fontSize: 9, color: "var(--hazard)" }}>NET PAY</div>
+                <div style={{ fontWeight: 700, fontSize: 18, color: "var(--hazard)" }}>{fmt$(totals.net)}</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  if (totals.count === 0) { onToast("SELECT AT LEAST ONE FB"); return; }
+                  // Hand off to parent to open pay modal
+                  if (onComplete) {
+                    onComplete({
+                      subId,
+                      sub: selectedSub,
+                      fbRows: subFbRows.filter((r) => selected.has(r.fb.id)),
+                      totals,
+                    });
+                  }
+                }}
+                className="btn-primary"
+                style={{ background: "var(--hazard)", color: "var(--steel)", borderColor: "var(--hazard-deep)" }}
+                disabled={totals.count === 0}
+              >
+                <DollarSign size={14} /> PROCEED TO PAY {totals.count > 0 ? `· ${fmt$(totals.net)}` : ""}
+              </button>
+              <button onClick={onClose} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)" }}>CANCEL</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ========== PAYROLL TAB ==========
 const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [], editFreightBill, company, pendingPaySubId, clearPendingPaySubId, onJumpToInvoice, onToast }) => {
   const [fromDate, setFromDate] = useState("");
@@ -8794,6 +9097,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
   const [projectFilter, setProjectFilter] = useState("");
   const [expanded, setExpanded] = useState({});
   const [payTarget, setPayTarget] = useState(null);
+  const [payStatementOpen, setPayStatementOpen] = useState(false);
   const [editingFB, setEditingFB] = useState(null);
   const [customerPaidOnly, setCustomerPaidOnly] = useState(true); // NEW: default ON (safer)
   const [traceFB, setTraceFB] = useState(null); // NEW: for traceability modal
@@ -9223,6 +9527,66 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
           onClose={() => setTraceFB(null)}
         />
       )}
+
+      {/* CREATE PAY STATEMENT — sub-first flow with dual BILLED/PAID columns */}
+      {payStatementOpen && (
+        <PayStatementModal
+          contacts={contacts}
+          freightBills={freightBills}
+          dispatches={dispatches}
+          invoices={invoices}
+          company={company}
+          editFreightBill={editFreightBill}
+          onClose={() => setPayStatementOpen(false)}
+          onToast={onToast}
+          currentUser="admin"
+          onComplete={({ subId, sub, fbRows, totals }) => {
+            // Hand off to the existing PaidModal — build a compatible target shape
+            const subName = sub?.companyName || sub?.contactName || "Sub";
+            const subKind = sub?.type || "sub";
+            const payTargetData = {
+              projectName: "Multi-project",
+              subName, subId, subKind,
+              brokerageApplies: !!sub?.brokerageApplies,
+              brokeragePct: Number(sub?.brokeragePercent) || 8,
+              gross: totals.gross,
+              brokerageAmt: totals.brokerageAmt,
+              net: totals.net,
+              fbs: fbRows.map((r) => ({
+                fb: r.fb,
+                gross: r.payGross,
+                adjustedGross: r.payGross,
+                grossForBrokerage: r.payGrossForBrok,
+                nonBrokerableAdj: r.payAdjNon,
+                qty: r.payQty,
+                method: r.payMethod,
+                rate: r.payRate,
+                dispatch: r.dispatch,
+                custStatus: r.custPaid ? "paid" : (r.invoiced ? "unpaid" : "no_invoice"),
+                customerBilled: r.billTotal,
+                customerPaid: r.custPaid ? Number(r.fb.customerPaidAmount || 0) : 0,
+                customerRatio: 1,
+              })),
+              includeAdvance: fbRows.some((r) => !r.custPaid),
+              hasAdvance: fbRows.some((r) => !r.custPaid),
+              advanceAvailable: fbRows.filter((r) => !r.custPaid).length,
+            };
+            setPayStatementOpen(false);
+            setPayTarget(payTargetData);
+          }}
+        />
+      )}
+
+      {/* CREATE PAY STATEMENT button row */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+        <button
+          onClick={() => setPayStatementOpen(true)}
+          className="btn-primary"
+          style={{ background: "var(--steel)", color: "var(--cream)", borderColor: "var(--steel)" }}
+        >
+          <FileText size={14} /> CREATE PAY STATEMENT
+        </button>
+      </div>
 
       {/* Stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
