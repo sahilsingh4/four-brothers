@@ -301,7 +301,7 @@ const ChangePasswordModal = ({ onClose, onToast }) => {
 // calls insertQuote() so admin sees them in real time.
 // ========================================================================
 
-const PublicSite = ({ onQuoteSubmit }) => {
+const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
   const [form, setForm] = useState({ name: "", company: "", email: "", phone: "", service: "hauling", pickup: "", dropoff: "", material: "", quantity: "", needDate: "", notes: "" });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -358,6 +358,9 @@ const PublicSite = ({ onQuoteSubmit }) => {
             <a href="#about"    onClick={scrollTo("about")}    style={navLinkStyle}>About</a>
             <a href="#contact"  onClick={scrollTo("contact")}  style={navLinkStyle}>Contact</a>
             <a href="#quote"    onClick={scrollTo("quote")}    style={{ padding: "10px 20px", background: "#F59E0B", color: "#1C1917", fontWeight: 700, fontSize: 13, letterSpacing: "0.04em", textDecoration: "none", borderRadius: 2 }}>GET A QUOTE</a>
+            <button onClick={onStaffLogin} style={{ background: "transparent", border: "none", color: "#78716C", fontSize: 12, fontWeight: 500, cursor: "pointer", padding: "6px 2px", display: "flex", alignItems: "center", gap: 4 }}>
+              <Lock size={11} /> Staff
+            </button>
           </div>
         </div>
       </nav>
@@ -599,7 +602,10 @@ const PublicSite = ({ onQuoteSubmit }) => {
             <div style={{ width: 32, height: 32, background: "#F59E0B", color: "#1C1917", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 14, letterSpacing: "-0.04em" }}>4B</div>
             <div style={{ fontSize: 12, color: "#D6D3D1", letterSpacing: "0.08em" }}>© 2026 · 4 BROTHERS TRUCKING, LLC</div>
           </div>
-          <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "#78716C" }}>USDOT · DBE · MBE · SB-PW CERTIFIED</div>
+          <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={onStaffLogin} style={{ background: "transparent", border: "none", color: "#78716C", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer", textTransform: "uppercase", fontWeight: 600 }}>Staff Login</button>
+            <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "#78716C" }}>USDOT · DBE · MBE · SB-PW CERTIFIED</div>
+          </div>
         </div>
       </footer>
     </div>
@@ -14748,15 +14754,8 @@ export default function App() {
   return (
     <div className="fbt-root">
       <GlobalStyles />
-      {view === "public" && (
-        <div style={{ position: "fixed", top: 16, right: 16, zIndex: 50 }}>
-          <button onClick={tryEnterDashboard} className="btn-primary" style={{ padding: "10px 18px", fontSize: 12 }}>
-            <Lock size={14} /> STAFF LOGIN
-          </button>
-        </div>
-      )}
       {view === "public" ? (
-        <PublicSite onQuoteSubmit={handleQuoteSubmit} />
+        <PublicSite onQuoteSubmit={handleQuoteSubmit} onStaffLogin={tryEnterDashboard} />
       ) : (
         <>
           <Dashboard
