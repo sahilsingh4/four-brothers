@@ -4013,10 +4013,46 @@ const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoice
 };
 
 // ========== INVOICE VIEW MODAL (payment history) ==========
-const InvoiceViewModal = ({ invoice, freightBills, onClose, onToast }) => {
+const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], onJumpToPayroll, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
   const history = invoice.paymentHistory || [];
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
+
+  // Compute payroll status for each FB — who got paid, what's still owed
+  const payrollByFb = invFbs.map((fb) => {
+    const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
+    const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
+    const contact = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+    const subName = assignment?.name || "—";
+    const isPaid = !!fb.paidAt;
+    return {
+      fb,
+      assignment,
+      contact,
+      subName,
+      subKind: assignment?.kind,
+      isPaid,
+      paidAmount: fb.paidAmount,
+      paidMethod: fb.paidMethod,
+      paidCheckNumber: fb.paidCheckNumber,
+      paidAt: fb.paidAt,
+    };
+  });
+
+  // Group by sub for summary
+  const payrollBySub = new Map();
+  payrollByFb.forEach((p) => {
+    if (!p.assignment) return;
+    const key = p.assignment.contactId || `anon_${p.assignment.aid}`;
+    if (!payrollBySub.has(key)) {
+      payrollBySub.set(key, { name: p.subName, kind: p.subKind, subId: p.assignment.contactId, fbs: [], paidCount: 0, unpaidCount: 0, paidTotal: 0 });
+    }
+    const e = payrollBySub.get(key);
+    e.fbs.push(p);
+    if (p.isPaid) { e.paidCount++; e.paidTotal += Number(p.paidAmount) || 0; }
+    else e.unpaidCount++;
+  });
+  const payrollSummary = Array.from(payrollBySub.values());
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -4083,6 +4119,63 @@ const InvoiceViewModal = ({ invoice, freightBills, onClose, onToast }) => {
             </div>
           </div>
 
+          {/* PAYROLL STATUS — subs/drivers who worked this invoice */}
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PAYROLL STATUS — SUBS/DRIVERS WHO WORKED THIS INVOICE ({payrollSummary.length})</div>
+            {payrollSummary.length === 0 ? (
+              <div style={{ padding: 12, background: "#F5F5F4", fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+                No assignments linked to these FBs.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 6 }}>
+                {payrollSummary.map((p, idx) => {
+                  const allPaid = p.unpaidCount === 0 && p.paidCount > 0;
+                  const bg = allPaid ? "#F0FDF4" : p.paidCount > 0 ? "#FEF3C7" : "#FEE2E2";
+                  const borderColor = allPaid ? "var(--good)" : p.paidCount > 0 ? "var(--hazard)" : "var(--safety)";
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => p.subId && onJumpToPayroll && onJumpToPayroll(p.subId)}
+                      style={{
+                        padding: 10, background: bg, border: "1.5px solid " + borderColor,
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        flexWrap: "wrap", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                        cursor: p.subId && onJumpToPayroll ? "pointer" : "default",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <span className="chip" style={{ background: p.kind === "driver" ? "#FFF" : "var(--hazard)", fontSize: 9, padding: "2px 7px", marginRight: 6 }}>
+                          {p.kind === "driver" ? "DRIVER" : "SUB"}
+                        </span>
+                        <strong>{p.name}</strong>
+                        <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                          {p.paidCount > 0 && `${p.paidCount} paid · `}
+                          {p.unpaidCount > 0 && `${p.unpaidCount} unpaid · `}
+                          {p.fbs.length} FB{p.fbs.length !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        {allPaid ? (
+                          <div style={{ color: "var(--good)", fontWeight: 700, fontSize: 11 }}>✓ PAID {fmt$(p.paidTotal)}</div>
+                        ) : p.paidCount > 0 ? (
+                          <div>
+                            <div style={{ color: "var(--hazard-deep)", fontWeight: 700, fontSize: 11 }}>PARTIAL</div>
+                            <div style={{ fontSize: 10, color: "var(--concrete)" }}>{p.unpaidCount} still owed</div>
+                          </div>
+                        ) : (
+                          <div style={{ color: "var(--safety)", fontWeight: 700, fontSize: 11 }}>UNPAID</div>
+                        )}
+                        {p.subId && onJumpToPayroll && (
+                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2, letterSpacing: "0.08em" }}>TAP TO VIEW ▸</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button onClick={onClose} className="btn-ghost">CLOSE</button>
           </div>
@@ -4093,7 +4186,7 @@ const InvoiceViewModal = ({ invoice, freightBills, onClose, onToast }) => {
 };
 
 // ========== INVOICES TAB ==========
-const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onToast }) => {
+const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -4343,6 +4436,12 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
         <InvoiceViewModal
           invoice={viewingInvoice}
           freightBills={freightBills}
+          contacts={contacts}
+          dispatches={dispatches}
+          onJumpToPayroll={(subId) => {
+            setViewingInvoice(null);
+            if (onJumpToPayroll) onJumpToPayroll(subId);
+          }}
           onClose={() => setViewingInvoice(null)}
           onToast={onToast}
         />
@@ -7302,7 +7401,7 @@ const PaidModal = ({ target, fbs, editFreightBill, onClose, onToast, onPaidSucce
 };
 
 // ========== PAYROLL TAB ==========
-const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [], editFreightBill, company, pendingPaySubId, clearPendingPaySubId, onToast }) => {
+const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [], editFreightBill, company, pendingPaySubId, clearPendingPaySubId, onJumpToInvoice, onToast }) => {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [paidFilter, setPaidFilter] = useState("unpaid"); // unpaid | paid | all
@@ -8040,6 +8139,21 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
                                             NO INVOICE
                                           </span>
                                         )}
+                                        {/* Direct link to invoice — if FB is on one */}
+                                        {fb.invoiceId && onJumpToInvoice && (() => {
+                                          const inv = invoices.find((i) => i.id === fb.invoiceId);
+                                          if (!inv) return null;
+                                          return (
+                                            <span
+                                              className="chip"
+                                              style={{ background: "var(--steel)", color: "var(--cream)", fontSize: 9, padding: "2px 6px", cursor: "pointer", fontWeight: 700 }}
+                                              onClick={(e) => { e.stopPropagation(); onJumpToInvoice(inv.id); }}
+                                              title="Jump to this invoice"
+                                            >
+                                              → INV {inv.invoiceNumber}
+                                            </span>
+                                          );
+                                        })()}
                                         {isPaid && (
                                           <span style={{ color: "var(--good)", fontWeight: 700 }}>
                                             ✓ {fb.paidAt.slice(0, 10)} · {methodLabel[fb.paidMethod] || "Paid"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""} · {fmt$(fb.paidAmount || 0)}
@@ -11060,8 +11174,8 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
-        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onToast={onToast} />}
-        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onToast={onToast} />}
+        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
+        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
