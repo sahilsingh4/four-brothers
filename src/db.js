@@ -147,6 +147,9 @@ const fbFromDB = (row) => ({
   paidMethodSnapshot: row.pay_snapshot_method || null,
   payingAdjustments: row.paying_adjustments || [],
   payStatementLockedAt: row.pay_statement_locked_at || null,
+  // Unified line-item structure (v16) — replaces snapshot + extras + adjustments as the master data
+  billingLines: Array.isArray(row.billing_lines) ? row.billing_lines : (row.billing_lines || []),
+  payingLines: Array.isArray(row.paying_lines) ? row.paying_lines : (row.paying_lines || []),
 });
 
 const fbToDB = (fb) => ({
@@ -201,6 +204,9 @@ const fbToDB = (fb) => ({
   pay_snapshot_method: fb.paidMethodSnapshot || null,
   paying_adjustments: fb.payingAdjustments || [],
   pay_statement_locked_at: fb.payStatementLockedAt || null,
+  // Unified line-item structure (v16) — source of truth for invoice + pay statement totals
+  billing_lines: Array.isArray(fb.billingLines) ? fb.billingLines : [],
+  paying_lines: Array.isArray(fb.payingLines) ? fb.payingLines : [],
 });
 
 export const fetchFreightBills = async () => {
