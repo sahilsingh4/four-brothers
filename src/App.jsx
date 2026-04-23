@@ -4644,8 +4644,14 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   // Billable hours for INVOICE — applies project minimum ONLY if admin has acknowledged
   // On the PAYROLL side we continue to use actual hours (effectiveHours).
   const billableHoursForInvoice = (fb) => {
+    // v16 PREFERRED: if FB has billingLines with a HOURLY line, use that qty (admin-approved value)
+    if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) {
+      const hourLine = fb.billingLines.find((ln) => ln.code === "H");
+      if (hourLine) return Number(hourLine.qty) || 0;
+      return 0; // no hourly line on this FB — not an hour-billed FB
+    }
+    // LEGACY: derive from times
     const actual = effectiveHours(fb);
-    // If admin hasn't confirmed the minimum, use actual regardless
     if (!fb.minHoursApplied) return actual;
     const d = dispatches.find((x) => x.id === fb.dispatchId);
     const project = projects.find((p) => p.id === d?.projectId);
@@ -6945,6 +6951,20 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
   const billingSnapshotLocked = !!fb.billingLockedAt || !!fb.invoiceId;
   const paySnapshotLocked = !!fb.payStatementLockedAt;
   const [unlocked, setUnlocked] = useState(false); // admin can request unlock
+
+  // Compute hours from pickup + dropoff times — used to seed HOURLY line qty on modal open
+  const hoursFromTimes = (pickup, dropoff) => {
+    if (!pickup || !dropoff) return 0;
+    const [h1, m1] = String(pickup).split(":").map(Number);
+    const [h2, m2] = String(dropoff).split(":").map(Number);
+    if (isNaN(h1) || isNaN(h2)) return 0;
+    const mins = (h2 * 60 + (m2 || 0)) - (h1 * 60 + (m1 || 0));
+    return mins > 0 ? Number((mins / 60).toFixed(2)) : 0;
+  };
+  // Seed value used for HOURLY qty: prefer hoursBilled if set, else calculate from times, else 0
+  const seedHours = Number(fb.hoursBilled) > 0
+    ? Number(fb.hoursBilled)
+    : hoursFromTimes(fb.pickupTime, fb.dropoffTime);
   const [draft, setDraft] = useState({
     freightBillNumber: fb.freightBillNumber || "",
     driverName: fb.driverName || "",
@@ -6991,18 +7011,36 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     // If fb already has lines (from backfill), use them. Otherwise seed with a single HOURLY line
     // based on dispatch/assignment rates.
     billingLines: Array.isArray(fb.billingLines) && fb.billingLines.length > 0
-      ? fb.billingLines
+      ? (() => {
+          // BACKFILL FIX: if an existing HOURLY line has qty=0 and times give a real value, update it
+          if (seedHours > 0) {
+            return fb.billingLines.map((ln) => {
+              if (ln.code === "H" && (!ln.qty || Number(ln.qty) === 0)) {
+                const rate = Number(ln.rate) || 0;
+                const gross = Number((seedHours * rate).toFixed(2));
+                const net = ln.brokerable
+                  ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
+                  : gross;
+                return { ...ln, qty: seedHours, gross, net };
+              }
+              return ln;
+            });
+          }
+          return fb.billingLines;
+        })()
       : (() => {
           // Seed one billing line from dispatch rate
           const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
           const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
           const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
           const rate = Number(dispatch?.ratePerHour || dispatch?.ratePerTon || dispatch?.ratePerLoad || 0);
-          const qty = method === "hour" ? Number(fb.hoursBilled) || 0
+          // For HOUR method: use computed hours from times, else hoursBilled, else 0
+          // For TON/LOAD: use submitted qty
+          const qty = method === "hour" ? seedHours
                    : method === "ton" ? Number(fb.tonnage) || 0
                    : Number(fb.loadCount) || 1;
           if (rate > 0 || qty > 0) {
-            const gross = qty * rate;
+            const gross = Number((qty * rate).toFixed(2));
             return [{
               id: Date.now(),
               code, item, qty, rate, gross,
@@ -7015,23 +7053,41 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
           return [];
         })(),
     payingLines: Array.isArray(fb.payingLines) && fb.payingLines.length > 0
-      ? fb.payingLines
+      ? (() => {
+          // BACKFILL FIX: if an existing HOURLY line has qty=0 and times give a real value, update it
+          if (seedHours > 0) {
+            return fb.payingLines.map((ln) => {
+              if (ln.code === "H" && (!ln.qty || Number(ln.qty) === 0)) {
+                const rate = Number(ln.rate) || 0;
+                const gross = Number((seedHours * rate).toFixed(2));
+                const net = ln.brokerable
+                  ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
+                  : gross;
+                return { ...ln, qty: seedHours, gross, net };
+              }
+              return ln;
+            });
+          }
+          return fb.payingLines;
+        })()
       : (() => {
           // Seed one pay line from assignment rate (if a rate is known)
           const method = assignment?.payMethod || "hour";
           const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
           const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
           const rate = Number(assignment?.payRate || 0);
-          const qty = method === "hour" ? Number(fb.hoursBilled) || 0
+          // For HOUR method: use computed hours from times, else hoursBilled, else 0
+          // For TON/LOAD: use submitted qty
+          const qty = method === "hour" ? seedHours
                    : method === "ton" ? Number(fb.tonnage) || 0
                    : Number(fb.loadCount) || 1;
           if (rate > 0 || qty > 0) {
-            const gross = qty * rate;
+            const gross = Number((qty * rate).toFixed(2));
             const isSub = assignment?.kind === "sub";
             const contactForPay = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
             const brokerable = isSub && !!contactForPay?.brokerageApplies;
             const brokeragePct = brokerable ? Number(contactForPay?.brokeragePercent || 8) : 0;
-            const net = gross - (brokerable ? gross * brokeragePct / 100 : 0);
+            const net = Number((gross - (brokerable ? gross * brokeragePct / 100 : 0)).toFixed(2));
             return [{
               id: Date.now() + 1,
               code, item, qty, rate, gross,
