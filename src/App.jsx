@@ -6908,6 +6908,57 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     }));
   };
 
+  // Adjustment entry state (one form for each side)
+  const [billingAdjForm, setBillingAdjForm] = useState({ amount: "", type: "rate", note: "" });
+  const [payingAdjForm, setPayingAdjForm] = useState({ amount: "", type: "rate", note: "" });
+
+  const addBillingAdjustment = async () => {
+    const amt = Number(billingAdjForm.amount);
+    if (!amt) { onToast("ENTER AN AMOUNT"); return; }
+    const entry = {
+      id: Date.now(),
+      amount: amt,
+      type: billingAdjForm.type,
+      note: billingAdjForm.note || "",
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser || "admin",
+    };
+    try {
+      await editFreightBill(fb.id, { ...fb, billingAdjustments: [...(fb.billingAdjustments || []), entry] });
+      setBillingAdjForm({ amount: "", type: "rate", note: "" });
+      onToast("✓ BILLING ADJUSTMENT ADDED");
+    } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
+  };
+
+  const addPayingAdjustment = async () => {
+    const amt = Number(payingAdjForm.amount);
+    if (!amt) { onToast("ENTER AN AMOUNT"); return; }
+    const entry = {
+      id: Date.now(),
+      amount: amt,
+      type: payingAdjForm.type,
+      note: payingAdjForm.note || "",
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser || "admin",
+    };
+    try {
+      await editFreightBill(fb.id, { ...fb, payingAdjustments: [...(fb.payingAdjustments || []), entry] });
+      setPayingAdjForm({ amount: "", type: "rate", note: "" });
+      onToast("✓ PAY ADJUSTMENT ADDED");
+    } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
+  };
+
+  const removeAdjustment = async (side, adjId) => {
+    if (!confirm("Remove this adjustment?")) return;
+    const key = side === "billing" ? "billingAdjustments" : "payingAdjustments";
+    const current = fb[key] || [];
+    const next = current.filter((a) => a.id !== adjId);
+    try {
+      await editFreightBill(fb.id, { ...fb, [key]: next });
+      onToast("ADJUSTMENT REMOVED");
+    } catch (e) { console.error(e); onToast("REMOVE FAILED"); }
+  };
+
   // Auto-calc hours from pickup/dropoff if both present
   const autoHours = useMemo(() => {
     if (!draft.pickupTime || !draft.dropoffTime) return null;
@@ -7325,6 +7376,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             </div>
           </div>
 
+          </fieldset>
+
           {/* ━━ BILLING + PAY SNAPSHOT DUAL PANEL ━━
               Billing = what we charge customer (locked on invoice)
               Pay     = what we pay sub/driver (locked on pay statement) */}
@@ -7406,6 +7459,81 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                     </>
                   )}
                 </div>
+
+                {/* Billing adjustments list + add form */}
+                {billingSnapshotLocked && (
+                  <div style={{ marginTop: 10, borderTop: "1px dashed #0EA5E9", paddingTop: 10 }}>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                      ▸ BILLING ADJUSTMENTS ({(fb.billingAdjustments || []).length})
+                    </div>
+                    {(fb.billingAdjustments || []).map((adj) => (
+                      <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #BAE6FD", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
+                          <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
+                          {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
+                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
+                            {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeAdjustment("billing", adj.id)}
+                          style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", fontSize: 11, padding: 2 }}
+                          title="Remove"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 6, padding: 8, background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr auto", gap: 4, alignItems: "end" }}>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>AMOUNT $</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="+/-"
+                            value={billingAdjForm.amount}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, amount: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>COMPONENT</label>
+                          <select
+                            className="fbt-select"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            value={billingAdjForm.type}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, type: e.target.value })}
+                          >
+                            <option value="rate">Rate</option>
+                            <option value="hours">Hours/Qty</option>
+                            <option value="extras">Extras</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>NOTE</label>
+                          <input
+                            className="fbt-input"
+                            type="text"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="reason"
+                            value={billingAdjForm.note}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, note: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addBillingAdjustment}
+                          style={{ padding: "4px 8px", fontSize: 10, background: "#0EA5E9", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}
+                        >
+                          + ADD
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ─── PAY SIDE ─── */}
@@ -7491,6 +7619,81 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                     </>
                   )}
                 </div>
+
+                {/* Pay adjustments list + add form */}
+                {paySnapshotLocked && (
+                  <div style={{ marginTop: 10, borderTop: "1px dashed var(--good)", paddingTop: 10 }}>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                      ▸ PAY ADJUSTMENTS ({(fb.payingAdjustments || []).length})
+                    </div>
+                    {(fb.payingAdjustments || []).map((adj) => (
+                      <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #86EFAC", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
+                          <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
+                          {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
+                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
+                            {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeAdjustment("paying", adj.id)}
+                          style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", fontSize: 11, padding: 2 }}
+                          title="Remove"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 6, padding: 8, background: "#F0FDF4", border: "1px solid #86EFAC" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr auto", gap: 4, alignItems: "end" }}>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>AMOUNT $</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="+/-"
+                            value={payingAdjForm.amount}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, amount: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>COMPONENT</label>
+                          <select
+                            className="fbt-select"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            value={payingAdjForm.type}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, type: e.target.value })}
+                          >
+                            <option value="rate">Rate</option>
+                            <option value="hours">Hours/Qty</option>
+                            <option value="extras">Extras</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>NOTE</label>
+                          <input
+                            className="fbt-input"
+                            type="text"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="reason"
+                            value={payingAdjForm.note}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, note: e.target.value })}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addPayingAdjustment}
+                          style={{ padding: "4px 8px", fontSize: 10, background: "var(--good)", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}
+                        >
+                          + ADD
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
@@ -7569,8 +7772,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               </div>
             )}
           </div>
-
-          </fieldset>
 
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 14, borderTop: "2px solid var(--steel)" }}>
@@ -8453,28 +8654,53 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
   // Calculate gross for an FB based on its assignment's pay rate + method
   const calcGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
-    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, assignment: null, extrasSum: 0, grossBeforeExtras: 0 };
-    const rate = Number(assignment.payRate) || 0;
-    const method = assignment.payMethod || "hour";
+
+    // PREFER PAY SNAPSHOT — locked values from FB approval
+    // Fall back to live assignment-based calc for backward compat (pre-v15 FBs)
+    const hasSnapshot = fb.paidRate != null && fb.paidMethodSnapshot;
+    const rate = hasSnapshot ? Number(fb.paidRate) : (Number(assignment?.payRate) || 0);
+    const method = hasSnapshot ? fb.paidMethodSnapshot : (assignment?.payMethod || "hour");
+
+    if (!hasSnapshot && (!assignment || !assignment.payRate)) {
+      return { gross: 0, qty: 0, method: "?", rate: 0, assignment, extrasSum: 0, grossBeforeExtras: 0, adjustmentsSum: 0 };
+    }
+
     let qty = 0;
-    if (method === "hour") {
-      if (fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "") qty = Number(fb.hoursBilled);
-      else if (fb.pickupTime && fb.dropoffTime) {
-        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
-        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
-        if (!isNaN(h1) && !isNaN(h2)) {
-          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-          if (mins > 0) qty = mins / 60;
+    if (hasSnapshot) {
+      // Read qty from snapshot matching the method
+      if (method === "hour") qty = Number(fb.paidHours) || 0;
+      else if (method === "ton") qty = Number(fb.paidTons) || 0;
+      else if (method === "load") qty = Number(fb.paidLoads) || 0;
+    } else {
+      // Live calc — legacy path
+      if (method === "hour") {
+        if (fb.hoursBilled !== null && fb.hoursBilled !== undefined && fb.hoursBilled !== "") qty = Number(fb.hoursBilled);
+        else if (fb.pickupTime && fb.dropoffTime) {
+          const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+          const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+          if (!isNaN(h1) && !isNaN(h2)) {
+            const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+            if (mins > 0) qty = mins / 60;
+          }
         }
-      }
-    } else if (method === "ton") qty = Number(fb.tonnage) || 0;
-    else if (method === "load") qty = Number(fb.loadCount) || 1;
+      } else if (method === "ton") qty = Number(fb.tonnage) || 0;
+      else if (method === "load") qty = Number(fb.loadCount) || 1;
+    }
+
     const grossBeforeExtras = qty * rate;
+
+    // Paying adjustments (net positive/negative corrections after lock)
+    const adjustmentsSum = (fb.payingAdjustments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+
     // Reimbursable FB extras are added to gross (sub fronted the cost, gets paid back)
     const extrasSum = (fb.extras || [])
       .filter((x) => x.reimbursable !== false)
       .reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    return { gross: grossBeforeExtras + extrasSum, qty, method, rate, assignment, extrasSum, grossBeforeExtras };
+
+    return {
+      gross: grossBeforeExtras + extrasSum + adjustmentsSum,
+      qty, method, rate, assignment, extrasSum, grossBeforeExtras, adjustmentsSum,
+    };
   };
 
   // Helper: compute what customer WAS billed for this FB on its invoice (estimated)
