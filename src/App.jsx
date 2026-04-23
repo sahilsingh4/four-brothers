@@ -1789,10 +1789,10 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     const next = [d, ...dispatches];
     await setDispatches(next);
     setShowNew(false);
-    setTimeout(() => {
-      const fresh = dispatches.find((x) => x.code === code);
-      if (fresh) setActiveDispatch(fresh.id);
-    }, 100);
+    // v18 fix: look up in `next` (what we just saved), not `dispatches` (stale closure).
+    // Was: setTimeout + read from dispatches — brittle race with realtime refresh.
+    const fresh = next.find((x) => x.code === code);
+    if (fresh) setActiveDispatch(fresh.id);
     resetDraft();
     onToast("ORDER CREATED");
 
@@ -4596,9 +4596,9 @@ const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoice
       if (newTotal > 0 && newAmountPaid >= newTotal - 0.01) newStatus = "paid";
       else if (newAmountPaid > 0) newStatus = "partial";
 
-      // Use direct updateInvoice since setInvoices diff-logic relies on object mutation
+      // Use direct updateInvoice (imported at module top) since setInvoices diff-logic
+      // compares by object equality and we want a targeted update here.
       try {
-        const { updateInvoice } = await import("./db");
         await updateInvoice(invoice.id, {
           ...invoice,
           amountPaid: newAmountPaid,
