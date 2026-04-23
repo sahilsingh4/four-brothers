@@ -6971,15 +6971,20 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
   };
 
   // Adjustment entry state (one form for each side)
-  const [billingAdjForm, setBillingAdjForm] = useState({ amount: "", type: "rate", note: "" });
-  const [payingAdjForm, setPayingAdjForm] = useState({ amount: "", type: "rate", note: "" });
+  // Structure: qty × rate = amount. Type: hours|rate|extras|other. applyBrokerage for pay side only.
+  const [billingAdjForm, setBillingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "" });
+  const [payingAdjForm, setPayingAdjForm] = useState({ qty: "", rate: "", type: "rate", note: "", applyBrokerage: true });
 
   const addBillingAdjustment = async () => {
-    const amt = Number(billingAdjForm.amount);
-    if (!amt) { onToast("ENTER AN AMOUNT"); return; }
+    const qty = Number(billingAdjForm.qty);
+    const rate = Number(billingAdjForm.rate);
+    if (!qty || !rate) { onToast("ENTER BOTH QTY AND RATE"); return; }
+    const amount = Number((qty * rate).toFixed(2));
     const entry = {
       id: Date.now(),
-      amount: amt,
+      qty,
+      rate,
+      amount,
       type: billingAdjForm.type,
       note: billingAdjForm.note || "",
       createdAt: new Date().toISOString(),
@@ -6987,25 +6992,30 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     };
     try {
       await editFreightBill(fb.id, { ...fb, billingAdjustments: [...(fb.billingAdjustments || []), entry] });
-      setBillingAdjForm({ amount: "", type: "rate", note: "" });
+      setBillingAdjForm({ qty: "", rate: "", type: "rate", note: "" });
       onToast("✓ BILLING ADJUSTMENT ADDED");
     } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
   };
 
   const addPayingAdjustment = async () => {
-    const amt = Number(payingAdjForm.amount);
-    if (!amt) { onToast("ENTER AN AMOUNT"); return; }
+    const qty = Number(payingAdjForm.qty);
+    const rate = Number(payingAdjForm.rate);
+    if (!qty || !rate) { onToast("ENTER BOTH QTY AND RATE"); return; }
+    const amount = Number((qty * rate).toFixed(2));
     const entry = {
       id: Date.now(),
-      amount: amt,
+      qty,
+      rate,
+      amount,
       type: payingAdjForm.type,
       note: payingAdjForm.note || "",
+      applyBrokerage: !!payingAdjForm.applyBrokerage,
       createdAt: new Date().toISOString(),
       createdBy: currentUser || "admin",
     };
     try {
       await editFreightBill(fb.id, { ...fb, payingAdjustments: [...(fb.payingAdjustments || []), entry] });
-      setPayingAdjForm({ amount: "", type: "rate", note: "" });
+      setPayingAdjForm({ qty: "", rate: "", type: "rate", note: "", applyBrokerage: true });
       onToast("✓ PAY ADJUSTMENT ADDED");
     } catch (e) { console.error(e); onToast("ADJUSTMENT FAILED"); }
   };
@@ -7520,6 +7530,11 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #BAE6FD", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
+                          {adj.qty != null && adj.rate != null && (
+                            <span style={{ color: "var(--concrete)", marginLeft: 6, fontSize: 9 }}>
+                              ({adj.qty} × ${adj.rate})
+                            </span>
+                          )}
                           <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
                           {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
                           <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
@@ -7536,16 +7551,30 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       </div>
                     ))}
                     <div style={{ marginTop: 6, padding: 8, background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr auto", gap: 4, alignItems: "end" }}>
+                      <div className="fbt-mono" style={{ fontSize: 8, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                        ▸ NEW BILLING ADJUSTMENT (QTY × RATE = AMOUNT)
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr auto", gap: 4, alignItems: "end" }}>
                         <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>AMOUNT $</label>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>QTY</label>
                           <input
                             className="fbt-input"
                             type="number" step="0.01"
                             style={{ padding: "4px 6px", fontSize: 10 }}
                             placeholder="+/-"
-                            value={billingAdjForm.amount}
-                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, amount: e.target.value })}
+                            value={billingAdjForm.qty}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, qty: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>RATE $</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="0.00"
+                            value={billingAdjForm.rate}
+                            onChange={(e) => setBillingAdjForm({ ...billingAdjForm, rate: e.target.value })}
                           />
                         </div>
                         <div>
@@ -7581,6 +7610,12 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           + ADD
                         </button>
                       </div>
+                      {/* Live auto-calc */}
+                      {billingAdjForm.qty && billingAdjForm.rate && (
+                        <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", marginTop: 4, textAlign: "right" }}>
+                          = {fmt$(Number(billingAdjForm.qty) * Number(billingAdjForm.rate))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -7680,7 +7715,17 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       <div key={adj.id} style={{ padding: 6, background: "#FFF", border: "1px solid #86EFAC", fontSize: 10, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <strong style={{ color: adj.amount >= 0 ? "var(--good)" : "var(--safety)" }}>{adj.amount >= 0 ? "+" : ""}{fmt$(adj.amount)}</strong>
+                          {adj.qty != null && adj.rate != null && (
+                            <span style={{ color: "var(--concrete)", marginLeft: 6, fontSize: 9 }}>
+                              ({adj.qty} × ${adj.rate})
+                            </span>
+                          )}
                           <span style={{ color: "var(--concrete)", marginLeft: 6 }}>[{adj.type}]</span>
+                          {adj.applyBrokerage && (
+                            <span className="chip" style={{ background: "var(--hazard)", fontSize: 8, padding: "1px 5px", marginLeft: 4 }}>
+                              BROK
+                            </span>
+                          )}
                           {adj.note && <span style={{ marginLeft: 6, fontStyle: "italic" }}>"{adj.note}"</span>}
                           <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 1 }}>
                             {adj.createdBy} · {new Date(adj.createdAt).toLocaleDateString()}
@@ -7696,16 +7741,30 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                       </div>
                     ))}
                     <div style={{ marginTop: 6, padding: 8, background: "#F0FDF4", border: "1px solid #86EFAC" }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr auto", gap: 4, alignItems: "end" }}>
+                      <div className="fbt-mono" style={{ fontSize: 8, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
+                        ▸ NEW PAY ADJUSTMENT (QTY × RATE = AMOUNT)
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1.5fr auto", gap: 4, alignItems: "end" }}>
                         <div>
-                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>AMOUNT $</label>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>QTY</label>
                           <input
                             className="fbt-input"
                             type="number" step="0.01"
                             style={{ padding: "4px 6px", fontSize: 10 }}
                             placeholder="+/-"
-                            value={payingAdjForm.amount}
-                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, amount: e.target.value })}
+                            value={payingAdjForm.qty}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, qty: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 8, color: "var(--concrete)" }}>RATE $</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01"
+                            style={{ padding: "4px 6px", fontSize: 10 }}
+                            placeholder="0.00"
+                            value={payingAdjForm.rate}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, rate: e.target.value })}
                           />
                         </div>
                         <div>
@@ -7740,6 +7799,22 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                         >
                           + ADD
                         </button>
+                      </div>
+                      {/* Brokerage toggle (pay side only) + live auto-calc */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4, gap: 8, flexWrap: "wrap" }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", color: "var(--steel)" }}>
+                          <input
+                            type="checkbox"
+                            checked={!!payingAdjForm.applyBrokerage}
+                            onChange={(e) => setPayingAdjForm({ ...payingAdjForm, applyBrokerage: e.target.checked })}
+                          />
+                          APPLY BROKERAGE %
+                        </label>
+                        {payingAdjForm.qty && payingAdjForm.rate && (
+                          <span className="fbt-mono" style={{ fontSize: 9, color: "var(--good)" }}>
+                            = {fmt$(Number(payingAdjForm.qty) * Number(payingAdjForm.rate))}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -8144,26 +8219,44 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
   const methodLabel = { check: "Check", ach: "ACH / Bank Transfer", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
 
-  // Helper: compute gross for an FB (same logic as payroll)
+  // Helper: compute gross for an FB (same logic as payroll — prefer pay snapshot)
   const fbGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
-    if (!assignment || !assignment.payRate) return { gross: 0, qty: 0, method: "?", rate: 0, extrasSum: 0, baseGross: 0 };
-    const rate = Number(assignment.payRate) || 0;
-    const method = assignment.payMethod || "hour";
+    const hasSnapshot = fb.paidRate != null && fb.paidMethodSnapshot;
+    const rate = hasSnapshot ? Number(fb.paidRate) : (Number(assignment?.payRate) || 0);
+    const method = hasSnapshot ? fb.paidMethodSnapshot : (assignment?.payMethod || "hour");
+    if (!hasSnapshot && (!assignment || !assignment.payRate)) {
+      return { gross: 0, qty: 0, method: "?", rate: 0, extrasSum: 0, baseGross: 0, extras: [], adjustments: [], adjBrokerable: 0, adjNonBrokerable: 0 };
+    }
     let qty = 0;
-    if (method === "hour") {
-      if (fb.hoursBilled) qty = Number(fb.hoursBilled);
-      else if (fb.pickupTime && fb.dropoffTime) {
-        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
-        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
-        const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
-        if (mins > 0) qty = mins / 60;
-      }
-    } else if (method === "ton") qty = Number(fb.tonnage) || 0;
-    else if (method === "load") qty = Number(fb.loadCount) || 1;
+    if (hasSnapshot) {
+      if (method === "hour") qty = Number(fb.paidHours) || 0;
+      else if (method === "ton") qty = Number(fb.paidTons) || 0;
+      else if (method === "load") qty = Number(fb.paidLoads) || 0;
+    } else {
+      if (method === "hour") {
+        if (fb.hoursBilled) qty = Number(fb.hoursBilled);
+        else if (fb.pickupTime && fb.dropoffTime) {
+          const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+          const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) qty = mins / 60;
+        }
+      } else if (method === "ton") qty = Number(fb.tonnage) || 0;
+      else if (method === "load") qty = Number(fb.loadCount) || 1;
+    }
     const baseGross = qty * rate;
     const extrasSum = (fb.extras || []).filter((x) => x.reimbursable !== false).reduce((s, x) => s + (Number(x.amount) || 0), 0);
-    return { gross: baseGross + extrasSum, qty, method, rate, extrasSum, baseGross, extras: fb.extras || [] };
+    // Pay adjustments split by brokerage flag
+    const adjustments = fb.payingAdjustments || [];
+    const adjBrokerable = adjustments.filter((a) => a.applyBrokerage !== false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const adjNonBrokerable = adjustments.filter((a) => a.applyBrokerage === false).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    return {
+      gross: baseGross + extrasSum + adjBrokerable + adjNonBrokerable,
+      qty, method, rate, extrasSum, baseGross,
+      extras: fb.extras || [],
+      adjustments, adjBrokerable, adjNonBrokerable,
+    };
   };
 
   // Build FB rows for this pay run
@@ -8176,8 +8269,12 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
 
   const subtotal = fbRows.reduce((s, r) => s + r.calc.baseGross, 0);
   const extrasTotal = fbRows.reduce((s, r) => s + r.calc.extrasSum, 0);
-  const gross = subtotal + extrasTotal;
-  const brokerageAmt = brokerageApplies ? gross * (brokeragePct / 100) : 0;
+  const adjBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjBrokerable, 0);
+  const adjNonBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjNonBrokerable, 0);
+  // Brokerable gross = base + extras + brokerable adjustments (brokerage % applies to this)
+  const grossForBrokerage = subtotal + extrasTotal + adjBrokerableTotal;
+  const gross = grossForBrokerage + adjNonBrokerableTotal;
+  const brokerageAmt = brokerageApplies ? grossForBrokerage * (brokeragePct / 100) : 0;
   const netPay = gross - brokerageAmt;
 
   // Year-to-date: find all other paid FBs for this sub in the current year (excluding THIS pay run)
@@ -8354,6 +8451,14 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
             ${extrasList.filter((x) => x.reimbursable !== false).map((x) => `
               <tr><td colspan="7" class="extra-line">+ ${esc(x.label || "Extra")}: ${money(x.amount)} (reimbursable)</td></tr>
             `).join("")}
+            ${(calc.adjustments || []).map((adj) => `
+              <tr><td colspan="7" class="extra-line" style="color: ${adj.amount >= 0 ? "#065F46" : "#991B1B"};">
+                ${adj.amount >= 0 ? "+" : ""}Adjustment [${esc(adj.type)}]:
+                ${adj.qty != null && adj.rate != null ? `${adj.qty} × ${money(adj.rate)} = ` : ""}${money(adj.amount)}
+                ${adj.applyBrokerage === false ? " (NOT subject to brokerage)" : ""}
+                ${adj.note ? ` — "${esc(adj.note)}"` : ""}
+              </td></tr>
+            `).join("")}
           `;
         }).join("")}
       </tbody>
@@ -8370,14 +8475,31 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
           <strong>${money(extrasTotal)}</strong>
         </div>
       ` : ""}
-      <div class="totals-row">
-        <span><strong>GROSS PAY</strong></span>
-        <strong>${money(gross)}</strong>
-      </div>
+      ${adjBrokerableTotal !== 0 ? `
+        <div class="totals-row" style="color: ${adjBrokerableTotal >= 0 ? "#065F46" : "#991B1B"};">
+          <span>Adjustments (subject to brokerage)</span>
+          <strong>${adjBrokerableTotal >= 0 ? "+" : ""}${money(adjBrokerableTotal)}</strong>
+        </div>
+      ` : ""}
       ${brokerageApplies ? `
+        <div class="totals-row">
+          <span><strong>GROSS (FOR BROKERAGE)</strong></span>
+          <strong>${money(grossForBrokerage)}</strong>
+        </div>
         <div class="totals-row deduct">
           <span>Brokerage Deduction (${brokeragePct}%)</span>
           <strong>−${money(brokerageAmt)}</strong>
+        </div>
+      ` : `
+        <div class="totals-row">
+          <span><strong>GROSS PAY</strong></span>
+          <strong>${money(grossForBrokerage)}</strong>
+        </div>
+      `}
+      ${adjNonBrokerableTotal !== 0 ? `
+        <div class="totals-row" style="color: ${adjNonBrokerableTotal >= 0 ? "#065F46" : "#991B1B"};">
+          <span>Adjustments (not subject to brokerage)</span>
+          <strong>${adjNonBrokerableTotal >= 0 ? "+" : ""}${money(adjNonBrokerableTotal)}</strong>
         </div>
       ` : ""}
       <div class="totals-row net">
@@ -8748,8 +8870,16 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
     const grossBeforeExtras = qty * rate;
 
-    // Paying adjustments (net positive/negative corrections after lock)
-    const adjustmentsSum = (fb.payingAdjustments || []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    // Paying adjustments split by brokerage flag
+    // - brokerable: rolls into gross, brokerage % deducts off it
+    // - nonBrokerable: added to net AFTER brokerage (doesn't participate in brokerage calc)
+    const adjustmentsBrokerable = (fb.payingAdjustments || [])
+      .filter((a) => a.applyBrokerage !== false)
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const adjustmentsNonBrokerable = (fb.payingAdjustments || [])
+      .filter((a) => a.applyBrokerage === false)
+      .reduce((s, a) => s + (Number(a.amount) || 0), 0);
+    const adjustmentsSum = adjustmentsBrokerable + adjustmentsNonBrokerable;
 
     // Reimbursable FB extras are added to gross (sub fronted the cost, gets paid back)
     const extrasSum = (fb.extras || [])
@@ -8758,7 +8888,10 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
 
     return {
       gross: grossBeforeExtras + extrasSum + adjustmentsSum,
-      qty, method, rate, assignment, extrasSum, grossBeforeExtras, adjustmentsSum,
+      grossForBrokerage: grossBeforeExtras + extrasSum + adjustmentsBrokerable,  // brokerage applies to this
+      nonBrokerableAdj: adjustmentsNonBrokerable,
+      qty, method, rate, assignment, extrasSum, grossBeforeExtras,
+      adjustmentsSum, adjustmentsBrokerable, adjustmentsNonBrokerable,
     };
   };
 
@@ -8859,12 +8992,16 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
       const ratio = customerPaidRatio(fb);
       const billed = fbInvoiceBilled(fb);
       const customerPaidAmt = Number(fb.customerPaidAmount) || 0;
-      const adjustedGross = custStatus === "short" ? calc.gross * ratio : calc.gross;
+      // Short-pay proportions: apply ratio to brokerable portion, pass nonBrokerable through as-is
+      const brokerableAdjusted = custStatus === "short" ? calc.grossForBrokerage * ratio : calc.grossForBrokerage;
+      const adjustedGross = brokerableAdjusted + calc.nonBrokerableAdj;
 
       subData.fbs.push({
         fb,
         gross: calc.gross,              // full gross based on agreement
         adjustedGross,                  // what we'll actually pay (proportional for short-pay)
+        grossForBrokerage: brokerableAdjusted, // what brokerage % applies to
+        nonBrokerableAdj: calc.nonBrokerableAdj, // bypasses brokerage
         qty: calc.qty,
         method: calc.method,
         rate: calc.rate,
@@ -8880,20 +9017,26 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
     // Compute net, brokerage + ready/advance splits per sub
     const asArray = Array.from(byProject.values()).map((pd) => {
       const subs = Array.from(pd.subs.values()).map((s) => {
-        const brokerageAmt = s.brokerageApplies ? s.gross * (s.brokeragePct / 100) : 0;
+        // Brokerage only applies to the grossForBrokerage portion, not non-brokerable adjustments
+        const brokerableGross = s.fbs.reduce((sum, x) => sum + (x.grossForBrokerage || 0), 0);
+        const nonBrokerableSum = s.fbs.reduce((sum, x) => sum + (x.nonBrokerableAdj || 0), 0);
+        const brokerageAmt = s.brokerageApplies ? brokerableGross * (s.brokeragePct / 100) : 0;
 
         // Split: ready-to-pay vs advance-risk
         const unpaidEntries = s.fbs.filter((x) => !x.fb.paidAt);
         const readyEntries = unpaidEntries.filter((x) => x.custStatus === "paid" || x.custStatus === "short");
         const advanceEntries = unpaidEntries.filter((x) => x.custStatus !== "paid" && x.custStatus !== "short");
+        const readyBrokerableGross = readyEntries.reduce((sum, x) => sum + (x.grossForBrokerage || 0), 0);
+        const advanceBrokerableGross = advanceEntries.reduce((sum, x) => sum + (x.grossForBrokerage || 0), 0);
         const readyGross = readyEntries.reduce((sum, x) => sum + x.adjustedGross, 0);
         const advanceGross = advanceEntries.reduce((sum, x) => sum + x.adjustedGross, 0);
-        const readyBrok = s.brokerageApplies ? readyGross * (s.brokeragePct / 100) : 0;
-        const advanceBrok = s.brokerageApplies ? advanceGross * (s.brokeragePct / 100) : 0;
+        const readyBrok = s.brokerageApplies ? readyBrokerableGross * (s.brokeragePct / 100) : 0;
+        const advanceBrok = s.brokerageApplies ? advanceBrokerableGross * (s.brokeragePct / 100) : 0;
 
         return {
           ...s,
           brokerageAmt,
+          nonBrokerableSum,
           net: s.gross - brokerageAmt,
           readyGross, readyNet: readyGross - readyBrok, readyCount: readyEntries.length,
           advanceGross, advanceNet: advanceGross - advanceBrok, advanceCount: advanceEntries.length,
