@@ -673,9 +673,10 @@ const ClientTrackingPage = ({ token, dispatches, freightBills, company, onBack }
 const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null, assignmentContact = null }) => {
   // For driver-kind assignments, driver name is locked in (but editable via override)
   const lockedDriverName = assignment?.kind === "driver" ? assignment.name : null;
-  // Prefill truck number from contact's default (if available)
-  const prefillTruck = assignment?.kind === "driver" && assignmentContact?.defaultTruckNumber
-    ? assignmentContact.defaultTruckNumber
+  // Prefill truck number — prefer the truck assigned on the order (fleet-synced at assignment time),
+  // fall back to the contact's default truck number
+  const prefillTruck = assignment?.kind === "driver"
+    ? (assignment?.truckNumber || assignmentContact?.defaultTruckNumber || "")
     : "";
 
   const [form, setForm] = useState({
@@ -1297,7 +1298,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], onToast }) => {
+const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingLock, setEditingLock] = useState({ level: 0, reason: "" });
@@ -2018,6 +2019,9 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                 const id = e.target.value;
                                 const c = contactsOfKind.find((x) => String(x.id) === id);
                                 const next = [...draft.assignments];
+                                // Look up fleet unit assigned to this driver (sync'd from Fleet tab)
+                                const fleetUnit = isDriver && c ? fleet.find((f) => f.driverId === c.id) : null;
+                                const resolvedTruck = fleetUnit?.unit || c?.defaultTruckNumber || "";
                                 // For drivers: auto-fill pay rate, method, and truck # from contact
                                 // unless already manually set on this assignment row
                                 const autoFill = isDriver && c ? {
@@ -2025,8 +2029,8 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                     ? String(c.defaultPayRate) : next[idx].payRate,
                                   payMethod: (!next[idx].payMethod || next[idx].payMethod === "hour") && c.defaultPayMethod
                                     ? c.defaultPayMethod : (next[idx].payMethod || "hour"),
-                                  truckNumber: (!next[idx].truckNumber) && c.defaultTruckNumber
-                                    ? c.defaultTruckNumber : next[idx].truckNumber,
+                                  truckNumber: (!next[idx].truckNumber) && resolvedTruck
+                                    ? resolvedTruck : next[idx].truckNumber,
                                 } : {};
                                 next[idx] = {
                                   ...next[idx],
@@ -3396,10 +3400,23 @@ const QuoteConversionForm = ({ quote, draft, dispatches, setDispatches, projects
   );
 };
 
-const FleetTab = ({ fleet, setFleet, onToast }) => {
-  const [draft, setDraft] = useState({ unit: "", type: "Super Dump", driver: "", status: "available", notes: "" });
-  const add = async () => { if (!draft.unit) { onToast("UNIT # REQUIRED"); return; } const next = [...fleet, { ...draft, id: Date.now() }]; setFleet(next); await storageSet("fbt:fleet", next); setDraft({ unit: "", type: "Super Dump", driver: "", status: "available", notes: "" }); onToast("UNIT ADDED"); };
+const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
+  const [draft, setDraft] = useState({ unit: "", type: "Super Dump", driver: "", driverId: null, status: "available", notes: "" });
+  const driverContacts = contacts.filter((c) => c.type === "driver");
+
+  const add = async () => {
+    if (!draft.unit) { onToast("UNIT # REQUIRED"); return; }
+    const next = [...fleet, { ...draft, id: Date.now() }];
+    setFleet(next); await storageSet("fbt:fleet", next);
+    setDraft({ unit: "", type: "Super Dump", driver: "", driverId: null, status: "available", notes: "" });
+    onToast("UNIT ADDED");
+  };
   const update = async (id, field, value) => { const next = fleet.map((f) => f.id === id ? { ...f, [field]: value } : f); setFleet(next); await storageSet("fbt:fleet", next); };
+  const updateDriver = async (id, driverId) => {
+    const contact = driverId ? contacts.find((c) => c.id === Number(driverId) || c.id === driverId) : null;
+    const next = fleet.map((f) => f.id === id ? { ...f, driverId: driverId || null, driver: contact ? (contact.companyName || contact.contactName) : "" } : f);
+    setFleet(next); await storageSet("fbt:fleet", next);
+  };
   const remove = async (id) => { const next = fleet.filter((f) => f.id !== id); setFleet(next); await storageSet("fbt:fleet", next); onToast("UNIT REMOVED"); };
   const statusColor = (s) => ({ available: "var(--good)", dispatched: "var(--hazard-deep)", maintenance: "var(--safety)", offline: "var(--concrete)" }[s] || "var(--concrete)");
 
@@ -3410,7 +3427,28 @@ const FleetTab = ({ fleet, setFleet, onToast }) => {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
           <div><label className="fbt-label">Unit #</label><input className="fbt-input" value={draft.unit} onChange={(e) => setDraft({ ...draft, unit: e.target.value })} placeholder="T-01" /></div>
           <div><label className="fbt-label">Type</label><select className="fbt-select" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}><option>Super Dump</option><option>Transfer End Dump</option><option>Truck & Trailer</option><option>End Dump</option><option>Other</option></select></div>
-          <div><label className="fbt-label">Driver</label><input className="fbt-input" value={draft.driver} onChange={(e) => setDraft({ ...draft, driver: e.target.value })} /></div>
+          <div>
+            <label className="fbt-label">Driver</label>
+            {driverContacts.length > 0 ? (
+              <select
+                className="fbt-select"
+                value={draft.driverId || ""}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) { setDraft({ ...draft, driverId: null, driver: "" }); return; }
+                  const c = contacts.find((x) => String(x.id) === id);
+                  if (c) setDraft({ ...draft, driverId: c.id, driver: c.companyName || c.contactName });
+                }}
+              >
+                <option value="">— Unassigned —</option>
+                {driverContacts.map((c) => (
+                  <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+                ))}
+              </select>
+            ) : (
+              <input className="fbt-input" value={draft.driver} onChange={(e) => setDraft({ ...draft, driver: e.target.value })} placeholder="Add driver contacts for a picker" />
+            )}
+          </div>
           <div><label className="fbt-label">Status</label><select className="fbt-select" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}><option value="available">Available</option><option value="dispatched">Dispatched</option><option value="maintenance">Maintenance</option><option value="offline">Offline</option></select></div>
           <div style={{ gridColumn: "1 / -1" }}><label className="fbt-label">Notes</label><input className="fbt-input" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></div>
         </div>
@@ -3436,7 +3474,22 @@ const FleetTab = ({ fleet, setFleet, onToast }) => {
                     </div>
                     <div style={{ padding: "4px 10px", background: statusColor(f.status), color: "#FFF", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>● {f.status}</div>
                   </div>
-                  <div style={{ marginTop: 14, fontSize: 13, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>DRIVER ▸ {f.driver || "unassigned"}</div>
+                  <div style={{ marginTop: 14, fontSize: 13, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>DRIVER ▸ {f.driver || "unassigned"}{f.driverId ? " · LINKED" : ""}</div>
+                  {driverContacts.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <select
+                        className="fbt-select"
+                        style={{ padding: "4px 8px", fontSize: 10 }}
+                        value={f.driverId || ""}
+                        onChange={(e) => updateDriver(f.id, e.target.value)}
+                      >
+                        <option value="">— Unassigned —</option>
+                        {driverContacts.map((c) => (
+                          <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   {f.notes && <div style={{ marginTop: 8, fontSize: 12, color: "var(--concrete)" }}>{f.notes}</div>}
                   <div style={{ marginTop: 14, display: "flex", gap: 6 }}>
                     <select className="fbt-select" style={{ padding: "6px 8px", fontSize: 11 }} value={f.status} onChange={(e) => update(f.id, "status", e.target.value)}>
@@ -11171,7 +11224,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
           else if (k === "invoices") setPendingInvoice(payload);
           else if (k === "payroll") setPendingPaySubId(payload);
         }} onToast={onToast} />}
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
@@ -11180,7 +11233,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onToast={onToast} />}
-        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} onToast={onToast} />}
+        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
         {tab === "reports" && <ReportsTab dispatches={dispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
