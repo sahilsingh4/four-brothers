@@ -994,60 +994,114 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
                 Add any out-of-pocket costs you paid for this load. Keep receipts. You'll be reimbursed.
               </div>
               {(form.extras || []).length > 0 && (
-                <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-                  {form.extras.map((x, idx) => (
-                    <div key={idx} style={{ display: "grid", gridTemplateColumns: "130px 1fr 100px auto", gap: 6, alignItems: "center" }}>
-                      <select
-                        className="fbt-select"
-                        style={{ padding: "6px 8px", fontSize: 11 }}
-                        value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          const next = [...form.extras];
-                          next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
-                          setForm({ ...form, extras: next });
-                        }}
-                      >
-                        <option value="Tolls">Tolls</option>
-                        <option value="Dump Fees">Dump Fees</option>
-                        <option value="Fuel Surcharge">Fuel</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <input
-                        className="fbt-input"
-                        style={{ padding: "6px 10px", fontSize: 12 }}
-                        placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Note (optional)" : "Describe — specify type"}
-                        value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
-                        onChange={(e) => {
-                          const next = [...form.extras];
-                          const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
-                          if (isOther) next[idx] = { ...next[idx], label: e.target.value };
-                          else next[idx] = { ...next[idx], note: e.target.value };
-                          setForm({ ...form, extras: next });
-                        }}
-                      />
-                      <input
-                        className="fbt-input"
-                        type="number" step="0.01" min="0"
-                        placeholder="$0.00"
-                        style={{ padding: "6px 10px", fontSize: 12 }}
-                        value={x.amount || ""}
-                        onChange={(e) => {
-                          const next = [...form.extras];
-                          next[idx] = { ...next[idx], amount: e.target.value };
-                          setForm({ ...form, extras: next });
-                        }}
-                      />
-                      <button
-                        onClick={() => setForm({ ...form, extras: form.extras.filter((_, i) => i !== idx) })}
-                        className="btn-danger"
-                        style={{ padding: "6px 10px", fontSize: 11 }}
-                        type="button"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
+                <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
+                  {form.extras.map((x, idx) => {
+                    const hasQtyRate = (Number(x.qty) > 0) && (Number(x.rate) > 0);
+                    const computed = hasQtyRate ? (Number(x.qty) * Number(x.rate)).toFixed(2) : "";
+                    return (
+                      <div key={idx} style={{ border: "1px solid var(--concrete)", padding: 8, background: "#FFF" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                          <select
+                            className="fbt-select"
+                            style={{ padding: "6px 8px", fontSize: 11 }}
+                            value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const next = [...form.extras];
+                              next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
+                              setForm({ ...form, extras: next });
+                            }}
+                          >
+                            <option value="Tolls">Tolls</option>
+                            <option value="Dump Fees">Dump Fees</option>
+                            <option value="Fuel Surcharge">Fuel</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          <input
+                            className="fbt-input"
+                            style={{ padding: "6px 10px", fontSize: 12 }}
+                            placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Description (e.g. Bay Bridge)" : "Describe — specify type"}
+                            value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
+                            onChange={(e) => {
+                              const next = [...form.extras];
+                              const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
+                              if (isOther) next[idx] = { ...next[idx], label: e.target.value };
+                              else next[idx] = { ...next[idx], note: e.target.value };
+                              setForm({ ...form, extras: next });
+                            }}
+                          />
+                          <button
+                            onClick={() => setForm({ ...form, extras: form.extras.filter((_, i) => i !== idx) })}
+                            className="btn-danger"
+                            style={{ padding: "6px 10px", fontSize: 11 }}
+                            type="button"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" }}>
+                          <div>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>QTY (OPTIONAL)</label>
+                            <input
+                              className="fbt-input"
+                              type="number" step="0.01" min="0"
+                              placeholder="e.g. 3"
+                              style={{ padding: "5px 8px", fontSize: 11 }}
+                              value={x.qty || ""}
+                              onChange={(e) => {
+                                const next = [...form.extras];
+                                const newQty = e.target.value;
+                                next[idx] = { ...next[idx], qty: newQty };
+                                // Auto-compute amount if both qty + rate are set
+                                if (newQty && next[idx].rate) {
+                                  next[idx].amount = (Number(newQty) * Number(next[idx].rate)).toFixed(2);
+                                }
+                                setForm({ ...form, extras: next });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>RATE $ (OPTIONAL)</label>
+                            <input
+                              className="fbt-input"
+                              type="number" step="0.01" min="0"
+                              placeholder="e.g. 8.50"
+                              style={{ padding: "5px 8px", fontSize: 11 }}
+                              value={x.rate || ""}
+                              onChange={(e) => {
+                                const next = [...form.extras];
+                                const newRate = e.target.value;
+                                next[idx] = { ...next[idx], rate: newRate };
+                                // Auto-compute amount if both qty + rate are set
+                                if (newRate && next[idx].qty) {
+                                  next[idx].amount = (Number(next[idx].qty) * Number(newRate)).toFixed(2);
+                                }
+                                setForm({ ...form, extras: next });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: hasQtyRate ? "var(--good)" : "var(--concrete)", letterSpacing: "0.08em", fontWeight: 700 }}>
+                              AMOUNT $ {hasQtyRate ? "(AUTO)" : ""}
+                            </label>
+                            <input
+                              className="fbt-input"
+                              type="number" step="0.01" min="0"
+                              placeholder="$0.00"
+                              style={{ padding: "5px 8px", fontSize: 11, background: hasQtyRate ? "#F0FDF4" : "#FFF", fontWeight: 700 }}
+                              value={x.amount || ""}
+                              onChange={(e) => {
+                                const next = [...form.extras];
+                                next[idx] = { ...next[idx], amount: e.target.value };
+                                setForm({ ...form, extras: next });
+                              }}
+                              title={hasQtyRate ? "Auto-calculated — edit to override" : "Enter amount directly or use qty + rate"}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -6824,72 +6878,123 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               Reimbursable = customer pays us, we pay the sub back for it.
             </div>
             {(draft.extras || []).length > 0 && (
-              <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-                {draft.extras.map((x, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 80px auto", gap: 6, alignItems: "center" }}>
-                    <select
-                      className="fbt-select"
-                      style={{ padding: "6px 8px", fontSize: 11 }}
-                      value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        const next = [...draft.extras];
-                        next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
-                        setDraft({ ...draft, extras: next });
-                      }}
-                    >
-                      <option value="Tolls">Tolls</option>
-                      <option value="Dump Fees">Dump Fees</option>
-                      <option value="Fuel Surcharge">Fuel</option>
-                      <option value="Other">Other</option>
-                    </select>
-                    <input
-                      className="fbt-input"
-                      style={{ padding: "6px 10px", fontSize: 12 }}
-                      placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Note" : "Describe"}
-                      value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
-                      onChange={(e) => {
-                        const next = [...draft.extras];
-                        const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
-                        if (isOther) next[idx] = { ...next[idx], label: e.target.value };
-                        else next[idx] = { ...next[idx], note: e.target.value };
-                        setDraft({ ...draft, extras: next });
-                      }}
-                    />
-                    <input
-                      className="fbt-input"
-                      type="number" step="0.01" min="0"
-                      placeholder="$0.00"
-                      style={{ padding: "6px 10px", fontSize: 12 }}
-                      value={x.amount || ""}
-                      onChange={(e) => {
-                        const next = [...draft.extras];
-                        next[idx] = { ...next[idx], amount: e.target.value };
-                        setDraft({ ...draft, extras: next });
-                      }}
-                    />
-                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={x.reimbursable !== false}
-                        onChange={(e) => {
-                          const next = [...draft.extras];
-                          next[idx] = { ...next[idx], reimbursable: e.target.checked };
-                          setDraft({ ...draft, extras: next });
-                        }}
-                      />
-                      REIMB
-                    </label>
-                    <button
-                      onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, i) => i !== idx) })}
-                      className="btn-danger"
-                      style={{ padding: "6px 10px", fontSize: 11 }}
-                      type="button"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                ))}
+              <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
+                {draft.extras.map((x, idx) => {
+                  const hasQtyRate = (Number(x.qty) > 0) && (Number(x.rate) > 0);
+                  return (
+                    <div key={idx} style={{ border: "1px solid var(--concrete)", padding: 8, background: "#FFF" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr auto auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                        <select
+                          className="fbt-select"
+                          style={{ padding: "6px 8px", fontSize: 11 }}
+                          value={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : "Other"}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const next = [...draft.extras];
+                            next[idx] = { ...next[idx], label: v === "Other" ? (next[idx].label || "") : v };
+                            setDraft({ ...draft, extras: next });
+                          }}
+                        >
+                          <option value="Tolls">Tolls</option>
+                          <option value="Dump Fees">Dump Fees</option>
+                          <option value="Fuel Surcharge">Fuel</option>
+                          <option value="Other">Other</option>
+                        </select>
+                        <input
+                          className="fbt-input"
+                          style={{ padding: "6px 10px", fontSize: 12 }}
+                          placeholder={["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? "Description" : "Describe"}
+                          value={x.label && !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(x.label) ? x.label : (x.note || "")}
+                          onChange={(e) => {
+                            const next = [...draft.extras];
+                            const isOther = !["Tolls", "Dump Fees", "Fuel Surcharge"].includes(next[idx].label);
+                            if (isOther) next[idx] = { ...next[idx], label: e.target.value };
+                            else next[idx] = { ...next[idx], note: e.target.value };
+                            setDraft({ ...draft, extras: next });
+                          }}
+                        />
+                        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={x.reimbursable !== false}
+                            onChange={(e) => {
+                              const next = [...draft.extras];
+                              next[idx] = { ...next[idx], reimbursable: e.target.checked };
+                              setDraft({ ...draft, extras: next });
+                            }}
+                          />
+                          REIMB
+                        </label>
+                        <button
+                          onClick={() => setDraft({ ...draft, extras: draft.extras.filter((_, i) => i !== idx) })}
+                          className="btn-danger"
+                          style={{ padding: "6px 10px", fontSize: 11 }}
+                          type="button"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" }}>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>QTY</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01" min="0"
+                            placeholder="—"
+                            style={{ padding: "5px 8px", fontSize: 11 }}
+                            value={x.qty || ""}
+                            onChange={(e) => {
+                              const next = [...draft.extras];
+                              const newQty = e.target.value;
+                              next[idx] = { ...next[idx], qty: newQty };
+                              if (newQty && next[idx].rate) {
+                                next[idx].amount = (Number(newQty) * Number(next[idx].rate)).toFixed(2);
+                              }
+                              setDraft({ ...draft, extras: next });
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>RATE $</label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01" min="0"
+                            placeholder="—"
+                            style={{ padding: "5px 8px", fontSize: 11 }}
+                            value={x.rate || ""}
+                            onChange={(e) => {
+                              const next = [...draft.extras];
+                              const newRate = e.target.value;
+                              next[idx] = { ...next[idx], rate: newRate };
+                              if (newRate && next[idx].qty) {
+                                next[idx].amount = (Number(next[idx].qty) * Number(newRate)).toFixed(2);
+                              }
+                              setDraft({ ...draft, extras: next });
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="fbt-mono" style={{ fontSize: 9, color: hasQtyRate ? "var(--good)" : "var(--concrete)", letterSpacing: "0.08em", fontWeight: 700 }}>
+                            AMOUNT $ {hasQtyRate ? "(AUTO)" : ""}
+                          </label>
+                          <input
+                            className="fbt-input"
+                            type="number" step="0.01" min="0"
+                            placeholder="$0.00"
+                            style={{ padding: "5px 8px", fontSize: 11, background: hasQtyRate ? "#F0FDF4" : "#FFF", fontWeight: 700 }}
+                            value={x.amount || ""}
+                            onChange={(e) => {
+                              const next = [...draft.extras];
+                              next[idx] = { ...next[idx], amount: e.target.value };
+                              setDraft({ ...draft, extras: next });
+                            }}
+                            title={hasQtyRate ? "Auto-calculated from qty × rate — override to set manually" : "Enter amount directly"}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
