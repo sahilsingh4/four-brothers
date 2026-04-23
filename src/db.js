@@ -131,6 +131,22 @@ const fbFromDB = (row) => ({
   minHoursApprovedAt: row.min_hours_approved_at || null,
   customerRate: row.customer_rate !== null && row.customer_rate !== undefined ? Number(row.customer_rate) : null,
   customerRateMethod: row.customer_rate_method || null,
+  // Billing snapshot (locked on invoice)
+  billedHours: row.billed_hours !== null && row.billed_hours !== undefined ? Number(row.billed_hours) : null,
+  billedTons: row.billed_tons !== null && row.billed_tons !== undefined ? Number(row.billed_tons) : null,
+  billedLoads: row.billed_loads !== null && row.billed_loads !== undefined ? Number(row.billed_loads) : null,
+  billedRate: row.billed_rate !== null && row.billed_rate !== undefined ? Number(row.billed_rate) : null,
+  billedMethod: row.billed_method || null,
+  billingAdjustments: row.billing_adjustments || [],
+  billingLockedAt: row.billing_locked_at || null,
+  // Pay snapshot (locked on pay statement)
+  paidHours: row.paid_hours !== null && row.paid_hours !== undefined ? Number(row.paid_hours) : null,
+  paidTons: row.paid_tons !== null && row.paid_tons !== undefined ? Number(row.paid_tons) : null,
+  paidLoads: row.paid_loads !== null && row.paid_loads !== undefined ? Number(row.paid_loads) : null,
+  paidRate: row.paid_rate !== null && row.paid_rate !== undefined ? Number(row.paid_rate) : null,
+  paidMethodSnapshot: row.pay_snapshot_method || null,
+  payingAdjustments: row.paying_adjustments || [],
+  payStatementLockedAt: row.pay_statement_locked_at || null,
 });
 
 const fbToDB = (fb) => ({
@@ -169,6 +185,22 @@ const fbToDB = (fb) => ({
   min_hours_approved_at: fb.minHoursApprovedAt || null,
   customer_rate: fb.customerRate !== null && fb.customerRate !== undefined && fb.customerRate !== "" ? Number(fb.customerRate) : null,
   customer_rate_method: fb.customerRateMethod || null,
+  // Billing snapshot
+  billed_hours: fb.billedHours !== null && fb.billedHours !== undefined && fb.billedHours !== "" ? Number(fb.billedHours) : null,
+  billed_tons: fb.billedTons !== null && fb.billedTons !== undefined && fb.billedTons !== "" ? Number(fb.billedTons) : null,
+  billed_loads: fb.billedLoads !== null && fb.billedLoads !== undefined && fb.billedLoads !== "" ? Number(fb.billedLoads) : null,
+  billed_rate: fb.billedRate !== null && fb.billedRate !== undefined && fb.billedRate !== "" ? Number(fb.billedRate) : null,
+  billed_method: fb.billedMethod || null,
+  billing_adjustments: fb.billingAdjustments || [],
+  billing_locked_at: fb.billingLockedAt || null,
+  // Pay snapshot
+  paid_hours: fb.paidHours !== null && fb.paidHours !== undefined && fb.paidHours !== "" ? Number(fb.paidHours) : null,
+  paid_tons: fb.paidTons !== null && fb.paidTons !== undefined && fb.paidTons !== "" ? Number(fb.paidTons) : null,
+  paid_loads: fb.paidLoads !== null && fb.paidLoads !== undefined && fb.paidLoads !== "" ? Number(fb.paidLoads) : null,
+  paid_rate: fb.paidRate !== null && fb.paidRate !== undefined && fb.paidRate !== "" ? Number(fb.paidRate) : null,
+  pay_snapshot_method: fb.paidMethodSnapshot || null,
+  paying_adjustments: fb.payingAdjustments || [],
+  pay_statement_locked_at: fb.payStatementLockedAt || null,
 });
 
 export const fetchFreightBills = async () => {
