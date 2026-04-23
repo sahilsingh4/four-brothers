@@ -802,3 +802,120 @@ export const subscribeToProjects = (callback) => {
     .subscribe();
   return () => supabase.removeChannel(channel);
 };
+
+// ========================================================================
+// QUOTES (v18) — public quote requests from the marketing site
+// ========================================================================
+// Public visitors can INSERT (unauthenticated), authenticated admin can
+// SELECT/UPDATE/DELETE. Soft-delete compatible.
+// ========================================================================
+
+const quoteFromDB = (row) => ({
+  id: row.id,
+  name: row.name,
+  company: row.company || "",
+  email: row.email,
+  phone: row.phone || "",
+  service: row.service || "",
+  pickup: row.pickup || "",
+  dropoff: row.dropoff || "",
+  material: row.material || "",
+  quantity: row.quantity || "",
+  needDate: row.need_date || "",
+  notes: row.notes || "",
+  status: row.status || "new",
+  revisions: row.revisions || [],
+  submittedAt: row.submitted_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  deletedAt: row.deleted_at || null,
+  deletedBy: row.deleted_by || null,
+  deleteReason: row.delete_reason || null,
+});
+
+const quoteToDB = (q) => ({
+  name: q.name,
+  company: q.company || null,
+  email: q.email,
+  phone: q.phone || null,
+  service: q.service || null,
+  pickup: q.pickup || null,
+  dropoff: q.dropoff || null,
+  material: q.material || null,
+  quantity: q.quantity || null,
+  need_date: q.needDate || null,
+  notes: q.notes || null,
+  status: q.status || "new",
+  revisions: q.revisions || [],
+});
+
+export const fetchQuotes = async () => {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("*")
+    .is("deleted_at", null)
+    .order("submitted_at", { ascending: false });
+  if (error) { console.error("fetchQuotes:", error); return []; }
+  return (data || []).map(quoteFromDB);
+};
+
+export const fetchDeletedQuotes = async () => {
+  const { data, error } = await supabase
+    .from("quotes")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) { console.error("fetchDeletedQuotes:", error); return []; }
+  return (data || []).map(quoteFromDB);
+};
+
+export const insertQuote = async (q) => {
+  const { data, error } = await supabase.from("quotes").insert(quoteToDB(q)).select().single();
+  if (error) { console.error("insertQuote:", error); throw error; }
+  return quoteFromDB(data);
+};
+
+export const updateQuote = async (id, patch) => {
+  const { data, error } = await supabase
+    .from("quotes")
+    .update(quoteToDB(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateQuote:", error); throw error; }
+  return quoteFromDB(data);
+};
+
+// Soft delete
+export const deleteQuote = async (id, { deletedBy = "admin", reason = "" } = {}) => {
+  const { error } = await supabase
+    .from("quotes")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: deletedBy,
+      delete_reason: reason || null,
+    })
+    .eq("id", id);
+  if (error) { console.error("deleteQuote (soft):", error); throw error; }
+};
+
+export const recoverQuote = async (id) => {
+  const { error } = await supabase
+    .from("quotes")
+    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
+    .eq("id", id);
+  if (error) { console.error("recoverQuote:", error); throw error; }
+};
+
+export const hardDeleteQuote = async (id) => {
+  const { error } = await supabase.from("quotes").delete().eq("id", id);
+  if (error) { console.error("hardDeleteQuote:", error); throw error; }
+};
+
+export const subscribeToQuotes = (callback) => {
+  const channel = supabase
+    .channel("quotes-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "quotes" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
