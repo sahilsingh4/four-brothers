@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken } from "./db";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted } from "./db";
 import { Truck, ClipboardList, Receipt, Menu, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, QrCode, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, TrendingUp, Package, Mountain, TrendingDown, BarChart3, History, Calendar, DollarSign, Banknote, Award, Zap, Briefcase, Hash, Shield, ShieldCheck, Clock, Save, Send } from "lucide-react";
 
 const GlobalStyles = () => (
@@ -1576,74 +1576,86 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     const d = dispatches.find((x) => x.id === id);
     if (!d) return;
     const childFbs = freightBills.filter((fb) => fb.dispatchId === id);
-    const invoicedFbs = childFbs.filter((fb) => fb.invoiceId);
-    const paidFbs = childFbs.filter((fb) => fb.paidAt);
-    const custPaidFbs = childFbs.filter((fb) => fb.customerPaidAt);
+    const submittedFbs = childFbs.filter((fb) => (fb.status || "pending") !== "rejected");
 
-    const warnings = [];
-    if (invoicedFbs.length > 0) {
-      const invNums = [...new Set(invoicedFbs.map((fb) => {
-        const inv = invoices.find((i) => i.id === fb.invoiceId);
-        return inv?.invoiceNumber || fb.invoiceId;
-      }))];
-      warnings.push(`• ${invoicedFbs.length} of ${childFbs.length} FBs are on invoice(s): ${invNums.join(", ")}. Deleting will orphan those invoices.`);
-    }
-    if (paidFbs.length > 0) {
-      warnings.push(`• ${paidFbs.length} FBs have been paid to subs/drivers. Deleting erases payroll records.`);
-    }
-    if (custPaidFbs.length > 0) {
-      warnings.push(`• ${custPaidFbs.length} FBs have been paid by customer. Deleting erases payment records.`);
-    }
+    // STRICT CASCADE: block if any non-rejected FBs exist. Admin must delete/reject them first.
+    if (submittedFbs.length > 0) {
+      const invoicedCount = childFbs.filter((fb) => fb.invoiceId).length;
+      const paidCount = childFbs.filter((fb) => fb.paidAt).length;
+      const custPaidCount = childFbs.filter((fb) => fb.customerPaidAt).length;
 
-    const baseMsg = `Delete Order #${d.code} (${d.jobName || "—"}) AND all ${childFbs.length} freight bill${childFbs.length !== 1 ? "s" : ""}?`;
-
-    if (warnings.length > 0) {
-      const msg = `⚠ INTEGRITY WARNING — Order #${d.code}:\n\n${warnings.join("\n\n")}\n\n${baseMsg}\n\nThis deletion cannot be undone.`;
-      if (!confirm(msg)) return;
-      const typedAgain = prompt('Type "DELETE" to confirm permanent deletion:');
-      if (typedAgain !== "DELETE") { onToast("DELETE CANCELLED"); return; }
-    } else {
-      if (!confirm(baseMsg)) return;
+      const lines = [
+        `✗ Cannot delete Order #${d.code} (${d.jobName || "—"}).`,
+        ``,
+        `This order has ${submittedFbs.length} freight bill${submittedFbs.length !== 1 ? "s" : ""} attached:`,
+      ];
+      if (invoicedCount > 0) lines.push(`  • ${invoicedCount} on invoice${invoicedCount !== 1 ? "s" : ""} — remove from invoice first`);
+      if (paidCount > 0)     lines.push(`  • ${paidCount} paid to sub/driver — unmark paid first`);
+      if (custPaidCount > 0) lines.push(`  • ${custPaidCount} customer-paid — unmark payment first`);
+      const unblockedCount = submittedFbs.length - invoicedCount - paidCount - custPaidCount;
+      if (unblockedCount > 0) lines.push(`  • ${unblockedCount} freight bill${unblockedCount !== 1 ? "s" : ""} pending/approved — delete those first`);
+      lines.push(``, `Go to the Review tab (or the order's FB list) to handle them, then try again.`);
+      alert(lines.join("\n"));
+      return;
     }
 
-    const nextD = dispatches.filter((x) => x.id !== id);
-    const nextFB = freightBills.filter((fb) => fb.dispatchId !== id);
-    await setDispatches(nextD);
-    await setFreightBills(nextFB);
-    onToast("DISPATCH DELETED");
+    // No FBs — safe to delete. Prompt for optional reason.
+    if (!confirm(`Delete Order #${d.code} (${d.jobName || "—"})?\n\nThis is a SOFT delete. The order stays recoverable for 30 days in the Recovery tab.`)) return;
+    const reason = prompt('Reason for deletion (optional):') || "";
+
+    try {
+      await deleteDispatch(id, { deletedBy: "admin", reason });
+      const nextD = dispatches.filter((x) => x.id !== id);
+      await setDispatches(nextD);
+      onToast("ORDER DELETED (RECOVERABLE 30 DAYS)");
+    } catch (e) {
+      console.error("Soft delete failed:", e);
+      alert("Delete failed: " + (e?.message || String(e)));
+    }
   };
 
   const removeFreightBill = async (id) => {
     const fb = freightBills.find((x) => x.id === id);
     if (!fb) return;
 
-    // INTEGRITY CHECKS — block/warn if FB has downstream records
-    const warnings = [];
+    // STRICT CASCADE: block if FB has any downstream records
+    const blockers = [];
     if (fb.invoiceId) {
       const inv = invoices.find((i) => i.id === fb.invoiceId);
-      warnings.push(`• This FB is on invoice ${inv?.invoiceNumber || fb.invoiceId}. Deleting will leave that invoice referencing a missing FB.`);
+      blockers.push(`• On invoice ${inv?.invoiceNumber || fb.invoiceId} — remove from that invoice first`);
     }
     if (fb.paidAt) {
-      const amt = fb.paidAmount ? `$${Number(fb.paidAmount).toFixed(2)}` : "";
-      warnings.push(`• This FB was paid to the sub/driver${amt ? ` (${amt} on ${new Date(fb.paidAt).toLocaleDateString()})` : ""}. Deleting erases the payroll record.`);
+      const amt = fb.paidAmount ? ` ($${Number(fb.paidAmount).toFixed(2)})` : "";
+      blockers.push(`• Paid to sub/driver${amt} on ${new Date(fb.paidAt).toLocaleDateString()} — unmark paid first`);
     }
     if (fb.customerPaidAt) {
-      warnings.push(`• Customer has paid for this FB. Deleting erases the payment record.`);
+      blockers.push(`• Customer has paid this FB — unmark customer payment first`);
     }
 
-    if (warnings.length > 0) {
-      const msg = `⚠ INTEGRITY WARNING — FB#${fb.freightBillNumber || "—"}:\n\n${warnings.join("\n\n")}\n\nThis deletion cannot be undone. Are you sure?`;
-      if (!confirm(msg)) return;
-      // Double-check for paid/invoiced FBs
-      const typedAgain = prompt('Type "DELETE" to confirm permanent deletion:');
-      if (typedAgain !== "DELETE") { onToast("DELETE CANCELLED"); return; }
-    } else {
-      if (!confirm(`Delete FB#${fb.freightBillNumber || "—"}?`)) return;
+    if (blockers.length > 0) {
+      alert([
+        `✗ Cannot delete FB#${fb.freightBillNumber || "—"}.`,
+        ``,
+        `This freight bill has downstream records:`,
+        ...blockers,
+        ``,
+        `Clear these first, then try again.`,
+      ].join("\n"));
+      return;
     }
 
-    const next = freightBills.filter((x) => x.id !== id);
-    await setFreightBills(next);
-    onToast("FREIGHT BILL DELETED");
+    if (!confirm(`Delete FB#${fb.freightBillNumber || "—"}?\n\nThis is a SOFT delete. The FB stays recoverable for 30 days in the Recovery tab.`)) return;
+    const reason = prompt('Reason for deletion (optional):') || "";
+
+    try {
+      await deleteFreightBill(id, { deletedBy: "admin", reason });
+      const next = freightBills.filter((x) => x.id !== id);
+      await setFreightBills(next);
+      onToast("FREIGHT BILL DELETED (RECOVERABLE 30 DAYS)");
+    } catch (e) {
+      console.error("Soft delete failed:", e);
+      alert("Delete failed: " + (e?.message || String(e)));
+    }
   };
 
   const toggleStatus = async (id) => {
@@ -4984,31 +4996,62 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     const inv = invoices.find((i) => i.invoiceNumber === invNum);
     if (!inv) return;
     const affectedFbs = freightBills.filter((fb) => fb.invoiceId === inv.id);
-    const msg = affectedFbs.length > 0
-      ? `Delete invoice ${invNum}?\n\nThis will UNLOCK ${affectedFbs.length} freight bill${affectedFbs.length !== 1 ? "s" : ""} — their billing snapshot stays, but they can be invoiced again.\n\nContinue?`
-      : `Delete invoice ${invNum}?\n\nNo FBs are linked.`;
-    if (!confirm(msg)) return;
 
-    // 1. Unlock affected FBs — clear invoiceId and billingLockedAt so they can be invoiced again
-    //    Keep billedRate/billedHours etc. as historical — admin can override when re-invoicing
-    for (const fb of affectedFbs) {
-      try {
-        await editFreightBill(fb.id, {
-          ...fb,
-          invoiceId: null,
-          billingLockedAt: null,
-        });
-      } catch (e) { console.warn("Could not unlock FB", fb.id, e); }
+    // STRICT CASCADE: block if invoice has been paid OR if any FB is customer-paid
+    const blockers = [];
+    if (Number(inv.amountPaid) > 0) {
+      blockers.push(`• Payment recorded on this invoice ($${Number(inv.amountPaid).toFixed(2)}) — reverse the payment first`);
+    }
+    const custPaidFbs = affectedFbs.filter((fb) => fb.customerPaidAt);
+    if (custPaidFbs.length > 0) {
+      blockers.push(`• ${custPaidFbs.length} FB${custPaidFbs.length !== 1 ? "s" : ""} on this invoice marked customer-paid — unmark them first`);
     }
 
-    // 2. Delete the invoice from the list
-    const next = invoices.filter((i) => i.invoiceNumber !== invNum);
-    setInvoices(next);
+    if (blockers.length > 0) {
+      alert([
+        `✗ Cannot delete invoice ${invNum}.`,
+        ``,
+        `This invoice has downstream records:`,
+        ...blockers,
+        ``,
+        `Clear these first, then try again.`,
+      ].join("\n"));
+      return;
+    }
 
-    const toastMsg = affectedFbs.length > 0
-      ? `INVOICE DELETED · ${affectedFbs.length} FB${affectedFbs.length !== 1 ? "S" : ""} UNLOCKED`
-      : "INVOICE DELETED";
-    onToast(toastMsg);
+    const unlockMsg = affectedFbs.length > 0
+      ? `\n\nThis will UNLOCK ${affectedFbs.length} freight bill${affectedFbs.length !== 1 ? "s" : ""} so they can be invoiced again.`
+      : "";
+    if (!confirm(`Delete invoice ${invNum}?${unlockMsg}\n\nThis is a SOFT delete. The invoice stays recoverable for 30 days in the Recovery tab.`)) return;
+    const reason = prompt('Reason for deletion (optional):') || "";
+
+    try {
+      // 1. Unlock affected FBs — clear invoiceId and billingLockedAt so they can be invoiced again
+      for (const fb of affectedFbs) {
+        try {
+          await editFreightBill(fb.id, {
+            ...fb,
+            invoiceId: null,
+            billingLockedAt: null,
+          });
+        } catch (e) { console.warn("Could not unlock FB", fb.id, e); }
+      }
+
+      // 2. Soft-delete the invoice
+      await deleteInvoice(inv.id, { deletedBy: "admin", reason });
+
+      // 3. Update local state
+      const next = invoices.filter((i) => i.invoiceNumber !== invNum);
+      setInvoices(next);
+
+      const toastMsg = affectedFbs.length > 0
+        ? `INVOICE DELETED · ${affectedFbs.length} FB${affectedFbs.length !== 1 ? "S" : ""} UNLOCKED (RECOVERABLE 30 DAYS)`
+        : "INVOICE DELETED (RECOVERABLE 30 DAYS)";
+      onToast(toastMsg);
+    } catch (e) {
+      console.error("Soft delete invoice failed:", e);
+      alert("Delete failed: " + (e?.message || String(e)));
+    }
   };
 
   return (
@@ -7062,7 +7105,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     return { ...line, gross, net };
   };
 
-  // Get brokerage % from the contact associated with the assignment (sub only)
+  // Brokerage % from the SUB contact (pay side — drivers get 0)
   const getContactBrokeragePct = () => {
     if (!assignment) return 0;
     const isSub = assignment.kind === "sub";
@@ -7071,9 +7114,17 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     return contact?.brokerageApplies ? (Number(contact?.brokeragePercent) || 8) : 0;
   };
 
+  // Brokerage % from the CUSTOMER contact (billing side — broker customers charge us %)
+  // Dispatch → client_id → contact lookup
+  const getCustomerBrokeragePct = () => {
+    if (!dispatch?.clientId) return 0;
+    const customer = contacts.find((c) => c.id === dispatch.clientId);
+    return customer?.brokerageApplies ? (Number(customer?.brokeragePercent) || 8) : 0;
+  };
+
   // Add a new billing line
   const addBillingLine = (seed = {}) => {
-    const contactPct = getContactBrokeragePct(); // from contact default (0 if not sub with brokerage)
+    const customerPct = getCustomerBrokeragePct(); // NEW: read from customer (not sub)
     const newLine = recomputeLine({
       id: Date.now(),
       code: seed.code || "",
@@ -7081,10 +7132,12 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       qty: seed.qty != null ? Number(seed.qty) : 0,
       rate: seed.rate != null ? Number(seed.rate) : 0,
       brokerable: !!seed.brokerable,
-      // Always show 8% default (or contact's % if set) even when brokerable=false so admin can see what it'd be
-      brokeragePct: contactPct > 0 ? contactPct : 8,
+      // Default to customer's % if they charge us brokerage, otherwise 8%
+      brokeragePct: customerPct > 0 ? customerPct : 8,
       copyToPay: !!seed.copyToPay,
       note: seed.note || "",
+      // If FB is already locked on invoice, mark this line as a post-lock adjustment
+      isAdjustment: billingSnapshotLocked || !!seed.isAdjustment,
       createdAt: new Date().toISOString(),
       createdBy: currentUser || "admin",
     });
@@ -7096,9 +7149,10 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       const next = (d.billingLines || []).map((ln) => {
         if (ln.id !== id) return ln;
         const merged = { ...ln, ...patch };
-        // If brokerable just turned on, snapshot current contact %
-        if (patch.brokerable === true && !ln.brokerable) {
-          merged.brokeragePct = getContactBrokeragePct();
+        // If Br? just turned on AND line has no pct yet, snapshot customer %
+        if (patch.brokerable === true && !ln.brokerable && (!merged.brokeragePct || merged.brokeragePct === 8)) {
+          const customerPct = getCustomerBrokeragePct();
+          if (customerPct > 0) merged.brokeragePct = customerPct;
         }
         return recomputeLine(merged);
       });
@@ -7124,6 +7178,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
       brokeragePct: contactPct > 0 ? contactPct : 8,
       sourceBillingLineId: seed.sourceBillingLineId || null,
       note: seed.note || "",
+      // If FB pay snapshot is already locked, mark this line as a post-lock adjustment
+      isAdjustment: paySnapshotLocked || !!seed.isAdjustment,
       createdAt: new Date().toISOString(),
       createdBy: currentUser || "admin",
     });
@@ -7588,25 +7644,28 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                 )}
               </div>
 
-              {/* Quick-add buttons */}
-              {!billingSnapshotLocked && (
-                <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => addBillingLine({ code: "H", item: "HOURLY", rate: Number(dispatch?.ratePerHour) || 0, brokerable: !!getContactBrokeragePct() })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "T", item: "TONS", rate: Number(dispatch?.ratePerTon) || 0 })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "L", item: "LOADS", rate: Number(dispatch?.ratePerLoad) || 0 })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "TOLL", item: "Tolls", qty: 1 })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "DUMP", item: "Dump Fees", qty: 1 })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "FUEL", item: "Fuel", qty: 1 })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ FUEL</button>
-                  <button type="button" onClick={() => addBillingLine({ code: "OTHER", item: "" })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
-                </div>
-              )}
+              {/* Quick-add buttons — when LOCKED, new rows become adjustments */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {billingSnapshotLocked && (
+                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.08em", marginRight: 6 }}>
+                    + POST-LOCK ADJUSTMENT:
+                  </span>
+                )}
+                <button type="button" onClick={() => addBillingLine({ code: "H", item: billingSnapshotLocked ? "HOURLY (adj)" : "HOURLY", rate: Number(dispatch?.ratePerHour) || 0 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
+                <button type="button" onClick={() => addBillingLine({ code: "T", item: billingSnapshotLocked ? "TONS (adj)" : "TONS", rate: Number(dispatch?.ratePerTon) || 0 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
+                <button type="button" onClick={() => addBillingLine({ code: "L", item: billingSnapshotLocked ? "LOADS (adj)" : "LOADS", rate: Number(dispatch?.ratePerLoad) || 0 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
+                <button type="button" onClick={() => addBillingLine({ code: "TOLL", item: "Tolls", qty: 1 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL</button>
+                <button type="button" onClick={() => addBillingLine({ code: "DUMP", item: "Dump Fees", qty: 1 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP</button>
+                <button type="button" onClick={() => addBillingLine({ code: "FUEL", item: "Fuel", qty: 1 })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ FUEL</button>
+                <button type="button" onClick={() => addBillingLine({ code: "OTHER", item: "" })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
+              </div>
 
               {/* Lines table */}
               <div style={{ overflowX: "auto" }}>
@@ -7629,32 +7688,37 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                     {(draft.billingLines || []).length === 0 && (
                       <tr><td colSpan={10} style={{ padding: 16, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>No billing lines yet — use the quick-add buttons above.</td></tr>
                     )}
-                    {(draft.billingLines || []).map((ln) => (
-                      <tr key={ln.id} style={{ borderBottom: "1px solid #BAE6FD" }}>
+                    {(draft.billingLines || []).map((ln) => {
+                      // Row is locked only if the FB is locked AND this line is NOT an adjustment
+                      const rowLocked = billingSnapshotLocked && !ln.isAdjustment;
+                      const rowBg = ln.isAdjustment ? "#FEF3C7" : "transparent";
+                      return (
+                      <tr key={ln.id} style={{ borderBottom: "1px solid #BAE6FD", background: rowBg }}>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="text" value={ln.code || ""} onChange={(e) => updateBillingLine(ln.id, { code: e.target.value.toUpperCase() })}
-                            disabled={billingSnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="text" value={ln.item || ""} onChange={(e) => updateBillingLine(ln.id, { item: e.target.value })}
-                            disabled={billingSnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #BAE6FD", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
+                          {ln.isAdjustment && <div style={{ fontSize: 8, color: "var(--hazard-deep)", marginTop: 2, fontWeight: 700 }}>⚙ POST-LOCK ADJ</div>}
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="number" step="0.01" value={ln.qty || ""} onChange={(e) => updateBillingLine(ln.id, { qty: e.target.value })}
-                            disabled={billingSnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="number" step="0.01" value={ln.rate || ""} onChange={(e) => updateBillingLine(ln.id, { rate: e.target.value })}
-                            disabled={billingSnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: billingSnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
                           <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updateBillingLine(ln.id, { brokerable: e.target.checked })}
-                            disabled={billingSnapshotLocked} />
+                            disabled={rowLocked} />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right" }}>
                           <input
@@ -7664,12 +7728,12 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                             max="100"
                             value={ln.brokeragePct ?? 8}
                             onChange={(e) => updateBillingLine(ln.id, { brokeragePct: e.target.value === "" ? 0 : Number(e.target.value) })}
-                            disabled={billingSnapshotLocked || !ln.brokerable}
+                            disabled={rowLocked || !ln.brokerable}
                             style={{
                               width: 48, padding: "3px 4px", fontSize: 10, textAlign: "right",
                               fontFamily: "inherit",
                               border: "1px solid #BAE6FD",
-                              background: (!ln.brokerable || billingSnapshotLocked) ? "#F5F5F4" : "#FFF",
+                              background: (!ln.brokerable || rowLocked) ? "#F5F5F4" : "#FFF",
                               color: ln.brokerable ? "var(--steel)" : "var(--concrete)",
                               opacity: ln.brokerable ? 1 : 0.55,
                             }}
@@ -7678,11 +7742,11 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "#0369A1" }}>{fmt$(ln.net)}</td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
                           <input type="checkbox" checked={!!ln.copyToPay} onChange={(e) => toggleCopyToPay(ln.id, e.target.checked)}
-                            disabled={billingSnapshotLocked}
+                            disabled={rowLocked}
                             title="Copy this line to the sub/driver's pay side" />
                         </td>
                         <td style={{ padding: "4px 2px", textAlign: "center" }}>
-                          {!billingSnapshotLocked && (
+                          {!rowLocked && (
                             <button type="button" onClick={() => deleteBillingLine(ln.id)}
                               style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", padding: 2 }} title="Delete line">
                               <X size={12} />
@@ -7690,7 +7754,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                   {billingTotals.count > 0 && (
                     <tfoot>
@@ -7722,22 +7787,26 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                 )}
               </div>
 
-              {!paySnapshotLocked && (
-                <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => addPayingLine({ code: "H", item: "HOURLY", rate: Number(assignment?.payRate) || 0, brokerable: assignment?.kind === "sub" && !!getContactBrokeragePct() })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
-                  <button type="button" onClick={() => addPayingLine({ code: "T", item: "TONS" })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
-                  <button type="button" onClick={() => addPayingLine({ code: "L", item: "LOADS" })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
-                  <button type="button" onClick={() => addPayingLine({ code: "TOLL", item: "Tolls", qty: 1, brokerable: false })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL REIMB</button>
-                  <button type="button" onClick={() => addPayingLine({ code: "DUMP", item: "Dump Fees", qty: 1, brokerable: false })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP REIMB</button>
-                  <button type="button" onClick={() => addPayingLine({ code: "OTHER", item: "", brokerable: false })}
-                    className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
-                </div>
-              )}
+              {/* Quick-add buttons — when LOCKED, new rows become adjustments */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {paySnapshotLocked && (
+                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.08em", marginRight: 6 }}>
+                    + POST-LOCK ADJUSTMENT:
+                  </span>
+                )}
+                <button type="button" onClick={() => addPayingLine({ code: "H", item: paySnapshotLocked ? "HOURLY (adj)" : "HOURLY", rate: Number(assignment?.payRate) || 0, brokerable: assignment?.kind === "sub" && !!getContactBrokeragePct() })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ HOURS</button>
+                <button type="button" onClick={() => addPayingLine({ code: "T", item: paySnapshotLocked ? "TONS (adj)" : "TONS" })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TONS</button>
+                <button type="button" onClick={() => addPayingLine({ code: "L", item: paySnapshotLocked ? "LOADS (adj)" : "LOADS" })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ LOADS</button>
+                <button type="button" onClick={() => addPayingLine({ code: "TOLL", item: "Tolls", qty: 1, brokerable: false })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ TOLL REIMB</button>
+                <button type="button" onClick={() => addPayingLine({ code: "DUMP", item: "Dump Fees", qty: 1, brokerable: false })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ DUMP REIMB</button>
+                <button type="button" onClick={() => addPayingLine({ code: "OTHER", item: "", brokerable: false })}
+                  className="btn-ghost" style={{ padding: "4px 8px", fontSize: 10 }}>+ OTHER</button>
+              </div>
 
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", fontSize: 11, fontFamily: "JetBrains Mono, monospace", borderCollapse: "collapse", minWidth: 720 }}>
@@ -7758,33 +7827,38 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                     {(draft.payingLines || []).length === 0 && (
                       <tr><td colSpan={9} style={{ padding: 16, textAlign: "center", color: "var(--concrete)", fontStyle: "italic" }}>No pay lines yet — use the quick-add buttons above, or check CP? on a billing line.</td></tr>
                     )}
-                    {(draft.payingLines || []).map((ln) => (
-                      <tr key={ln.id} style={{ borderBottom: "1px solid #86EFAC", background: ln.sourceBillingLineId ? "#ECFDF5" : "transparent" }}>
+                    {(draft.payingLines || []).map((ln) => {
+                      // Row is locked only if pay is locked AND this line is NOT an adjustment
+                      const rowLocked = paySnapshotLocked && !ln.isAdjustment;
+                      const rowBg = ln.isAdjustment ? "#FEF3C7" : (ln.sourceBillingLineId ? "#ECFDF5" : "transparent");
+                      return (
+                      <tr key={ln.id} style={{ borderBottom: "1px solid #86EFAC", background: rowBg }}>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="text" value={ln.code || ""} onChange={(e) => updatePayingLine(ln.id, { code: e.target.value.toUpperCase() })}
-                            disabled={paySnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="text" value={ln.item || ""} onChange={(e) => updatePayingLine(ln.id, { item: e.target.value })}
-                            disabled={paySnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, fontFamily: "inherit", border: "1px solid #86EFAC", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                           {ln.sourceBillingLineId && <div style={{ fontSize: 8, color: "var(--good)", marginTop: 2 }}>↖ from billing</div>}
+                          {ln.isAdjustment && <div style={{ fontSize: 8, color: "var(--hazard-deep)", marginTop: 2, fontWeight: 700 }}>⚙ POST-LOCK ADJ</div>}
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="number" step="0.01" value={ln.qty || ""} onChange={(e) => updatePayingLine(ln.id, { qty: e.target.value })}
-                            disabled={paySnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px" }}>
                           <input type="number" step="0.01" value={ln.rate || ""} onChange={(e) => updatePayingLine(ln.id, { rate: e.target.value })}
-                            disabled={paySnapshotLocked}
-                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: paySnapshotLocked ? "#F5F5F4" : "#FFF" }} />
+                            disabled={rowLocked}
+                            style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
                           <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updatePayingLine(ln.id, { brokerable: e.target.checked })}
-                            disabled={paySnapshotLocked || assignment?.kind !== "sub"}
+                            disabled={rowLocked || assignment?.kind !== "sub"}
                             title={assignment?.kind !== "sub" ? "Brokerage only applies to subs" : "Apply brokerage to this line"} />
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right" }}>
@@ -7795,12 +7869,12 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                             max="100"
                             value={ln.brokeragePct ?? 8}
                             onChange={(e) => updatePayingLine(ln.id, { brokeragePct: e.target.value === "" ? 0 : Number(e.target.value) })}
-                            disabled={paySnapshotLocked || !ln.brokerable || assignment?.kind !== "sub"}
+                            disabled={rowLocked || !ln.brokerable || assignment?.kind !== "sub"}
                             style={{
                               width: 48, padding: "3px 4px", fontSize: 10, textAlign: "right",
                               fontFamily: "inherit",
                               border: "1px solid #86EFAC",
-                              background: (!ln.brokerable || paySnapshotLocked) ? "#F5F5F4" : "#FFF",
+                              background: (!ln.brokerable || rowLocked) ? "#F5F5F4" : "#FFF",
                               color: ln.brokerable ? "var(--steel)" : "var(--concrete)",
                               opacity: ln.brokerable ? 1 : 0.55,
                             }}
@@ -7808,7 +7882,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                         </td>
                         <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: "var(--good)" }}>{fmt$(ln.net)}</td>
                         <td style={{ padding: "4px 2px", textAlign: "center" }}>
-                          {!paySnapshotLocked && (
+                          {!rowLocked && (
                             <button type="button" onClick={() => deletePayingLine(ln.id)}
                               style={{ background: "transparent", border: "none", color: "var(--safety)", cursor: "pointer", padding: 2 }} title="Delete line">
                               <X size={12} />
@@ -7816,7 +7890,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                           )}
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                   {payingTotals.count > 0 && (
                     <tfoot>
@@ -8338,16 +8413,36 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
     return { fb, dispatch: d, calc, extrasList };
   });
 
-  const subtotal = fbRows.reduce((s, r) => s + r.calc.baseGross, 0);
-  const extrasTotal = fbRows.reduce((s, r) => s + r.calc.extrasSum, 0);
-  const adjBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjBrokerable, 0);
-  const adjNonBrokerableTotal = fbRows.reduce((s, r) => s + r.calc.adjNonBrokerable, 0);
-  const billingAdjCopiedTotal = fbRows.reduce((s, r) => s + (r.calc.billingAdjCopiedToPay || 0), 0);
-  // Brokerage applies ONLY to base + brokerable adjustments. Everything else flows through 100%.
-  const grossForBrokerage = subtotal + adjBrokerableTotal;
-  const gross = grossForBrokerage + extrasTotal + adjNonBrokerableTotal + billingAdjCopiedTotal;
-  const brokerageAmt = brokerageApplies ? grossForBrokerage * (brokeragePct / 100) : 0;
-  const netPay = gross - brokerageAmt;
+  // v16 path — if any FB has payingLines, sum the pre-computed net directly
+  const anyHasLines = fbRows.some((r) => Array.isArray(r.calc.payingLines) && r.calc.payingLines.length > 0);
+
+  // Legacy totals (still computed for legacy FBs)
+  const subtotal = fbRows.reduce((s, r) => s + (Number(r.calc.baseGross) || 0), 0);
+  const extrasTotal = fbRows.reduce((s, r) => s + (Number(r.calc.extrasSum) || 0), 0);
+  const adjBrokerableTotal = fbRows.reduce((s, r) => s + (Number(r.calc.adjBrokerable) || 0), 0);
+  const adjNonBrokerableTotal = fbRows.reduce((s, r) => s + (Number(r.calc.adjNonBrokerable) || 0), 0);
+  const billingAdjCopiedTotal = fbRows.reduce((s, r) => s + (Number(r.calc.billingAdjCopiedToPay) || 0), 0);
+
+  // If ALL FBs have lines, use the line-level net (already includes per-line brokerage)
+  const allHaveLines = fbRows.every((r) => Array.isArray(r.calc.payingLines) && r.calc.payingLines.length > 0);
+
+  let grossForBrokerage, gross, brokerageAmt, netPay;
+  if (allHaveLines) {
+    // Gold path — sum net from lines directly
+    const linesBrokerableGross = fbRows.reduce((s, r) => s + (r.calc.payingLines.filter((ln) => ln.brokerable).reduce((ss, ln) => ss + (Number(ln.gross) || 0), 0)), 0);
+    const linesNonBrokerableGross = fbRows.reduce((s, r) => s + (r.calc.payingLines.filter((ln) => !ln.brokerable).reduce((ss, ln) => ss + (Number(ln.gross) || 0), 0)), 0);
+    grossForBrokerage = linesBrokerableGross;
+    gross = linesBrokerableGross + linesNonBrokerableGross;
+    // Net from lines already has per-line brokerage applied
+    netPay = fbRows.reduce((s, r) => s + (Number(r.calc.netFromLines) || 0), 0);
+    brokerageAmt = gross - netPay;
+  } else {
+    // Legacy path
+    grossForBrokerage = subtotal + adjBrokerableTotal;
+    gross = grossForBrokerage + extrasTotal + adjNonBrokerableTotal + billingAdjCopiedTotal;
+    brokerageAmt = brokerageApplies ? grossForBrokerage * (brokeragePct / 100) : 0;
+    netPay = gross - brokerageAmt;
+  }
 
   // Year-to-date: find all other paid FBs for this sub in the current year (excluding THIS pay run)
   const year = new Date().getFullYear();
@@ -8509,6 +8604,29 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       <tbody>
         ${fbRows.map((r) => {
           const { fb, dispatch, calc, extrasList } = r;
+          // v16 PREFERRED PATH: render from payingLines[]
+          if (Array.isArray(calc.payingLines) && calc.payingLines.length > 0) {
+            return calc.payingLines.map((ln, idx) => {
+              const unit = ln.code === "H" ? "hrs" : ln.code === "T" ? "tons" : ln.code === "L" ? "loads" : "";
+              const brokInfo = ln.brokerable && Number(ln.brokeragePct) > 0
+                ? ` <span style="color:#92400E;">(Br ${ln.brokeragePct}%)</span>`
+                : (ln.brokerable ? "" : ' <span style="color:#065F46;">(100%)</span>');
+              return `
+                <tr>
+                  <td>${idx === 0 ? `<strong>${esc(fb.freightBillNumber || "—")}</strong>` : ""}</td>
+                  <td>${idx === 0 && fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : ""}</td>
+                  <td>${idx === 0 ? `${esc(dispatch?.code || "—")} · ${esc(dispatch?.jobName || "—")}` : `<em style="color:#666;">&nbsp;&nbsp;${esc(ln.item || ln.code || "")}${brokInfo}</em>`}</td>
+                  <td class="r">${(Number(ln.qty) || 0).toFixed(2)}</td>
+                  <td>${unit}</td>
+                  <td class="r">${money(Number(ln.rate) || 0)}</td>
+                  <td class="r"><strong>${money(Number(ln.net) || 0)}</strong></td>
+                </tr>
+                ${ln.note ? `<tr><td colspan="7" class="extra-line" style="color:#666;font-style:italic;">&nbsp;&nbsp;&nbsp;&nbsp;"${esc(ln.note)}"</td></tr>` : ""}
+              `;
+            }).join("");
+          }
+
+          // LEGACY PATH: render from old extras/adjustments
           const unit = calc.method === "hour" ? "hrs" : calc.method === "ton" ? "tons" : "loads";
           return `
             <tr>
@@ -8520,7 +8638,7 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
               <td class="r">${money(calc.rate)}</td>
               <td class="r"><strong>${money(calc.baseGross)}</strong></td>
             </tr>
-            ${extrasList.filter((x) => x.copyToPay === true).map((x) => `
+            ${(extrasList || []).filter((x) => x.copyToPay === true).map((x) => `
               <tr><td colspan="7" class="extra-line">+ ${esc(x.label || "Extra")}: ${money(x.amount)} (reimbursed to you)</td></tr>
             `).join("")}
             ${(calc.billingAdjustmentsCopied || []).map((adj) => `
@@ -13436,6 +13554,16 @@ export default function App() {
       setInvoicesState(cloudInvoices);
       setProjectsState(cloudProjects);
       prevFbIdsRef.current = new Set(cloudFreightBills.map((x) => x.id));
+
+      // v17: Auto-purge soft-deleted rows older than 30 days (fire-and-forget).
+      // Runs once on app load. Safe to run multiple times — idempotent.
+      autoPurgeDeleted(30).then((r) => {
+        const total = (r.dispatches || 0) + (r.freightBills || 0) + (r.invoices || 0);
+        if (total > 0) {
+          console.log(`[auto-purge] Removed ${total} old soft-deleted row(s):`, r);
+        }
+        if (r.errors?.length) console.warn("[auto-purge] errors:", r.errors);
+      }).catch((e) => console.warn("[auto-purge] failed:", e));
 
       // Load local-cached preferences (these don't need cloud sync)
       const [seen, notifPrefs, lvmr] = await Promise.all([
