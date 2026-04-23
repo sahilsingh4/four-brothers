@@ -4559,7 +4559,7 @@ const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [
 };
 
 // ========== INVOICES TAB ==========
-const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onToast }) => {
+const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createInvoice, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onToast }) => {
   const [showProfile, setShowProfile] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -4791,12 +4791,24 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
   const generate = async () => {
     if (matchedBills.length === 0) { onToast("NO FREIGHT BILLS MATCH FILTERS"); return; }
     if (!rate || Number(rate) <= 0) { onToast("ENTER A RATE"); return; }
-    if (!billTo.name) { onToast("BILL-TO NAME REQUIRED"); return; }
+    if (!billTo.name) { onToast("PICK A CUSTOMER"); return; }
+
+    // HARD GUARD: drop any FB that's already invoiced (belt-and-suspenders — filter should have excluded them)
+    const billsToInvoice = matchedBills.filter((fb) => !fb.invoiceId);
+    if (billsToInvoice.length === 0) {
+      onToast("ALL MATCHED FBs ARE ALREADY INVOICED");
+      return;
+    }
+    if (billsToInvoice.length !== matchedBills.length) {
+      const skipped = matchedBills.length - billsToInvoice.length;
+      const ok = confirm(`${skipped} FB${skipped !== 1 ? "s" : ""} already invoiced and will be SKIPPED. Proceed with the ${billsToInvoice.length} remaining?`);
+      if (!ok) return;
+    }
 
     const invoiceNumber = makeInvoiceNumber();
     const invoiceDate = todayISO();
 
-    const billsWithHours = matchedBills.map((fb) => {
+    const billsWithHours = billsToInvoice.map((fb) => {
       const manual = hoursOverride[fb.id];
       const qty = (manual !== undefined && manual !== "") ? Number(manual) : billableHoursForInvoice(fb);
       return { ...fb, hoursOverride: qty };
@@ -4822,7 +4834,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
       includePhotos,
       pricingMethod,
       rate,
-      freightBillIds: matchedBills.map((fb) => fb.id),
+      freightBillIds: billsToInvoice.map((fb) => fb.id),
       subtotal: previewTotals.subtotal,
       total: previewTotals.total,
       createdAt: new Date().toISOString(),
@@ -4831,58 +4843,60 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     try {
       await generateInvoicePDF(invoice, company, billsWithHours, { method: pricingMethod, rate });
 
-      // Save to history
-      const next = [invoice, ...invoices];
-      await setInvoices(next);
+      // SAVE INVOICE SYNCHRONOUSLY — get real id back immediately so we can lock FBs to it
+      let savedInvoice;
+      if (createInvoice) {
+        savedInvoice = await createInvoice(invoice);
+      } else {
+        // Fallback (shouldn't happen, but safe): use setInvoices path
+        await setInvoices([invoice, ...invoices]);
+        savedInvoice = invoice;
+      }
 
-      // Find the newly saved invoice (real id from Supabase) and lock FBs to it
-      // Also flow back the rate + hours as the FB's authoritative snapshot (for payroll + future invoices)
-      setTimeout(async () => {
-        const saved = invoices.find((x) => x.invoiceNumber === invoiceNumber);
-        const realId = saved?.id;
-        if (realId && editFreightBill && matchedBills.length > 0) {
-          let hoursChanged = 0;
-          let rateChanged = 0;
-          for (const fb of matchedBills) {
-            const patch = { ...fb };
-            // Lock to invoice
-            if (!fb.invoiceId) patch.invoiceId = realId;
+      const realId = savedInvoice?.id;
+      if (!realId) {
+        onToast("⚠ INVOICE SAVED BUT FB LOCK FAILED — PLEASE REFRESH AND CHECK");
+        return;
+      }
 
-            // Flow-back: stamp per-FB customer rate snapshot
-            const newRate = Number(rate);
-            if (newRate > 0 && (Number(fb.customerRate) !== newRate || fb.customerRateMethod !== pricingMethod)) {
-              patch.customerRate = newRate;
-              patch.customerRateMethod = pricingMethod;
-              rateChanged++;
-            }
+      // Flow-back: lock each FB to this invoice + save rate/hours snapshots
+      let hoursChanged = 0;
+      let rateChanged = 0;
+      const newRate = Number(rate);
+      for (const fb of billsToInvoice) {
+        const patch = { ...fb, invoiceId: realId };
 
-            // Flow-back: if admin edited hours (for hour-based invoices), save back to fb.hoursBilled
-            if (pricingMethod === "hour") {
-              const manual = hoursOverride[fb.id];
-              if (manual !== undefined && manual !== "") {
-                const newHours = Number(manual);
-                const oldHours = Number(fb.hoursBilled) || 0;
-                if (Math.abs(newHours - oldHours) > 0.001) {
-                  patch.hoursBilled = newHours;
-                  hoursChanged++;
-                }
-              }
-            }
+        // Per-FB customer rate snapshot (for future invoices + audit trail)
+        if (newRate > 0 && (Number(fb.customerRate) !== newRate || fb.customerRateMethod !== pricingMethod)) {
+          patch.customerRate = newRate;
+          patch.customerRateMethod = pricingMethod;
+          rateChanged++;
+        }
 
-            try {
-              await editFreightBill(fb.id, patch);
-            } catch (e) {
-              console.warn("Could not update FB", fb.id, e);
+        // Flow edited hours back to fb.hoursBilled (affects payroll for hour-paid subs)
+        if (pricingMethod === "hour") {
+          const manual = hoursOverride[fb.id];
+          if (manual !== undefined && manual !== "") {
+            const newHours = Number(manual);
+            const oldHours = Number(fb.hoursBilled) || 0;
+            if (Math.abs(newHours - oldHours) > 0.001) {
+              patch.hoursBilled = newHours;
+              hoursChanged++;
             }
           }
-          const msgs = [`✓ ${matchedBills.length} FB${matchedBills.length !== 1 ? "S" : ""} LOCKED TO ${invoiceNumber}`];
-          if (rateChanged > 0) msgs.push(`${rateChanged} RATE${rateChanged !== 1 ? "S" : ""} UPDATED`);
-          if (hoursChanged > 0) msgs.push(`${hoursChanged} HOURS UPDATED → PAYROLL`);
-          onToast(msgs.join(" · "));
         }
-      }, 800);
 
-      onToast(`${invoiceNumber} OPENED — HIT PRINT TO SAVE AS PDF`);
+        try {
+          await editFreightBill(fb.id, patch);
+        } catch (e) {
+          console.warn("Could not update FB", fb.id, e);
+        }
+      }
+
+      const msgs = [`✓ ${invoiceNumber} SAVED · ${billsToInvoice.length} FB${billsToInvoice.length !== 1 ? "S" : ""} LOCKED`];
+      if (rateChanged > 0) msgs.push(`${rateChanged} RATE${rateChanged !== 1 ? "S" : ""} UPDATED`);
+      if (hoursChanged > 0) msgs.push(`${hoursChanged} HOURS → PAYROLL`);
+      onToast(msgs.join(" · "));
     } catch (e) {
       console.error("Invoice generation failed:", e);
       onToast(e.message || "INVOICE FAILED — ALLOW POPUPS");
@@ -5000,16 +5014,26 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
             </select>
           </div>
           <div>
-            <label className="fbt-label">Project {clientFilter ? "(optional)" : "(pick customer first)"}</label>
+            <label className="fbt-label">Project {clientFilter ? "(auto-fills PO# + Ref)" : "(pick customer first)"}</label>
             <select
               className="fbt-select"
               value={projectId || ""}
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={(e) => {
+                const id = e.target.value;
+                setProjectId(id);
+                if (id) {
+                  const p = projects.find((x) => String(x.id) === id);
+                  if (p) {
+                    if (p.poNumber) setPoNumber(p.poNumber);
+                    if (p.name) setJobRef(`${p.contractNumber ? p.contractNumber + " — " : ""}${p.name}`);
+                  }
+                }
+              }}
               disabled={!clientFilter}
             >
               <option value="">— All projects —</option>
               {projects.filter((p) => !clientFilter || String(p.customerId) === String(clientFilter)).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}{p.defaultRate ? ` · $${p.defaultRate}/hr` : ""}</option>
+                <option key={p.id} value={p.id}>{p.name}{p.poNumber ? ` · PO ${p.poNumber}` : ""}{p.defaultRate ? ` · $${p.defaultRate}/hr` : ""}</option>
               ))}
             </select>
           </div>
@@ -5192,81 +5216,33 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           </div>
         )}
 
-        {/* Bill-to */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 03 / BILL TO</div>
+        {/* Bill-to — read-only display of auto-pulled customer + PO/ref fields */}
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 03 / BILL TO (AUTO-PULLED FROM CUSTOMER PICKED ABOVE)</div>
         <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
-          {contacts.filter((c) => c.type === "customer").length > 0 && (
-            <div>
-              <label className="fbt-label">Choose Customer (auto-fills below)</label>
-              <select
-                className="fbt-select"
-                value={billTo.id || ""}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (!id) { setBillTo({ id: "", name: "", contact: "", address: "" }); return; }
-                  const c = contacts.find((x) => String(x.id) === id);
-                  if (c) setBillTo({
-                    id: c.id,
-                    name: c.companyName || c.contactName,
-                    contact: c.contactName || "",
-                    address: c.address || "",
-                  });
-                }}
-              >
-                <option value="">— Manual entry —</option>
-                {contacts
-                  .filter((c) => c.type === "customer")
-                  .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
-                    </option>
-                  ))}
-              </select>
+          {!billTo.name ? (
+            <div style={{ padding: 14, background: "#F5F5F4", border: "2px dashed var(--concrete)", textAlign: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>
+              PICK A CUSTOMER IN SECTION 01 TO AUTO-FILL BILL-TO
+            </div>
+          ) : (
+            <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)", display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>{billTo.name}</div>
+              {billTo.contact && <div style={{ fontSize: 12, color: "var(--concrete)" }}>Attn: {billTo.contact}</div>}
+              {billTo.address && <div style={{ fontSize: 12, color: "var(--concrete)" }}>{billTo.address}</div>}
+              <div style={{ fontSize: 10, color: "var(--good)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.1em", marginTop: 4 }}>
+                ▸ AUTO-PULLED FROM CONTACT · EDIT IN CONTACTS TAB IF NEEDED
+              </div>
             </div>
           )}
+          {/* PO# and Job Reference — auto-populate from project but editable */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-            <div><label className="fbt-label">Client Name *</label><input className="fbt-input" value={billTo.name} onChange={(e) => setBillTo({ ...billTo, name: e.target.value, id: "" })} placeholder="Mountain Cascade, Inc." /></div>
-            <div><label className="fbt-label">Contact / Attn</label><input className="fbt-input" value={billTo.contact} onChange={(e) => setBillTo({ ...billTo, contact: e.target.value })} placeholder="Accounts Payable" /></div>
-          </div>
-          <div><label className="fbt-label">Address</label><input className="fbt-input" value={billTo.address} onChange={(e) => setBillTo({ ...billTo, address: e.target.value })} placeholder="Street, City, State ZIP" /></div>
-          {(() => {
-            // Filter projects by selected customer (if any)
-            const availableProjects = projects.filter((p) => {
-              if (p.status === "cancelled") return false;
-              if (billTo.id) return p.customerId === Number(billTo.id) || p.customerId === billTo.id;
-              return true;
-            });
-            return availableProjects.length > 0 ? (
-              <div>
-                <label className="fbt-label">Project (auto-fills PO# & Job Reference)</label>
-                <select
-                  className="fbt-select"
-                  value={projectId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setProjectId(id);
-                    if (!id) return;
-                    const p = availableProjects.find((x) => String(x.id) === id);
-                    if (p) {
-                      if (p.poNumber) setPoNumber(p.poNumber);
-                      if (p.name && !jobRef) setJobRef(`${p.contractNumber ? p.contractNumber + " — " : ""}${p.name}`);
-                    }
-                  }}
-                >
-                  <option value="">— No project / Manual entry —</option>
-                  {availableProjects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}{p.poNumber ? ` · PO ${p.poNumber}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : null;
-          })()}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-            <div><label className="fbt-label">PO # (shown on invoice)</label><input className="fbt-input" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-2026-0045" /></div>
-            <div><label className="fbt-label">Job Reference</label><input className="fbt-input" value={jobRef} onChange={(e) => setJobRef(e.target.value)} placeholder="MCI #91684 — Salinas Stormwater 2A" /></div>
+            <div>
+              <label className="fbt-label">PO # {projectId ? "(from project)" : ""}</label>
+              <input className="fbt-input" value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-2026-0045" />
+            </div>
+            <div>
+              <label className="fbt-label">Job Reference {projectId ? "(from project)" : ""}</label>
+              <input className="fbt-input" value={jobRef} onChange={(e) => setJobRef(e.target.value)} placeholder="MCI #91684 — Salinas Stormwater 2A" />
+            </div>
           </div>
         </div>
 
@@ -6827,9 +6803,13 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
 };
 
 // ========== FREIGHT BILL EDIT / APPROVE MODAL ==========
-const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, onClose, onToast, currentUser }) => {
+const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, invoices = [], onClose, onToast, currentUser }) => {
   const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
   const project = dispatch ? projects.find((p) => p.id === dispatch.projectId) : null;
+  const invoiceOnFb = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
+  const lockedOnInvoice = !!fb.invoiceId;
+  const lockedAsPaid = !!fb.paidAt || !!fb.customerPaidAt;
+  const [unlocked, setUnlocked] = useState(false); // admin can request unlock
   const [draft, setDraft] = useState({
     freightBillNumber: fb.freightBillNumber || "",
     driverName: fb.driverName || "",
@@ -6957,7 +6937,44 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         </div>
 
         <div style={{ padding: 24, display: "grid", gap: 14 }}>
+          {/* LOCK BANNER — prevents editing of invoiced/paid FBs */}
+          {(lockedOnInvoice || lockedAsPaid) && (
+            <div style={{
+              padding: 14,
+              background: unlocked ? "#FEF3C7" : "#FEE2E2",
+              border: "2px solid " + (unlocked ? "var(--hazard)" : "var(--safety)"),
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}>
+              <Lock size={18} style={{ color: unlocked ? "var(--hazard-deep)" : "var(--safety)" }} />
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.08em" }}>
+                  {unlocked ? "⚠ LOCK OVERRIDDEN — EDITS WILL CHANGE BILLED INVOICE/PAYROLL" : "🔒 FB LOCKED — DOWNSTREAM RECORDS EXIST"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, lineHeight: 1.4 }}>
+                  {lockedOnInvoice && <div>• On invoice <strong>{invoiceOnFb?.invoiceNumber || fb.invoiceId}</strong></div>}
+                  {fb.paidAt && <div>• Paid to sub/driver ${fb.paidAmount ? Number(fb.paidAmount).toFixed(2) : ""} on {new Date(fb.paidAt).toLocaleDateString()}</div>}
+                  {fb.customerPaidAt && <div>• Customer paid ${fb.customerPaidAmount ? Number(fb.customerPaidAmount).toFixed(2) : ""} on {new Date(fb.customerPaidAt).toLocaleDateString()}</div>}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (unlocked) { setUnlocked(false); return; }
+                  if (!confirm("Override lock?\n\nThis FB is on an invoice or has payment records. Editing will create inconsistencies with downstream records. Only override if you're intentionally correcting an error.\n\nContinue?")) return;
+                  setUnlocked(true);
+                }}
+                className="btn-ghost"
+                style={{ padding: "6px 12px", fontSize: 10, background: "#FFF", whiteSpace: "nowrap" }}
+              >
+                {unlocked ? "RE-LOCK" : "OVERRIDE LOCK"}
+              </button>
+            </div>
+          )}
+
           {/* Core IDs */}
+          <fieldset disabled={!unlocked && (lockedOnInvoice || lockedAsPaid)} style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 14, opacity: (!unlocked && (lockedOnInvoice || lockedAsPaid)) ? 0.65 : 1 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
             <div>
               <label className="fbt-label">Freight Bill #</label>
@@ -7291,28 +7308,30 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             )}
           </div>
 
+          </fieldset>
+
           {/* Actions */}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, paddingTop: 14, borderTop: "2px solid var(--steel)" }}>
             {fb.status !== "approved" && (
               <button
                 onClick={() => save(true)}
-                disabled={saving}
+                disabled={saving || (!unlocked && (lockedOnInvoice || lockedAsPaid))}
                 className="btn-primary"
                 style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}
               >
                 <ShieldCheck size={16} /> SAVE & APPROVE
               </button>
             )}
-            <button onClick={() => save(false)} disabled={saving} className="btn-ghost">
+            <button onClick={() => save(false)} disabled={saving || (!unlocked && (lockedOnInvoice || lockedAsPaid))} className="btn-ghost">
               <Save size={16} /> SAVE ONLY
             </button>
             {fb.status === "approved" && (
-              <button onClick={unapprove} disabled={saving} className="btn-ghost">
+              <button onClick={unapprove} disabled={saving || (!unlocked && (lockedOnInvoice || lockedAsPaid))} className="btn-ghost">
                 <Clock size={16} /> MOVE TO PENDING
               </button>
             )}
             {fb.status !== "rejected" && (
-              <button onClick={reject} disabled={saving} className="btn-danger">
+              <button onClick={reject} disabled={saving || (!unlocked && (lockedOnInvoice || lockedAsPaid))} className="btn-danger">
                 <X size={16} /> REJECT
               </button>
             )}
@@ -7325,7 +7344,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 };
 
 // ========== REVIEW TAB (End-of-day approval screen) ==========
-const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFreightBill, pendingFB, clearPendingFB, onToast }) => {
+const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -7392,6 +7411,7 @@ const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFrei
           dispatches={dispatches}
           contacts={contacts}
           editFreightBill={editFreightBill}
+          invoices={invoices}
           onClose={() => setEditing(null)}
           onToast={onToast}
           currentUser="admin"
@@ -8499,6 +8519,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
           contacts={contacts}
           projects={projects}
           editFreightBill={editFreightBill}
+          invoices={invoices}
           onClose={() => setEditingFB(null)}
           onToast={onToast}
           currentUser="admin"
@@ -10244,6 +10265,7 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
           contacts={contacts}
           projects={projects}
           editFreightBill={editFreightBill}
+          invoices={invoices}
           onClose={() => setEditing(null)}
           onToast={onToast}
           currentUser="admin"
@@ -11894,9 +11916,9 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         }} onToast={onToast} />}
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
-        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
+        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
-        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} />}
+        {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
@@ -12273,6 +12295,20 @@ export default function App() {
     } catch (e) {
       console.error("setInvoices failed:", e);
       setInvoicesState(val);
+    }
+  };
+
+  // Create one invoice and return the saved row (with real id) synchronously.
+  // Use this from the invoice generate flow so we can immediately lock FBs to the real invoice id.
+  const createInvoice = async (invoice) => {
+    try {
+      const { id: _drop, ...rest } = invoice;
+      const saved = await insertInvoice(rest);
+      setInvoicesState((prev) => [saved, ...prev]);
+      return saved;
+    } catch (e) {
+      console.error("createInvoice failed:", e);
+      throw e;
     }
   };
 
