@@ -1361,7 +1361,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], onToast }) => {
+const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingLock, setEditingLock] = useState({ level: 0, reason: "" });
@@ -1572,8 +1572,40 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   };
 
   const removeDispatch = async (id) => {
-    if (!confirm("Delete this order AND all its freight bills?")) return;
-    const nextD = dispatches.filter((d) => d.id !== id);
+    const d = dispatches.find((x) => x.id === id);
+    if (!d) return;
+    const childFbs = freightBills.filter((fb) => fb.dispatchId === id);
+    const invoicedFbs = childFbs.filter((fb) => fb.invoiceId);
+    const paidFbs = childFbs.filter((fb) => fb.paidAt);
+    const custPaidFbs = childFbs.filter((fb) => fb.customerPaidAt);
+
+    const warnings = [];
+    if (invoicedFbs.length > 0) {
+      const invNums = [...new Set(invoicedFbs.map((fb) => {
+        const inv = invoices.find((i) => i.id === fb.invoiceId);
+        return inv?.invoiceNumber || fb.invoiceId;
+      }))];
+      warnings.push(`• ${invoicedFbs.length} of ${childFbs.length} FBs are on invoice(s): ${invNums.join(", ")}. Deleting will orphan those invoices.`);
+    }
+    if (paidFbs.length > 0) {
+      warnings.push(`• ${paidFbs.length} FBs have been paid to subs/drivers. Deleting erases payroll records.`);
+    }
+    if (custPaidFbs.length > 0) {
+      warnings.push(`• ${custPaidFbs.length} FBs have been paid by customer. Deleting erases payment records.`);
+    }
+
+    const baseMsg = `Delete Order #${d.code} (${d.jobName || "—"}) AND all ${childFbs.length} freight bill${childFbs.length !== 1 ? "s" : ""}?`;
+
+    if (warnings.length > 0) {
+      const msg = `⚠ INTEGRITY WARNING — Order #${d.code}:\n\n${warnings.join("\n\n")}\n\n${baseMsg}\n\nThis deletion cannot be undone.`;
+      if (!confirm(msg)) return;
+      const typedAgain = prompt('Type "DELETE" to confirm permanent deletion:');
+      if (typedAgain !== "DELETE") { onToast("DELETE CANCELLED"); return; }
+    } else {
+      if (!confirm(baseMsg)) return;
+    }
+
+    const nextD = dispatches.filter((x) => x.id !== id);
     const nextFB = freightBills.filter((fb) => fb.dispatchId !== id);
     await setDispatches(nextD);
     await setFreightBills(nextFB);
@@ -1581,8 +1613,34 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   };
 
   const removeFreightBill = async (id) => {
-    if (!confirm("Delete this freight bill?")) return;
-    const next = freightBills.filter((fb) => fb.id !== id);
+    const fb = freightBills.find((x) => x.id === id);
+    if (!fb) return;
+
+    // INTEGRITY CHECKS — block/warn if FB has downstream records
+    const warnings = [];
+    if (fb.invoiceId) {
+      const inv = invoices.find((i) => i.id === fb.invoiceId);
+      warnings.push(`• This FB is on invoice ${inv?.invoiceNumber || fb.invoiceId}. Deleting will leave that invoice referencing a missing FB.`);
+    }
+    if (fb.paidAt) {
+      const amt = fb.paidAmount ? `$${Number(fb.paidAmount).toFixed(2)}` : "";
+      warnings.push(`• This FB was paid to the sub/driver${amt ? ` (${amt} on ${new Date(fb.paidAt).toLocaleDateString()})` : ""}. Deleting erases the payroll record.`);
+    }
+    if (fb.customerPaidAt) {
+      warnings.push(`• Customer has paid for this FB. Deleting erases the payment record.`);
+    }
+
+    if (warnings.length > 0) {
+      const msg = `⚠ INTEGRITY WARNING — FB#${fb.freightBillNumber || "—"}:\n\n${warnings.join("\n\n")}\n\nThis deletion cannot be undone. Are you sure?`;
+      if (!confirm(msg)) return;
+      // Double-check for paid/invoiced FBs
+      const typedAgain = prompt('Type "DELETE" to confirm permanent deletion:');
+      if (typedAgain !== "DELETE") { onToast("DELETE CANCELLED"); return; }
+    } else {
+      if (!confirm(`Delete FB#${fb.freightBillNumber || "—"}?`)) return;
+    }
+
+    const next = freightBills.filter((x) => x.id !== id);
     await setFreightBills(next);
     onToast("FREIGHT BILL DELETED");
   };
@@ -11834,7 +11892,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
           else if (k === "invoices") setPendingInvoice(payload);
           else if (k === "payroll") setPendingPaySubId(payload);
         }} onToast={onToast} />}
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
