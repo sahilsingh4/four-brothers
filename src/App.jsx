@@ -11879,10 +11879,326 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
 };
 
 // ========== REPORTS TAB ==========
+// ========== FB ARCHIVE PDF (Reports tab) ==========
+// Generate a PDF where each FB is one page with a compact metadata strip at top,
+// and each scale ticket photo becomes its own linked page (with the same metadata strip).
+// Filters: customer, project, date range, status (checkbox group).
+// Include fields: user picks which fields appear in the metadata strip (localStorage persisted).
+
+const FB_ARCHIVE_FIELD_DEFAULTS = {
+  date: true, fbNumber: true, loads: true, tons: true,
+  startTime: true, endTime: true, hours: false,
+  driver: true, truck: true, description: true, notes: true,
+  customer: false, pickup: false, dropoff: false,
+};
+const FB_ARCHIVE_STATUS_DEFAULTS = { pending: false, approved: true, invoiced: true, paid: true };
+const FB_ARCHIVE_LS_KEY = "fbt:fbArchivePrefs";
+
+const generateFBArchivePDF = async ({ fbs, dispatches, contacts, projects, company, fieldsInclude }) => {
+  const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+
+  // Build metadata strip HTML for one FB — compact, ~40-60px tall, readable
+  const stripHtml = (fb) => {
+    const d = dispatches.find((x) => x.id === fb.dispatchId);
+    const proj = projects.find((p) => p.id === d?.projectId);
+    const customer = contacts.find((c) => c.id === d?.clientId);
+    const hoursCalc = (() => {
+      if (fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        if (!isNaN(h1) && !isNaN(h2)) {
+          const mins = (h2 * 60 + (m2 || 0)) - (h1 * 60 + (m1 || 0));
+          return mins > 0 ? (mins / 60).toFixed(2) : "";
+        }
+      }
+      return fb.hoursBilled != null ? String(fb.hoursBilled) : "";
+    })();
+
+    const parts = [];
+    // Row 1 — always shows core identifiers for linking to the FB
+    if (fieldsInclude.date) parts.push(`<span class="kv"><b>DATE</b> ${esc(fmtDate(fb.submittedAt))}</span>`);
+    if (fieldsInclude.fbNumber) parts.push(`<span class="kv"><b>FB #</b> ${esc(fb.freightBillNumber || "—")}</span>`);
+    if (fieldsInclude.customer) parts.push(`<span class="kv"><b>CUSTOMER</b> ${esc(customer?.companyName || customer?.contactName || d?.clientName || "—")}</span>`);
+    if (d?.code) parts.push(`<span class="kv"><b>ORDER</b> #${esc(d.code)}</span>`);
+    if (proj?.name) parts.push(`<span class="kv"><b>PROJECT</b> ${esc(proj.name)}</span>`);
+    if (fieldsInclude.driver) parts.push(`<span class="kv"><b>DRIVER</b> ${esc(fb.driverName || "—")}</span>`);
+    if (fieldsInclude.truck) parts.push(`<span class="kv"><b>TRUCK</b> ${esc(fb.truckNumber || "—")}</span>`);
+    if (fieldsInclude.startTime) parts.push(`<span class="kv"><b>IN</b> ${esc(fb.pickupTime || "—")}</span>`);
+    if (fieldsInclude.endTime) parts.push(`<span class="kv"><b>OUT</b> ${esc(fb.dropoffTime || "—")}</span>`);
+    if (fieldsInclude.hours && hoursCalc) parts.push(`<span class="kv"><b>HRS</b> ${esc(hoursCalc)}</span>`);
+    if (fieldsInclude.tons && fb.tonnage) parts.push(`<span class="kv"><b>TONS</b> ${esc(String(fb.tonnage))}</span>`);
+    if (fieldsInclude.loads && fb.loadCount) parts.push(`<span class="kv"><b>LOADS</b> ${esc(String(fb.loadCount))}</span>`);
+    if (fieldsInclude.pickup && d?.pickup) parts.push(`<span class="kv"><b>FROM</b> ${esc(d.pickup)}</span>`);
+    if (fieldsInclude.dropoff && d?.dropoff) parts.push(`<span class="kv"><b>TO</b> ${esc(d.dropoff)}</span>`);
+
+    const description = fieldsInclude.description && (fb.description || fb.material)
+      ? `<div class="desc"><b>DESCRIPTION:</b> ${esc(fb.description || fb.material || "")}</div>` : "";
+    const notes = fieldsInclude.notes && fb.notes
+      ? `<div class="notes"><b>NOTES:</b> ${esc(fb.notes)}</div>` : "";
+
+    return `<div class="strip">
+      <div class="kv-row">${parts.join("")}</div>
+      ${description}
+      ${notes}
+    </div>`;
+  };
+
+  // Build pages. For each FB:
+  //   1. A "summary page" = big strip + list of photo count
+  //   2. One "photo page" per scale ticket photo (same strip + large image)
+  const pagesHtml = fbs.map((fb) => {
+    const photos = fb.photos || [];
+    const summary = `
+      <div class="page">
+        ${stripHtml(fb)}
+        <div class="photo-count">${photos.length} scale ticket${photos.length !== 1 ? "s" : ""} attached</div>
+      </div>
+    `;
+    const photoPages = photos.map((p, i) => `
+      <div class="page">
+        ${stripHtml(fb)}
+        <div class="photo-wrap">
+          <img src="${p.dataUrl || p.url || ""}" alt="Scale ticket ${i + 1}" />
+          <div class="photo-label">TICKET ${i + 1} OF ${photos.length}</div>
+        </div>
+      </div>
+    `).join("");
+    return summary + photoPages;
+  }).join("");
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>FB Archive — ${esc(company?.name || "4 Brothers Trucking")}</title>
+<style>
+  @page { margin: 0.35in; size: letter; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 10px; font-family: -apple-system, Arial, sans-serif; color: #1C1917; font-size: 10pt; }
+  .btn-print { position: fixed; top: 10px; right: 10px; padding: 12px 24px; background: #F59E0B; color: #1C1917; border: 3px solid #1C1917; font-weight: 900; cursor: pointer; font-size: 12pt; letter-spacing: 0.08em; box-shadow: 4px 4px 0 #1C1917; z-index: 1000; }
+  .instructions { background: #FEF3C7; border: 2px solid #F59E0B; padding: 10px 14px; margin-bottom: 20px; font-size: 10pt; }
+  .page { page-break-after: always; padding: 4px; min-height: 9.5in; display: flex; flex-direction: column; }
+  .page:last-child { page-break-after: auto; }
+  .strip { border: 2px solid #1C1917; background: #F5F5F4; padding: 8px 12px; margin-bottom: 10px; }
+  .strip .kv-row { display: flex; flex-wrap: wrap; gap: 14px; font-size: 9.5pt; line-height: 1.4; }
+  .strip .kv { white-space: nowrap; }
+  .strip .kv b { color: #78716C; font-size: 7.5pt; letter-spacing: 0.08em; margin-right: 4px; }
+  .strip .desc, .strip .notes { margin-top: 6px; font-size: 9pt; line-height: 1.4; padding-top: 5px; border-top: 1px dotted #A8A29E; }
+  .strip .desc b, .strip .notes b { color: #78716C; font-size: 7.5pt; letter-spacing: 0.08em; margin-right: 4px; }
+  .photo-count { color: #78716C; font-size: 9pt; letter-spacing: 0.08em; text-align: center; padding: 40px 0; font-style: italic; }
+  .photo-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; }
+  .photo-wrap img { max-width: 100%; max-height: 8.5in; object-fit: contain; border: 1.5px solid #1C1917; }
+  .photo-label { font-family: Menlo, monospace; font-size: 8pt; color: #78716C; margin-top: 6px; letter-spacing: 0.1em; }
+  .footer-summary { padding-top: 20px; border-top: 2px solid #1C1917; font-size: 8pt; color: #78716C; font-family: Menlo, monospace; letter-spacing: 0.08em; }
+  @media print {
+    .btn-print, .instructions { display: none; }
+    body { padding: 0; }
+  }
+</style></head>
+<body>
+<button class="btn-print" onclick="window.print()">🖨 PRINT / SAVE AS PDF</button>
+<div class="instructions">
+  <strong>📋 FB Archive:</strong> ${fbs.length} freight bill${fbs.length !== 1 ? "s" : ""} · ${fbs.reduce((s, fb) => s + (fb.photos?.length || 0), 0)} scale ticket page${fbs.reduce((s, fb) => s + (fb.photos?.length || 0), 0) !== 1 ? "s" : ""}. Click PRINT then choose "Save as PDF".
+</div>
+${pagesHtml}
+<div class="footer-summary">ARCHIVE GENERATED ${new Date().toLocaleString()} · ${esc(company?.name || "4 BROTHERS TRUCKING")} · ${fbs.length} FB${fbs.length !== 1 ? "S" : ""}</div>
+</body></html>`;
+
+  const w = window.open("", "_blank");
+  if (!w) { alert("Popup blocked. Please allow popups and try again."); return; }
+  w.document.write(html);
+  w.document.close();
+};
+
+const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company, onClose, onToast }) => {
+  // Load saved prefs from localStorage
+  const savedPrefs = (() => {
+    try { return JSON.parse(localStorage.getItem(FB_ARCHIVE_LS_KEY) || "{}"); } catch { return {}; }
+  })();
+
+  const [fromDate, setFromDate] = useState(savedPrefs.fromDate || "");
+  const [toDate, setToDate] = useState(savedPrefs.toDate || "");
+  const [customerId, setCustomerId] = useState(savedPrefs.customerId || "");
+  const [projectId, setProjectId] = useState(savedPrefs.projectId || "");
+  const [statusFilter, setStatusFilter] = useState(savedPrefs.statusFilter || FB_ARCHIVE_STATUS_DEFAULTS);
+  const [fieldsInclude, setFieldsInclude] = useState(savedPrefs.fieldsInclude || FB_ARCHIVE_FIELD_DEFAULTS);
+
+  // Customers are contacts of type customer or broker
+  const customerList = useMemo(() =>
+    (contacts || []).filter((c) => c.type === "customer" || c.type === "broker")
+      .sort((a, b) => (a.companyName || a.contactName || "").localeCompare(b.companyName || b.contactName || "")),
+    [contacts]);
+
+  // Matched FBs based on filters
+  const matchedFbs = useMemo(() => {
+    return (freightBills || []).filter((fb) => {
+      const status = fb.status || "pending";
+      const isInvoiced = !!fb.invoiceId;
+      const isPaid = !!fb.paidAt || !!fb.customerPaidAt;
+      if (status === "rejected") return false;
+      // Status group mapping
+      if (status === "pending" && !statusFilter.pending) return false;
+      if (status === "approved" && !isInvoiced && !isPaid && !statusFilter.approved) return false;
+      if (isInvoiced && !isPaid && !statusFilter.invoiced) return false;
+      if (isPaid && !statusFilter.paid) return false;
+
+      const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
+      if (fromDate && fbDate < fromDate) return false;
+      if (toDate && fbDate > toDate) return false;
+
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      if (customerId && String(d?.clientId) !== String(customerId)) return false;
+      if (projectId && String(d?.projectId) !== String(projectId)) return false;
+
+      return true;
+    }).sort((a, b) => (a.submittedAt || "").localeCompare(b.submittedAt || ""));
+  }, [freightBills, dispatches, statusFilter, fromDate, toDate, customerId, projectId]);
+
+  const totalPhotos = matchedFbs.reduce((s, fb) => s + (fb.photos?.length || 0), 0);
+
+  const savePrefs = () => {
+    try {
+      localStorage.setItem(FB_ARCHIVE_LS_KEY, JSON.stringify({
+        fromDate, toDate, customerId, projectId, statusFilter, fieldsInclude,
+      }));
+    } catch {}
+  };
+
+  const handleGenerate = async () => {
+    if (matchedFbs.length === 0) { onToast("NO FBs MATCH FILTERS"); return; }
+    savePrefs();
+    try {
+      await generateFBArchivePDF({
+        fbs: matchedFbs, dispatches, contacts, projects, company, fieldsInclude,
+      });
+      onToast(`✓ ARCHIVE GENERATED · ${matchedFbs.length} FB${matchedFbs.length !== 1 ? "S" : ""}`);
+    } catch (e) {
+      console.error(e); onToast("GENERATION FAILED");
+    }
+  };
+
+  const toggleField = (key) => setFieldsInclude((s) => ({ ...s, [key]: !s[key] }));
+  const toggleStatus = (key) => setStatusFilter((s) => ({ ...s, [key]: !s[key] }));
+
+  const fieldCheckbox = (key, label) => (
+    <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: fieldsInclude[key] ? "#FEF3C7" : "#F5F5F4", border: "1.5px solid " + (fieldsInclude[key] ? "var(--hazard-deep)" : "var(--concrete)"), cursor: "pointer", fontSize: 11 }}>
+      <input type="checkbox" checked={!!fieldsInclude[key]} onChange={() => toggleField(key)} />
+      <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.05em" }}>{label}</span>
+    </label>
+  );
+
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
+        <div style={{ padding: "16px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.12em" }}>▸ REPORTS</div>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "3px 0 0" }}>FB ARCHIVE PDF</h3>
+          </div>
+          <button onClick={onClose} className="btn-ghost" style={{ borderColor: "var(--cream)", color: "var(--cream)" }}>
+            <X size={14} style={{ marginRight: 4 }} /> CLOSE
+          </button>
+        </div>
+
+        <div style={{ padding: 20, display: "grid", gap: 16 }}>
+          {/* Filters */}
+          <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ FILTERS</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
+              <div>
+                <label className="fbt-label">From date</label>
+                <input type="date" className="fbt-input" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="fbt-label">To date</label>
+                <input type="date" className="fbt-input" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
+              <div>
+                <label className="fbt-label">Customer</label>
+                <select className="fbt-select" value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                  <option value="">All customers</option>
+                  {customerList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.companyName || c.contactName}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="fbt-label">Project</label>
+                <select className="fbt-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                  <option value="">All projects</option>
+                  {(projects || []).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="fbt-label" style={{ marginBottom: 6 }}>Status include</label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  { k: "pending",   l: "PENDING" },
+                  { k: "approved",  l: "APPROVED" },
+                  { k: "invoiced",  l: "INVOICED" },
+                  { k: "paid",      l: "PAID" },
+                ].map(({ k, l }) => (
+                  <label key={k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: statusFilter[k] ? "#FEF3C7" : "#FFF", border: "1.5px solid " + (statusFilter[k] ? "var(--hazard-deep)" : "var(--concrete)"), cursor: "pointer", fontSize: 11 }}>
+                    <input type="checkbox" checked={!!statusFilter[k]} onChange={() => toggleStatus(k)} />
+                    <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.05em" }}>{l}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Field checkboxes */}
+          <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ INCLUDE IN HEADER STRIP</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {fieldCheckbox("date", "DATE")}
+              {fieldCheckbox("fbNumber", "FB #")}
+              {fieldCheckbox("customer", "CUSTOMER")}
+              {fieldCheckbox("driver", "DRIVER")}
+              {fieldCheckbox("truck", "TRUCK")}
+              {fieldCheckbox("startTime", "IN (TIME)")}
+              {fieldCheckbox("endTime", "OUT (TIME)")}
+              {fieldCheckbox("hours", "HOURS")}
+              {fieldCheckbox("tons", "TONS")}
+              {fieldCheckbox("loads", "LOADS")}
+              {fieldCheckbox("pickup", "FROM")}
+              {fieldCheckbox("dropoff", "TO")}
+              {fieldCheckbox("description", "DESCRIPTION")}
+              {fieldCheckbox("notes", "NOTES")}
+            </div>
+          </div>
+
+          {/* Preview count */}
+          <div style={{ padding: "12px 14px", background: matchedFbs.length > 0 ? "#F0FDF4" : "#FEE2E2", border: "2px solid " + (matchedFbs.length > 0 ? "var(--good)" : "var(--safety)"), display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <div className="fbt-display" style={{ fontSize: 20 }}>
+                {matchedFbs.length} FB{matchedFbs.length !== 1 ? "s" : ""} MATCH
+              </div>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.08em", marginTop: 2 }}>
+                {matchedFbs.length + totalPhotos} TOTAL PAGE{(matchedFbs.length + totalPhotos) !== 1 ? "S" : ""} · {totalPhotos} SCALE TICKET{totalPhotos !== 1 ? "S" : ""}
+              </div>
+            </div>
+            <button onClick={handleGenerate} className="btn-primary" disabled={matchedFbs.length === 0} style={{ padding: "10px 18px" }}>
+              <FileDown size={14} style={{ marginRight: 6 }} /> GENERATE PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   const { from, to, label } = useMemo(() => {
     if (rangePreset === "lastweek") {
@@ -11927,6 +12243,32 @@ const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {showArchiveModal && (
+        <FBArchiveModal
+          freightBills={freightBills}
+          dispatches={dispatches}
+          contacts={contacts}
+          projects={projects}
+          company={company}
+          onClose={() => setShowArchiveModal(false)}
+          onToast={onToast}
+        />
+      )}
+
+      {/* FB Archive PDF card */}
+      <div className="fbt-card" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "linear-gradient(135deg, var(--cream), #FEF3C7)", border: "2px solid var(--hazard-deep)" }}>
+        <FileDown size={28} style={{ color: "var(--hazard-deep)" }} />
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div className="fbt-display" style={{ fontSize: 18 }}>📂 FB ARCHIVE PDF</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+            EXPORT FREIGHT BILLS + SCALE TICKETS BY CUSTOMER · DATE · PROJECT
+          </div>
+        </div>
+        <button onClick={() => setShowArchiveModal(true)} className="btn-primary" style={{ padding: "10px 18px" }}>
+          <FileDown size={14} style={{ marginRight: 6 }} /> OPEN
+        </button>
+      </div>
+
       {/* FB Search Panel at top */}
       <FBSearchPanel
         freightBills={freightBills}
