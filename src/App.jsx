@@ -60,6 +60,15 @@ const GlobalStyles = () => (
 const fmt$ = (n) => `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtDate = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return iso; } };
 const fmtDateTime = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return iso; } };
+const formatTime12h = (hhmm) => {
+  if (!hhmm || typeof hhmm !== "string") return "";
+  const [h, m] = hhmm.split(":").map(Number);
+  if (isNaN(h)) return hhmm;
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = String(m || 0).padStart(2, "0");
+  return `${h12}:${mm} ${period}`;
+};
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const randomCode = (len = 6) => { const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s = ""; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]; return s; };
 const storageSet = async (key, value, shared = false) => { try { await window.storage?.set(key, JSON.stringify(value), shared); } catch (e) { console.warn("storage set failed", key, e); } };
@@ -1621,6 +1630,22 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     if (dispatch.dropoff) lines.push(`DROPOFF: ${dispatch.dropoff}`);
     if (dispatch.material) lines.push(`Material: ${dispatch.material}`);
 
+    // Per-truck start times (if any are set on this assignment)
+    if (assignment?.startTimes?.length > 0) {
+      const validTimes = assignment.startTimes.filter((r) => r && (r.time || r.location));
+      if (validTimes.length > 0) {
+        lines.push("");
+        lines.push(`START TIME${validTimes.length > 1 ? "S" : ""}:`);
+        validTimes.forEach((r, i) => {
+          const tNum = i + 1;
+          const tStr = r.time ? formatTime12h(r.time) : "TBD";
+          const locStr = r.location ? ` at ${r.location}` : "";
+          const label = validTimes.length > 1 ? `Truck ${tNum}: ` : "";
+          lines.push(`${label}${tStr}${locStr}`);
+        });
+      }
+    }
+
     // Rate section — SUBS ONLY (not individual drivers)
     if (assignment && assignment.kind === "sub" && assignment.payRate) {
       const method = assignment.payMethod || "hour";
@@ -2148,6 +2173,57 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                               </span>
                             )}
                           </div>
+
+                          {/* Row 3: Per-truck start times + locations */}
+                          {(() => {
+                            const truckCount = Math.max(1, Number(a.trucks) || 1);
+                            const startTimes = Array.isArray(a.startTimes) ? a.startTimes : [];
+                            // Ensure array matches trucks count (add blanks if more trucks)
+                            const displayRows = Array.from({ length: truckCount }, (_, i) => startTimes[i] || { time: "", location: "" });
+                            return (
+                              <div style={{ marginTop: 8, padding: 8, background: "#FAFAF9", border: "1px dashed var(--concrete)" }}>
+                                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                                  ▸ START TIMES · {truckCount} TRUCK{truckCount !== 1 ? "S" : ""} (INCLUDED IN DISPATCH TEXT)
+                                </div>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  {displayRows.map((row, tIdx) => (
+                                    <div key={tIdx} style={{ display: "grid", gridTemplateColumns: "50px 100px 1fr", gap: 6, alignItems: "center" }}>
+                                      <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                                        TRUCK {tIdx + 1}
+                                      </span>
+                                      <input
+                                        className="fbt-input"
+                                        type="time"
+                                        style={{ padding: "4px 6px", fontSize: 11 }}
+                                        value={row.time || ""}
+                                        onChange={(e) => {
+                                          const next = [...draft.assignments];
+                                          const newTimes = Array.from({ length: truckCount }, (_, i) => startTimes[i] || { time: "", location: "" });
+                                          newTimes[tIdx] = { ...newTimes[tIdx], time: e.target.value };
+                                          next[idx] = { ...next[idx], startTimes: newTimes };
+                                          setDraft({ ...draft, assignments: next });
+                                        }}
+                                      />
+                                      <input
+                                        className="fbt-input"
+                                        type="text"
+                                        placeholder="Location / note (e.g. at Vulcan Napa)"
+                                        style={{ padding: "4px 8px", fontSize: 11 }}
+                                        value={row.location || ""}
+                                        onChange={(e) => {
+                                          const next = [...draft.assignments];
+                                          const newTimes = Array.from({ length: truckCount }, (_, i) => startTimes[i] || { time: "", location: "" });
+                                          newTimes[tIdx] = { ...newTimes[tIdx], location: e.target.value };
+                                          next[idx] = { ...next[idx], startTimes: newTimes };
+                                          setDraft({ ...draft, assignments: next });
+                                        }}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
@@ -2401,6 +2477,19 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                     {contact.phone && `☎ ${contact.phone}`}
                                     {contact.phone && contact.email && " · "}
                                     {contact.email && `✉ ${contact.email}`}
+                                  </div>
+                                )}
+                                {/* Start times summary */}
+                                {a.startTimes?.length > 0 && a.startTimes.some((r) => r && (r.time || r.location)) && (
+                                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginTop: 4, fontWeight: 700 }}>
+                                    ▸ START: {a.startTimes
+                                      .filter((r) => r && (r.time || r.location))
+                                      .map((r, i) => {
+                                        const t = r.time ? formatTime12h(r.time) : "TBD";
+                                        const loc = r.location ? ` @ ${r.location}` : "";
+                                        return `${t}${loc}`;
+                                      })
+                                      .join(" · ")}
                                   </div>
                                 )}
                               </div>
