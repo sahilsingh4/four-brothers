@@ -4971,10 +4971,34 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   };
 
   const removeInvoice = async (invNum) => {
-    if (!confirm(`Delete invoice ${invNum} from history? This won't affect the freight bills.`)) return;
+    const inv = invoices.find((i) => i.invoiceNumber === invNum);
+    if (!inv) return;
+    const affectedFbs = freightBills.filter((fb) => fb.invoiceId === inv.id);
+    const msg = affectedFbs.length > 0
+      ? `Delete invoice ${invNum}?\n\nThis will UNLOCK ${affectedFbs.length} freight bill${affectedFbs.length !== 1 ? "s" : ""} — their billing snapshot stays, but they can be invoiced again.\n\nContinue?`
+      : `Delete invoice ${invNum}?\n\nNo FBs are linked.`;
+    if (!confirm(msg)) return;
+
+    // 1. Unlock affected FBs — clear invoiceId and billingLockedAt so they can be invoiced again
+    //    Keep billedRate/billedHours etc. as historical — admin can override when re-invoicing
+    for (const fb of affectedFbs) {
+      try {
+        await editFreightBill(fb.id, {
+          ...fb,
+          invoiceId: null,
+          billingLockedAt: null,
+        });
+      } catch (e) { console.warn("Could not unlock FB", fb.id, e); }
+    }
+
+    // 2. Delete the invoice from the list
     const next = invoices.filter((i) => i.invoiceNumber !== invNum);
     setInvoices(next);
-    onToast("INVOICE DELETED");
+
+    const toastMsg = affectedFbs.length > 0
+      ? `INVOICE DELETED · ${affectedFbs.length} FB${affectedFbs.length !== 1 ? "S" : ""} UNLOCKED`
+      : "INVOICE DELETED";
+    onToast(toastMsg);
   };
 
   return (
@@ -7208,21 +7232,9 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                 <label className="fbt-label">Dropoff Time</label>
                 <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => setDraft({ ...draft, dropoffTime: e.target.value })} />
               </div>
-              <div>
-                <label className="fbt-label">
-                  Hours Billed {autoHours && !draft.hoursBilled ? `(auto: ${autoHours})` : ""}
-                </label>
-                <input
-                  className="fbt-input"
-                  type="number" step="0.25"
-                  value={draft.hoursBilled}
-                  onChange={(e) => setDraft({ ...draft, hoursBilled: e.target.value })}
-                  placeholder={autoHours || "0.00"}
-                />
-              </div>
             </div>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
-              ▸ LEAVE HOURS BILLED BLANK TO AUTO-USE PICKUP→DROPOFF DIFFERENCE
+              ▸ HOURS FOR BILLING &amp; PAY ARE SET IN THE SNAPSHOT PANEL BELOW
             </div>
 
             {/* Minimum hours warning */}
@@ -7498,8 +7510,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   )}
                 </div>
 
-                {/* Billing adjustments list + add form */}
-                {billingSnapshotLocked && (
+                {/* Billing adjustments list + add form — available after FB approval */}
+                {fb.status === "approved" && (
                   <div style={{ marginTop: 10, borderTop: "1px dashed #0EA5E9", paddingTop: 10 }}>
                     <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
                       ▸ BILLING ADJUSTMENTS ({(fb.billingAdjustments || []).length})
@@ -7658,8 +7670,8 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   )}
                 </div>
 
-                {/* Pay adjustments list + add form */}
-                {paySnapshotLocked && (
+                {/* Pay adjustments list + add form — available after FB approval */}
+                {fb.status === "approved" && (
                   <div style={{ marginTop: 10, borderTop: "1px dashed var(--good)", paddingTop: 10 }}>
                     <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", letterSpacing: "0.08em", fontWeight: 700, marginBottom: 6 }}>
                       ▸ PAY ADJUSTMENTS ({(fb.payingAdjustments || []).length})
