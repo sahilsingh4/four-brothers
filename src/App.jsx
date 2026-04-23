@@ -5306,14 +5306,14 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     };
 
     try {
-      await generateInvoicePDF(invoice, company, billsWithHours, { method: pricingMethod, rate });
-
-      // SAVE INVOICE SYNCHRONOUSLY — get real id back immediately so we can lock FBs to it
+      // v18 Fix #2: Save invoice to DB FIRST, then generate PDF.
+      // If popup is blocked or PDF fails, the invoice still lands in the list and
+      // admin can use the "re-download" button. Previously the PDF ran first and a
+      // popup failure meant createInvoice never executed — invoice vanished.
       let savedInvoice;
       if (createInvoice) {
         savedInvoice = await createInvoice(invoice);
       } else {
-        // Fallback (shouldn't happen, but safe): use setInvoices path
         await setInvoices([invoice, ...invoices]);
         savedInvoice = invoice;
       }
@@ -5375,9 +5375,18 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       if (rateChanged > 0) msgs.push(`${rateChanged} RATE${rateChanged !== 1 ? "S" : ""} UPDATED`);
       if (hoursChanged > 0) msgs.push(`${hoursChanged} HOURS → PAYROLL`);
       onToast(msgs.join(" · "));
+
+      // Now open the PDF window. If popup is blocked, invoice is already in the list
+      // and the user can re-download from the invoice row.
+      try {
+        await generateInvoicePDF(invoice, company, billsWithHours, { method: pricingMethod, rate });
+      } catch (pdfErr) {
+        console.warn("PDF open failed:", pdfErr);
+        onToast("⚠ INVOICE SAVED BUT POPUP BLOCKED — CLICK 'RE-DOWNLOAD' ON THE INVOICE ROW");
+      }
     } catch (e) {
       console.error("Invoice generation failed:", e);
-      onToast(e.message || "INVOICE FAILED — ALLOW POPUPS");
+      onToast(e.message || "INVOICE SAVE FAILED");
     }
   };
 
@@ -5962,41 +5971,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           </div>
         )}
 
-        {pricingMethod === "hour" && matchedBills.length > 0 && (
-          <div style={{ marginBottom: 18, padding: 14, background: "#F5F5F4", border: "1px solid var(--steel)" }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 4 }}>▸ HOURS PER FREIGHT BILL</div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 10 }}>▸ AUTO-FILLED FROM APPROVED FB HOURS — ADJUST BELOW IF NEEDED</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
-              {matchedBills.map((fb) => {
-                const autoH = effectiveHours(fb);
-                const manual = hoursOverride[fb.id];
-                const isManual = manual !== undefined && manual !== "" && Number(manual) !== autoH;
-                return (
-                  <div key={fb.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700 }}>
-                        FB#{fb.freightBillNumber || "—"}
-                      </div>
-                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "var(--concrete)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""}
-                      </div>
-                    </div>
-                    <input
-                      className="fbt-input"
-                      type="number"
-                      step="0.25"
-                      style={{ padding: "6px 10px", fontSize: 13, width: 80, background: isManual ? "#FEF3C7" : undefined }}
-                      placeholder={autoH > 0 ? autoH.toFixed(2) : "hrs"}
-                      value={manual ?? ""}
-                      onChange={(e) => setHoursOverride({ ...hoursOverride, [fb.id]: e.target.value })}
-                      title={isManual ? "Manually overridden" : "Auto-filled from approved FB"}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* v18 Fix #1: REMOVED the duplicate "HOURS PER FREIGHT BILL" editable panel.
+            That panel showed each matched FB with an editable hours input, but edits didn't
+            sync back to the underlying FB — admin confusion. Per spec, billing lines on the
+            FB itself (edited in Review) are the single source of truth. The expandable FB list
+            above already shows the breakdown read-only. */}
 
         {/* Bill-to — read-only display of auto-pulled customer + PO/ref fields */}
         <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 03 / BILL TO (AUTO-PULLED FROM CUSTOMER PICKED ABOVE)</div>
@@ -8231,15 +8210,60 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
               <div>
                 <label className="fbt-label">Pickup Time</label>
-                <input className="fbt-input" type="time" value={draft.pickupTime} onChange={(e) => setDraft({ ...draft, pickupTime: e.target.value })} />
+                <input className="fbt-input" type="time" value={draft.pickupTime} onChange={(e) => {
+                  const newPickup = e.target.value;
+                  const newHours = hoursFromTimes(newPickup, draft.dropoffTime);
+                  setDraft((d) => {
+                    // v18 fix #4: changing pickup/dropoff time auto-syncs HOURLY line qty in both
+                    // billing + paying lines. User can still manually edit the qty after —
+                    // but changing the time again will re-sync.
+                    const syncHourly = (lines) => (lines || []).map((ln) => {
+                      if (ln.code !== "H") return ln;
+                      if (newHours <= 0) return ln;  // don't clobber if we can't compute
+                      const rate = Number(ln.rate) || 0;
+                      const gross = Number((newHours * rate).toFixed(2));
+                      const net = ln.brokerable
+                        ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
+                        : gross;
+                      return { ...ln, qty: newHours, gross, net };
+                    });
+                    return {
+                      ...d,
+                      pickupTime: newPickup,
+                      billingLines: syncHourly(d.billingLines),
+                      payingLines: syncHourly(d.payingLines),
+                    };
+                  });
+                }} />
               </div>
               <div>
                 <label className="fbt-label">Dropoff Time</label>
-                <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => setDraft({ ...draft, dropoffTime: e.target.value })} />
+                <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => {
+                  const newDropoff = e.target.value;
+                  const newHours = hoursFromTimes(draft.pickupTime, newDropoff);
+                  setDraft((d) => {
+                    const syncHourly = (lines) => (lines || []).map((ln) => {
+                      if (ln.code !== "H") return ln;
+                      if (newHours <= 0) return ln;
+                      const rate = Number(ln.rate) || 0;
+                      const gross = Number((newHours * rate).toFixed(2));
+                      const net = ln.brokerable
+                        ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
+                        : gross;
+                      return { ...ln, qty: newHours, gross, net };
+                    });
+                    return {
+                      ...d,
+                      dropoffTime: newDropoff,
+                      billingLines: syncHourly(d.billingLines),
+                      payingLines: syncHourly(d.payingLines),
+                    };
+                  });
+                }} />
               </div>
             </div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
-              ▸ HOURS FOR BILLING &amp; PAY ARE SET IN THE SNAPSHOT PANEL BELOW
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 6 }}>
+              ▸ CHANGING TIMES AUTO-UPDATES HOURLY LINES IN BILLING &amp; PAY · YOU CAN OVERRIDE QTY MANUALLY BELOW
             </div>
 
             {/* Minimum hours warning */}
@@ -8299,6 +8323,94 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
               ▸ BILLING &amp; PAY LINES (NEW STRUCTURE)
             </div>
+
+            {/* ─── v18 FIX #3: DRIVER-REPORTED EXTRAS ─── */}
+            {/* Shows extras driver/sub added at submission (tolls, dump fees, etc.).
+                Admin can: (a) remove them, (b) push them to billing lines, (c) push them to pay lines.
+                Nothing is auto-added to billing/pay — admin stays in full control. */}
+            {Array.isArray(draft.extras) && draft.extras.length > 0 && (
+              <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard-deep)", marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                    🚚 DRIVER-REPORTED EXTRAS · {draft.extras.length} ITEM{draft.extras.length !== 1 ? "S" : ""}
+                  </div>
+                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+                    CONVERT TO BILLING OR PAY LINES BELOW, OR REMOVE IF WRONG
+                  </span>
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {draft.extras.map((x, idx) => {
+                    const mapCodeForLabel = (lbl) => {
+                      const low = String(lbl || "").toLowerCase();
+                      if (low.includes("toll")) return { code: "TOLL", item: "Tolls" };
+                      if (low.includes("dump")) return { code: "DUMP", item: "Dump Fees" };
+                      if (low.includes("fuel")) return { code: "FUEL", item: "Fuel Surcharge" };
+                      return { code: "OTHER", item: lbl || "Extra" };
+                    };
+                    const guess = mapCodeForLabel(x.label);
+                    const amt = Number(x.amount) || 0;
+
+                    return (
+                      <div key={idx} style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--hazard)", display: "grid", gridTemplateColumns: "120px 1fr 100px auto", gap: 8, alignItems: "center" }}>
+                        <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>{x.label || "—"}</div>
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                          {x.reimbursable !== false ? "REIMBURSABLE" : "NOT REIMBURSABLE"}
+                        </div>
+                        <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700, textAlign: "right" }}>${amt.toFixed(2)}</div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Add as a billing line
+                              addBillingLine({ code: guess.code, item: guess.item, qty: 1, rate: amt });
+                              // Remove from extras
+                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
+                              onToast(`✓ ${guess.item} → BILLING LINES`);
+                            }}
+                            disabled={billingSnapshotLocked}
+                            title={billingSnapshotLocked ? "Billing is locked (invoiced)" : "Add to billing lines"}
+                            className="btn-ghost"
+                            style={{ padding: "3px 8px", fontSize: 10, borderColor: "#0369A1", color: "#0369A1" }}
+                          >
+                            → BILL
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Add as a paying line
+                              addPayingLine({ code: guess.code, item: guess.item, qty: 1, rate: amt });
+                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
+                              onToast(`✓ ${guess.item} → PAYING LINES`);
+                            }}
+                            disabled={paySnapshotLocked}
+                            title={paySnapshotLocked ? "Pay is locked (paid)" : "Add to paying lines"}
+                            className="btn-ghost"
+                            style={{ padding: "3px 8px", fontSize: 10, borderColor: "#C2410C", color: "#C2410C" }}
+                          >
+                            → PAY
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!confirm(`Remove ${x.label || "extra"} ($${amt.toFixed(2)}) from driver-reported list? This will not affect billing/pay lines.`)) return;
+                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
+                            }}
+                            className="btn-ghost"
+                            style={{ padding: "3px 6px", fontSize: 10, borderColor: "var(--safety)", color: "var(--safety)" }}
+                            title="Remove this driver entry"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, letterSpacing: "0.04em", fontStyle: "italic" }}>
+                  ▸ Click "→ BILL" to charge the customer or "→ PAY" to reimburse the driver/sub. Admin-approved lines below drive invoice and pay statement totals.
+                </div>
+              </div>
+            )}
 
             {/* ─── BILLING LINES ─── */}
             <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "#0369A1"), marginBottom: 12 }}>
