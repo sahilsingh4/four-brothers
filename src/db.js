@@ -28,6 +28,9 @@ const dispatchFromDB = (row) => ({
   notes: row.notes || "",
   status: row.status || "open",
   lockOverrides: row.lock_overrides || [],
+  noShowCount: row.no_show_count || 0,
+  reconciledAt: row.reconciled_at || null,
+  reconciledBy: row.reconciled_by || null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -54,6 +57,9 @@ const dispatchToDB = (d) => ({
   notes: d.notes || null,
   status: d.status || "open",
   lock_overrides: d.lockOverrides || [],
+  no_show_count: Number(d.noShowCount) || 0,
+  reconciled_at: d.reconciledAt || null,
+  reconciled_by: d.reconciledBy || null,
 });
 
 export const fetchDispatches = async () => {

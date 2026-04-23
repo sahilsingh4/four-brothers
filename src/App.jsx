@@ -1546,6 +1546,37 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     }
   };
 
+  // Reconciliation helpers
+  const adjustNoShow = async (id, delta) => {
+    const next = dispatches.map((d) => {
+      if (d.id !== id) return d;
+      const cur = Number(d.noShowCount) || 0;
+      const expected = Number(d.trucksExpected) || 1;
+      const submittedCount = freightBills.filter((fb) => fb.dispatchId === id).length;
+      const newCount = Math.max(0, Math.min(expected - submittedCount, cur + delta));
+      // If they change noShow, auto-clear any prior reconciliation stamp
+      return { ...d, noShowCount: newCount, reconciledAt: null, reconciledBy: null };
+    });
+    await setDispatches(next);
+  };
+
+  const markReconciled = async (id) => {
+    const next = dispatches.map((d) => {
+      if (d.id !== id) return d;
+      return { ...d, reconciledAt: new Date().toISOString(), reconciledBy: "admin" };
+    });
+    await setDispatches(next);
+    onToast("✓ ORDER RECONCILED");
+  };
+
+  const unmarkReconciled = async (id) => {
+    const next = dispatches.map((d) => {
+      if (d.id !== id) return d;
+      return { ...d, reconciledAt: null, reconciledBy: null };
+    });
+    await setDispatches(next);
+  };
+
   // Compute the lock state for a dispatch
   // Returns { level, reason, hasApprovedFbs, hasInvoicedFbs }
   //   level: 0=draft (none), 1=sent (assignments locked), 2=approved (rate/material/job locked), 3=invoiced (full lock)
@@ -2540,6 +2571,94 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                     {d.status === "closed" ? "REOPEN" : "CLOSE / COMPLETE"}
                   </button>
                 </div>
+
+                {/* Reconciliation panel — shows when submitted < expected or when tracking no-shows */}
+                {(() => {
+                  const submittedCount = bills.length;
+                  const expected = Number(d.trucksExpected) || 1;
+                  const noShow = Number(d.noShowCount) || 0;
+                  const resolved = submittedCount + noShow;
+                  const unresolved = expected - resolved;
+                  const mathBalances = unresolved === 0;
+                  const isReconciled = !!d.reconciledAt;
+
+                  // Don't show panel if nothing's outstanding and not reconciled
+                  if (submittedCount >= expected && noShow === 0 && !isReconciled) return null;
+
+                  return (
+                    <div style={{
+                      padding: 14,
+                      background: isReconciled ? "#F0FDF4" : (mathBalances ? "#FEF3C7" : "#FEE2E2"),
+                      border: "2px solid " + (isReconciled ? "var(--good)" : mathBalances ? "var(--hazard)" : "var(--safety)"),
+                      marginBottom: 20,
+                    }}>
+                      <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700, color: isReconciled ? "var(--good)" : mathBalances ? "var(--hazard-deep)" : "var(--safety)" }}>
+                        {isReconciled ? "✓ ORDER RECONCILED" : mathBalances ? "▸ READY TO RECONCILE" : "▸ TRUCKS NEED RESOLUTION"}
+                      </div>
+                      <div style={{ fontSize: 13, fontFamily: "JetBrains Mono, monospace", marginBottom: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
+                        <div><strong>EXPECTED:</strong> {expected}</div>
+                        <div><strong>SUBMITTED:</strong> {submittedCount}</div>
+                        <div><strong>NO-SHOW:</strong> {noShow}</div>
+                        <div style={{ color: mathBalances ? "var(--good)" : "var(--safety)", fontWeight: 700 }}>
+                          <strong>UNRESOLVED:</strong> {unresolved}
+                        </div>
+                      </div>
+                      {isReconciled ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                            Reconciled by {d.reconciledBy} on {new Date(d.reconciledAt).toLocaleDateString()}
+                          </div>
+                          <button
+                            onClick={() => { if (confirm("Un-reconcile this order? You'll be able to edit no-show count again.")) unmarkReconciled(d.id); }}
+                            className="btn-ghost"
+                            style={{ padding: "4px 10px", fontSize: 10, marginLeft: "auto" }}
+                          >
+                            UN-RECONCILE
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <button
+                            onClick={() => adjustNoShow(d.id, 1)}
+                            className="btn-ghost"
+                            style={{ padding: "6px 12px", fontSize: 11, background: "#FFF" }}
+                            disabled={unresolved <= 0}
+                            title="Mark one expected truck as a no-show"
+                          >
+                            + NO-SHOW
+                          </button>
+                          <button
+                            onClick={() => adjustNoShow(d.id, -1)}
+                            className="btn-ghost"
+                            style={{ padding: "6px 12px", fontSize: 11, background: "#FFF" }}
+                            disabled={noShow <= 0}
+                          >
+                            − NO-SHOW
+                          </button>
+                          <button
+                            onClick={() => markReconciled(d.id)}
+                            className="btn-primary"
+                            style={{ padding: "6px 14px", fontSize: 11, marginLeft: "auto", background: mathBalances ? "var(--good)" : "var(--concrete)", borderColor: mathBalances ? "var(--good)" : "var(--concrete)", color: "#FFF", opacity: mathBalances ? 1 : 0.5, cursor: mathBalances ? "pointer" : "not-allowed" }}
+                            disabled={!mathBalances}
+                            title={mathBalances ? "Confirm all trucks are accounted for — ready to invoice" : "Resolve all unresolved trucks first"}
+                          >
+                            ✓ MARK RECONCILED
+                          </button>
+                        </div>
+                      )}
+                      {!isReconciled && !mathBalances && (
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8 }}>
+                          ▸ WAITING ON {unresolved} MORE FB{unresolved !== 1 ? "S" : ""} OR MARK THEM AS NO-SHOW
+                        </div>
+                      )}
+                      {!isReconciled && mathBalances && (
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 8 }}>
+                          ▸ ALL TRUCKS ACCOUNTED FOR · CLICK MARK RECONCILED TO ENABLE INVOICING
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ SUBMITTED FREIGHT BILLS ({bills.length})</div>
                 {bills.length === 0 ? (
                   <div style={{ padding: 32, textAlign: "center", border: "2px dashed var(--concrete)", color: "var(--concrete)" }}>
@@ -4373,6 +4492,58 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
     return { subtotal, extrasSum, fbExtrasSum, total: subtotal + ef + extrasSum + fbExtrasSum - d };
   }, [matchedBills, rate, pricingMethod, hoursOverride, extraFees, discount, extras]);
 
+  // Reconciliation check — any source order for these FBs that isn't reconciled?
+  const reconcileIssues = useMemo(() => {
+    const orderIds = [...new Set(matchedBills.map((fb) => fb.dispatchId))];
+    return orderIds
+      .map((id) => dispatches.find((d) => d.id === id))
+      .filter(Boolean)
+      .filter((d) => !d.reconciledAt) // only unreconciled
+      .map((d) => {
+        const submitted = matchedBills.filter((fb) => fb.dispatchId === d.id).length;
+        const total = freightBills.filter((fb) => fb.dispatchId === d.id).length;
+        const expected = Number(d.trucksExpected) || 1;
+        const noShow = Number(d.noShowCount) || 0;
+        const unresolved = expected - (total + noShow);
+        return { dispatch: d, submitted, total, expected, noShow, unresolved };
+      });
+  }, [matchedBills, dispatches, freightBills]);
+
+  // Auto-recall rate from source orders / project
+  const suggestedRateInfo = useMemo(() => {
+    const orderIds = [...new Set(matchedBills.map((fb) => fb.dispatchId))];
+    const sources = orderIds
+      .map((id) => {
+        const d = dispatches.find((x) => x.id === id);
+        if (!d) return null;
+        const project = projects.find((p) => p.id === d.projectId);
+        // Prefer project default_rate, fall back to order's rate for the current pricing method
+        const projRate = project?.defaultRate ? Number(project.defaultRate) : null;
+        const orderRate = pricingMethod === "hour" ? d.ratePerHour : d.ratePerTon;
+        return {
+          orderCode: d.code,
+          rate: projRate || (orderRate ? Number(orderRate) : null),
+          source: projRate ? `Project default` : `Order #${d.code}`,
+        };
+      })
+      .filter((x) => x && x.rate);
+    if (sources.length === 0) return { rates: [], suggested: null, mixed: false };
+    const uniqueRates = [...new Set(sources.map((s) => s.rate))];
+    return {
+      rates: sources,
+      suggested: uniqueRates.length === 1 ? uniqueRates[0] : null,
+      mixed: uniqueRates.length > 1,
+      uniqueRates,
+    };
+  }, [matchedBills, dispatches, projects, pricingMethod]);
+
+  // Auto-apply suggested rate when rate field is empty
+  useEffect(() => {
+    if (!rate && suggestedRateInfo.suggested) {
+      setRate(String(suggestedRateInfo.suggested));
+    }
+  }, [suggestedRateInfo.suggested]);
+
   const makeInvoiceNumber = () => {
     const year = new Date().getFullYear();
     const existing = invoices.filter((i) => i.invoiceNumber?.startsWith(`INV-${year}-`));
@@ -4599,8 +4770,42 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, company,
           <div>
             <label className="fbt-label">Rate {pricingMethod === "ton" ? "$/ton" : pricingMethod === "load" ? "$/load" : "$/hr"}</label>
             <input className="fbt-input" type="number" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder={pricingMethod === "hour" ? "142.00" : "0.00"} />
+            {/* Auto-rate suggestion */}
+            {matchedBills.length > 0 && suggestedRateInfo.rates.length > 0 && (
+              <div className="fbt-mono" style={{ fontSize: 10, color: suggestedRateInfo.mixed ? "var(--hazard-deep)" : "var(--good)", marginTop: 4 }}>
+                {suggestedRateInfo.mixed ? (
+                  <>⚠ MIXED RATES DETECTED: ${suggestedRateInfo.uniqueRates.join(", $")} · PICK ONE OR SET MANUALLY</>
+                ) : (
+                  <>▸ RECALLED FROM {suggestedRateInfo.rates[0].source}: ${suggestedRateInfo.suggested}</>
+                )}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Reconciliation warning banner — lists any unreconciled orders */}
+        {matchedBills.length > 0 && reconcileIssues.length > 0 && (
+          <div style={{ padding: 14, background: "#FEF3C7", border: "2px solid var(--hazard)", marginBottom: 18 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+              ⚠ {reconcileIssues.length} UNRECONCILED ORDER{reconcileIssues.length !== 1 ? "S" : ""} — REVIEW BEFORE INVOICING
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {reconcileIssues.map((r) => (
+                <div key={r.dispatch.id} style={{ padding: 8, background: "#FFF", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                  <strong>ORDER #{r.dispatch.code}</strong> · {r.dispatch.jobName}
+                  <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>
+                    Expected: {r.expected} · Submitted: {r.total} · No-show: {r.noShow}
+                    {r.unresolved > 0 && <span style={{ color: "var(--safety)", fontWeight: 700 }}> · {r.unresolved} UNRESOLVED</span>}
+                    {r.unresolved === 0 && <span style={{ color: "var(--hazard-deep)", fontWeight: 700 }}> · NEEDS MARK RECONCILED CLICK</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8 }}>
+              ▸ GO TO THE ORDER TAB TO RESOLVE NO-SHOWS AND CLICK MARK RECONCILED · YOU CAN STILL PROCEED BELOW
+            </div>
+          </div>
+        )}
 
         {pricingMethod === "hour" && matchedBills.length > 0 && (
           <div style={{ marginBottom: 18, padding: 14, background: "#F5F5F4", border: "1px solid var(--steel)" }}>
