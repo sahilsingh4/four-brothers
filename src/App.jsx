@@ -88,11 +88,13 @@ import {
 // without React/DOM. See src/utils.js + src/utils.test.js.
 import {
   fmt$, fmtDate, fmtDateTime, formatTime12h, todayISO, randomCode,
-  validatePassword, validateEmail, clientToken, matchesClientToken,
+  clientToken, matchesClientToken,
 } from "./utils";
 import { Toast } from "./components/Toast";
 import { Logo } from "./components/Logo";
 import { Lightbox } from "./components/Lightbox";
+import { LoginScreen } from "./components/LoginScreen";
+import { ChangePasswordModal } from "./components/ChangePasswordModal";
 import { useFormDraft } from "./hooks/useFormDraft";
 import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { readUploadQueue, enqueueUpload, removeFromUploadQueue } from "./hooks/uploadQueue";
@@ -236,147 +238,7 @@ const fireBrowserNotif = (title, body, tag) => {
 // ========== AUTH UTILITIES (SUPABASE) ==========
 // v20 Session Q: Hardened password requirements.
 // NIST-aligned: 12+ chars with mixed complexity. Catches most common attacks (brute force, credential stuffing).
-// ========== LOGIN (Supabase email/password) ==========
-const LoginScreen = ({ onSuccess, onCancel }) => {
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  const submit = async () => {
-    setErr("");
-    const ev = validateEmail(email);
-    if (ev) { setErr(ev); return; }
-    if (!pw) { setErr("Password is required"); return; }
-
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
-      if (error) {
-        setErr(error.message || "Login failed");
-        setLoading(false);
-        return;
-      }
-      onSuccess(data.user);
-    } catch (e) {
-      setErr(e.message || "Login failed — check your internet");
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fbt-root texture-paper" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="fbt-card" style={{ maxWidth: 440, width: "100%", padding: 0, overflow: "hidden" }}>
-        <div className="hazard-stripe" style={{ height: 10 }} />
-        <div style={{ padding: 36 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-            <div style={{ width: 56, height: 56, background: "var(--hazard)", border: "3px solid var(--steel)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-3deg)", boxShadow: "4px 4px 0 var(--steel)" }}>
-              <Lock size={26} strokeWidth={2.5} color="var(--steel)" />
-            </div>
-            <div>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em" }}>▸ STAFF SIGN IN</div>
-              <h2 className="fbt-display" style={{ fontSize: 24, margin: 0, lineHeight: 1 }}>SECURE LOGIN</h2>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 16 }}>
-            <div>
-              <label className="fbt-label">Email</label>
-              <input className="fbt-input" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} autoFocus placeholder="you@example.com" />
-            </div>
-            <div>
-              <label className="fbt-label">Password</label>
-              <input className="fbt-input" type="password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} />
-            </div>
-
-            {err && (
-              <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} /> {err}
-              </div>
-            )}
-
-            <button onClick={submit} className="btn-primary" disabled={loading} style={{ justifyContent: "center", padding: "14px" }}>
-              {loading ? "SIGNING IN…" : <>SIGN IN <ArrowRight size={14} style={{ marginLeft: 6 }} /></>}
-            </button>
-
-            <button onClick={onCancel} className="btn-ghost" style={{ justifyContent: "center", padding: "10px" }}>
-              ← BACK TO PUBLIC SITE
-            </button>
-
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em", marginTop: 4 }}>
-              ▸ CLOUD LOGIN · SECURED BY SUPABASE
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ========== CHANGE PASSWORD (Supabase) ==========
-const ChangePasswordModal = ({ onClose, onToast }) => {
-  const [pw, setPw] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    setErr("");
-    const v = validatePassword(pw);
-    if (v) { setErr(v); return; }
-    if (pw !== confirm) { setErr("Passwords don't match"); return; }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password: pw });
-      if (error) { setErr(error.message); setLoading(false); return; }
-      onToast("PASSWORD CHANGED");
-      onClose();
-    } catch (e) {
-      setErr(e.message || "Failed to change password");
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
-        <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 className="fbt-display" style={{ fontSize: 20, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-            <KeyRound size={18} /> CHANGE PASSWORD
-          </h3>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
-        </div>
-        <div style={{ padding: 24, display: "grid", gap: 14 }}>
-          <div>
-            <label className="fbt-label">New Password</label>
-            <input className="fbt-input" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="12+ chars · upper + lower + number + symbol" autoFocus />
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6, lineHeight: 1.6, letterSpacing: "0.03em" }}>
-              ▸ MIN 12 CHARS · MIX CASE · INCLUDE A NUMBER · INCLUDE A SYMBOL<br/>
-              ▸ NO COMMON WORDS (PASSWORD, BROTHERS, TRUCKING, QWERTY, 123456)<br/>
-              ▸ NO 3+ REPEATED CHARS IN A ROW
-            </div>
-          </div>
-          <div>
-            <label className="fbt-label">Confirm New Password</label>
-            <input className="fbt-input" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} />
-          </div>
-
-          {err && (
-            <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
-              <AlertCircle size={14} /> {err}
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            <button onClick={submit} className="btn-primary" disabled={loading}><CheckCircle2 size={16} /> {loading ? "UPDATING…" : "UPDATE PASSWORD"}</button>
-            <button onClick={onClose} className="btn-ghost">CANCEL</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 
 // ========================================================================
@@ -13317,7 +13179,6 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                       const sExp = expanded[`s_${pd.projectKey}_${sub.subKey}`];
                       const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
                       const paidFbs = sub.fbs.filter((x) => !!x.fb.paidAt);
-                      const unpaidGross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
                       const isAllPaid = unpaidFbs.length === 0 && paidFbs.length > 0;
                       // Missing-rate detection: any FB whose assignment has no payRate configured
                       const missingRateFbs = sub.fbs.filter((x) => {
