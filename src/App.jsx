@@ -4447,6 +4447,248 @@ ${photosHtml}
   w.document.close();
   return { opened: true };
 };
+
+// ========== CUSTOMER STATEMENT PDF (v18) ==========
+// Statement showing all invoices for a customer over a date range with running balance.
+// Same invoice-style layout: logo · header · To block · sparse table · total due.
+const generateCustomerStatementPDF = ({ customer, invoices, company, fromDate, toDate, openOnly = false }) => {
+  const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+  const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
+  const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
+
+  const logoSvg = `<svg viewBox="0 0 120 120" width="88" height="88" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="56" fill="#FFF" stroke="#1C1917" stroke-width="3"/>
+    <circle cx="60" cy="60" r="48" fill="none" stroke="#1C1917" stroke-width="1"/>
+    <path d="M 10 56 L 110 56 L 110 74 L 10 74 Z" fill="#1C1917"/>
+    <path d="M 2 58 L 10 56 L 10 74 L 2 76 Z" fill="#1C1917"/>
+    <path d="M 118 58 L 110 56 L 110 74 L 118 76 Z" fill="#1C1917"/>
+    <text x="60" y="69" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="10" font-weight="900" fill="#FFF" letter-spacing="0.5">4 BROTHERS</text>
+    <text x="60" y="38" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="22" font-weight="900" fill="#1C1917" letter-spacing="-1">4B</text>
+    <path d="M 22 44 Q 60 32 98 44" fill="none" stroke="#1C1917" stroke-width="1.2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#1C1917" letter-spacing="1">TRUCKING, LLC</text>
+  </svg>`;
+
+  // Filter invoices for this customer + optional date range + optional open-only
+  const custInvoices = invoices.filter((inv) => {
+    // Match by billToId (customer.id) if set, else by billToName (case-insensitive)
+    const matchesCustomer = inv.billToId
+      ? String(inv.billToId) === String(customer.id)
+      : (inv.billToName || "").toLowerCase() === (customer.companyName || customer.contactName || "").toLowerCase();
+    if (!matchesCustomer) return false;
+
+    const invDate = inv.invoiceDate || inv.createdAt || "";
+    if (fromDate && invDate.slice(0, 10) < fromDate) return false;
+    if (toDate && invDate.slice(0, 10) > toDate) return false;
+
+    if (openOnly) {
+      const paid = Number(inv.amountPaid || 0);
+      const total = Number(inv.total || 0);
+      if (paid >= total - 0.01) return false;  // fully paid → exclude
+    }
+    return true;
+  }).sort((a, b) => (a.invoiceDate || "").localeCompare(b.invoiceDate || ""));
+
+  // Build rows with running balance
+  let runningBalance = 0;
+  let totalInvoiced = 0;
+  let totalPaid = 0;
+  let totalBalance = 0;
+
+  const rowsHtml = custInvoices.map((inv) => {
+    const invTotal = Number(inv.total) || 0;
+    const paid = Number(inv.amountPaid || 0);
+    const balance = invTotal - paid;
+    runningBalance += balance;
+    totalInvoiced += invTotal;
+    totalPaid += paid;
+    totalBalance = runningBalance;
+
+    const isOverdue = inv.dueDate && balance > 0 && new Date(inv.dueDate) < new Date();
+    const statusColor = balance <= 0.01 ? "#047857" : isOverdue ? "#B91C1C" : "#92400E";
+    const statusLabel = balance <= 0.01 ? "PAID" : isOverdue ? "OVERDUE" : "OPEN";
+
+    return `<tr>
+      <td style="font-weight:700;">${esc(inv.invoiceNumber || "—")}</td>
+      <td>${esc(fmtFullDate(inv.invoiceDate))}</td>
+      <td>${esc(fmtFullDate(inv.dueDate) || "—")}</td>
+      <td class="r">${money(invTotal)}</td>
+      <td class="r">${money(paid)}</td>
+      <td class="r" style="color:${statusColor}; font-weight:700;">${money(balance)}</td>
+      <td class="r">${money(runningBalance)}</td>
+      <td style="color:${statusColor}; font-size:8.5pt; font-weight:700;">${statusLabel}</td>
+    </tr>`;
+  }).join("");
+
+  const statementDate = new Date().toISOString();
+  const statementNum = `ST-${new Date().getFullYear()}-${String(customer.id || "").slice(0, 8)}-${String(Date.now()).slice(-4)}`;
+
+  // Pay To block (the customer)
+  const custName = customer.companyName || customer.contactName || "—";
+  const custContactName = customer.companyName && customer.contactName ? customer.contactName : "";
+  const custAddress = customer.address || "";
+  const custPhone = customer.phone || "";
+  const custEmail = customer.email || "";
+
+  const companyAddr = company?.address ? company.address.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const companyLines = [
+    company?.name || "4 BROTHERS TRUCKING, LLC",
+    ...companyAddr,
+    company?.phone ? `Office: ${company.phone}` : "",
+    company?.email || "",
+  ].filter(Boolean);
+
+  const rangeLabel = [
+    fromDate ? fmtLongDate(fromDate) : "All time",
+    toDate ? fmtLongDate(toDate) : fmtLongDate(statementDate),
+  ].join(" — ");
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Customer Statement — ${esc(custName)}</title>
+<style>
+  @page { margin: 0.5in; size: letter; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 18px; font-family: 'Times New Roman', Times, serif; color: #000; font-size: 10pt; line-height: 1.35; }
+  .btn-print { position: fixed; top: 10px; right: 10px; padding: 10px 20px; background: #F59E0B; color: #000; border: 2px solid #000; font-weight: 900; cursor: pointer; font-size: 11pt; letter-spacing: 0.06em; box-shadow: 3px 3px 0 #000; z-index: 999; font-family: Arial, sans-serif; }
+  @media print { .btn-print { display: none; } body { padding: 0; } }
+
+  .hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 26px; }
+  .hdr-left { flex: 1; }
+  .hdr-left .co-name { font-weight: 700; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.02em; }
+  .hdr-left .co-line { font-size: 10pt; }
+  .hdr-logo { flex-shrink: 0; padding: 0 20px; }
+  .hdr-right { flex: 1; text-align: right; font-size: 10pt; }
+  .hdr-right .stmt-num { font-weight: 700; font-size: 11pt; margin-bottom: 2px; }
+  .hdr-right .stmt-kind { font-size: 9pt; color: #555; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  .tolabel { margin-bottom: 16px; }
+  .tolabel .label { font-size: 9pt; color: #555; font-style: italic; margin-bottom: 2px; }
+  .tolabel .name { font-size: 11pt; font-weight: 700; text-transform: uppercase; }
+  .tolabel .sub { font-size: 10pt; color: #333; }
+
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
+  table.lines thead th {
+    background: #E5E5E5;
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-align: left;
+    padding: 4px 6px;
+    border: 1px solid #000;
+  }
+  table.lines thead th.r { text-align: right; }
+  table.lines td {
+    font-size: 9.5pt;
+    padding: 3px 6px;
+    border: 1px solid #000;
+  }
+  table.lines td.r { text-align: right; }
+  table.lines th:nth-child(1) { width: 12%; }
+  table.lines th:nth-child(2) { width: 9%; }
+  table.lines th:nth-child(3) { width: 9%; }
+  table.lines th:nth-child(4) { width: 11%; }
+  table.lines th:nth-child(5) { width: 11%; }
+  table.lines th:nth-child(6) { width: 13%; }
+  table.lines th:nth-child(7) { width: 13%; }
+  table.lines th:nth-child(8) { width: 10%; }
+
+  .summary-box { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .summary-inner { min-width: 340px; }
+  .summary-inner .sum-row { display: flex; justify-content: space-between; padding: 3px 14px; font-size: 10pt; }
+  .summary-inner .sum-row.sub { color: #444; }
+  .summary-inner .total-box {
+    border: 2px solid #000;
+    padding: 6px 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    display: flex;
+    gap: 40px;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 11pt;
+  }
+
+  .range-label { font-size: 9pt; color: #444; font-style: italic; margin-bottom: 10px; }
+  .filter-tag { display: inline-block; padding: 2px 8px; background: #E5E5E5; border: 1px solid #999; font-size: 9pt; margin-left: 6px; }
+
+  .thank-you { text-align: center; font-size: 11pt; font-style: italic; margin-top: 24px; }
+  .terms { text-align: center; font-size: 9pt; color: #444; margin-top: 6px; padding: 0 20px; line-height: 1.4; }
+</style></head>
+<body>
+<button class="btn-print" onclick="window.print()">🖨 PRINT / SAVE AS PDF</button>
+
+<div class="hdr">
+  <div class="hdr-left">
+    ${companyLines.map((l, i) => `<div class="${i === 0 ? 'co-name' : 'co-line'}">${esc(l)}</div>`).join("")}
+  </div>
+  <div class="hdr-logo">${logoSvg}</div>
+  <div class="hdr-right">
+    <div class="stmt-kind">CUSTOMER STATEMENT${openOnly ? " · OPEN ONLY" : ""}</div>
+    <div class="stmt-num">${esc(statementNum)}</div>
+    <div>Date: ${esc(fmtLongDate(statementDate))}</div>
+  </div>
+</div>
+
+<div class="tolabel">
+  <div class="label">To:</div>
+  <div class="name">${esc(custName)}</div>
+  ${custContactName ? `<div class="sub">Attn: ${esc(custContactName)}</div>` : ''}
+  ${custAddress ? `<div class="sub">${esc(custAddress)}</div>` : ''}
+  ${custPhone ? `<div class="sub">Phone: ${esc(custPhone)}</div>` : ''}
+  ${custEmail ? `<div class="sub">Email: ${esc(custEmail)}</div>` : ''}
+</div>
+
+<div class="range-label">
+  Period: ${esc(rangeLabel)}
+  ${openOnly ? '<span class="filter-tag">OPEN INVOICES ONLY</span>' : '<span class="filter-tag">ALL INVOICES IN PERIOD</span>'}
+</div>
+
+<table class="lines">
+  <thead>
+    <tr>
+      <th>Invoice #</th>
+      <th>Date</th>
+      <th>Due</th>
+      <th class="r">Total</th>
+      <th class="r">Paid</th>
+      <th class="r">Balance</th>
+      <th class="r">Running</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rowsHtml || `<tr><td colspan="8" style="text-align:center; padding: 20px; color: #999; font-style: italic;">No invoices in the selected period.</td></tr>`}
+  </tbody>
+</table>
+
+<div class="summary-box">
+  <div class="summary-inner">
+    <div class="sum-row sub">
+      <span>Total Invoiced</span>
+      <span>${money(totalInvoiced)}</span>
+    </div>
+    <div class="sum-row sub">
+      <span>Total Paid</span>
+      <span>−${money(totalPaid)}</span>
+    </div>
+    <div class="total-box">
+      <span>Balance Due</span>
+      <span>${money(totalBalance)}</span>
+    </div>
+  </div>
+</div>
+
+<div class="thank-you">Thank you for your business</div>
+<div class="terms">Please remit payment for the balance due to ${esc(company?.name || "4 Brothers Trucking, LLC")}. Questions? Contact ${esc(company?.email || "office@4brotherstruck.com")}${company?.phone ? ` or ${esc(company.phone)}` : ""}.</div>
+
+</body></html>`;
+
+  const w = window.open("", "_blank", "width=850,height=1100");
+  if (!w) throw new Error("Popup blocked — please allow popups to generate statement.");
+  w.document.write(html);
+  w.document.close();
+  return { opened: true };
+};
 // ========== COMPANY PROFILE MODAL ==========
 const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState({ ...company });
@@ -7401,7 +7643,7 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
 };
 
 // ========== CONTACTS TAB ==========
-const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company, onToast }) => {
+const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, invoices = [], company, onToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -7578,7 +7820,7 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
                     {c.typicalTrucks && <div>▸ {c.typicalTrucks} typical trucks</div>}
                   </div>
 
-                  <div style={{ marginTop: 12, display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ marginTop: 12, display: "flex", gap: 6, flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
                     {c.phone && (
                       <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`} className="btn-ghost" style={{ padding: "6px 10px", fontSize: 10, textDecoration: "none", flex: 1, justifyContent: "center", display: "flex", alignItems: "center" }}>
                         <Phone size={11} style={{ marginRight: 4 }} /> CALL
@@ -7593,6 +7835,34 @@ const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, company,
                       <a href={buildEmailLink(c.email, "4 Brothers Trucking", "")} className="btn-ghost" style={{ padding: "6px 10px", fontSize: 10, textDecoration: "none", flex: 1, justifyContent: "center", display: "flex", alignItems: "center" }}>
                         <Mail size={11} style={{ marginRight: 4 }} /> EMAIL
                       </a>
+                    )}
+                    {/* v18: Statement button for customers only — defaults to all-time, open-only */}
+                    {c.type === "customer" && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          try {
+                            generateCustomerStatementPDF({
+                              customer: c,
+                              invoices,
+                              company,
+                              fromDate: "",
+                              toDate: "",
+                              openOnly: true,
+                            });
+                            onToast("✓ STATEMENT OPENED");
+                          } catch (err) {
+                            console.error("Statement failed:", err);
+                            onToast("⚠ POPUP BLOCKED — ALLOW POPUPS");
+                          }
+                        }}
+                        className="btn-primary"
+                        style={{ padding: "6px 10px", fontSize: 10, flex: 1, justifyContent: "center", display: "flex", alignItems: "center", background: "var(--good)", color: "#FFF" }}
+                        title="Generate open-balance statement for this customer"
+                      >
+                        <FileDown size={11} style={{ marginRight: 4 }} /> STATEMENT
+                      </button>
                     )}
                   </div>
                 </div>
@@ -14301,6 +14571,13 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
   const [customTo, setCustomTo] = useState("");
   const [showArchiveModal, setShowArchiveModal] = useState(false);
 
+  // v18: Customer statement builder state
+  const [stmtCustomerId, setStmtCustomerId] = useState("");
+  const [stmtFromDate, setStmtFromDate] = useState("");
+  const [stmtToDate, setStmtToDate] = useState("");
+  const [stmtOpenOnly, setStmtOpenOnly] = useState(true);
+  const customers = useMemo(() => (contacts || []).filter((c) => c.type === "customer"), [contacts]);
+
   const { from, to, label } = useMemo(() => {
     if (rangePreset === "lastweek") {
       const r = lastWeekRange();
@@ -14368,6 +14645,78 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
         <button onClick={() => setShowArchiveModal(true)} className="btn-primary" style={{ padding: "10px 18px" }}>
           <FileDown size={14} style={{ marginRight: 6 }} /> OPEN
         </button>
+      </div>
+
+      {/* v18: CUSTOMER STATEMENT BUILDER */}
+      <div className="fbt-card" style={{ padding: 18, border: "2px solid var(--good)", background: "linear-gradient(135deg, #FFF, #F0FDF4)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          <Receipt size={24} style={{ color: "var(--good)" }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div className="fbt-display" style={{ fontSize: 18 }}>📄 CUSTOMER STATEMENT</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+              EXPORT A/R STATEMENT FOR A CUSTOMER · RUNNING BALANCE · OPEN OR ALL INVOICES
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+          <div>
+            <label className="fbt-label" style={{ fontSize: 10 }}>Customer</label>
+            <select className="fbt-select" value={stmtCustomerId} onChange={(e) => setStmtCustomerId(e.target.value)}>
+              <option value="">— Pick a customer —</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
+                  {c.companyName && c.contactName ? ` (${c.contactName})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="fbt-label" style={{ fontSize: 10 }}>From (Optional)</label>
+            <input type="date" className="fbt-input" value={stmtFromDate} onChange={(e) => setStmtFromDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="fbt-label" style={{ fontSize: 10 }}>To (Optional)</label>
+            <input type="date" className="fbt-input" value={stmtToDate} onChange={(e) => setStmtToDate(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            disabled={!stmtCustomerId}
+            onClick={() => {
+              const cust = customers.find((c) => String(c.id) === String(stmtCustomerId));
+              if (!cust) { onToast("PICK A CUSTOMER"); return; }
+              try {
+                generateCustomerStatementPDF({
+                  customer: cust,
+                  invoices,
+                  company,
+                  fromDate: stmtFromDate,
+                  toDate: stmtToDate,
+                  openOnly: stmtOpenOnly,
+                });
+                onToast("✓ STATEMENT OPENED");
+              } catch (err) {
+                console.error("Statement failed:", err);
+                onToast("⚠ POPUP BLOCKED — ALLOW POPUPS");
+              }
+            }}
+            className="btn-primary"
+            style={{ padding: "8px 16px", whiteSpace: "nowrap", background: stmtCustomerId ? "var(--good)" : "var(--concrete)", color: "#FFF" }}
+          >
+            <FileDown size={13} style={{ marginRight: 4 }} /> GENERATE
+          </button>
+        </div>
+
+        <div style={{ marginTop: 10, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12 }}>
+            <input type="checkbox" checked={stmtOpenOnly} onChange={(e) => setStmtOpenOnly(e.target.checked)} />
+            <span className="fbt-mono" style={{ fontSize: 11 }}>Open invoices only (hide fully-paid)</span>
+          </label>
+          <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+            ▸ Leave both dates blank for all-time statement
+          </span>
+        </div>
       </div>
 
       {/* FB Search Panel at top */}
@@ -16175,7 +16524,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} />}
-        {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
+        {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onToast={onToast} />}
