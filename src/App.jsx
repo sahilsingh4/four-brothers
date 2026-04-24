@@ -223,6 +223,43 @@ const requestBrowserNotif = async () => {
   try { return await Notification.requestPermission(); } catch { return "denied"; }
 };
 
+// Persist an in-progress form draft to localStorage so refreshing,
+// accidental close, or idle logout doesn't wipe unsaved work.
+// Returns [draft, setDraft, wasRestored, clearDraft].
+// `enabled` lets callers skip persistence (e.g. when editing an existing
+// record, since the server has the source of truth there).
+const FORM_DRAFT_PREFIX = "fbt:draft:";
+const useFormDraft = (key, initialValue, enabled = true) => {
+  const storageKey = FORM_DRAFT_PREFIX + key;
+  const [wasRestored, setWasRestored] = useState(false);
+  const [draft, setDraft] = useState(() => {
+    if (!enabled) return initialValue;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // flip wasRestored after render so effects can react
+        queueMicrotask(() => setWasRestored(true));
+        return parsed;
+      }
+    } catch { /* noop: private mode / quota exceeded */ }
+    return initialValue;
+  });
+  useEffect(() => {
+    if (!enabled) return;
+    const t = setTimeout(() => {
+      try { localStorage.setItem(storageKey, JSON.stringify(draft)); }
+      catch { /* noop */ }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [draft, enabled, storageKey]);
+  const clearDraft = () => {
+    try { localStorage.removeItem(storageKey); } catch { /* noop */ }
+    setWasRestored(false);
+  };
+  return [draft, setDraft, wasRestored, clearDraft];
+};
+
 const fireBrowserNotif = (title, body, tag) => {
   try {
     if (!("Notification" in window)) return;
@@ -16714,7 +16751,7 @@ const BidDeadlineChip = ({ dueAt, label = "DUE" }) => {
 // ========== BID MODAL (new + edit) ==========
 const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
   const isNew = !bid?.id;
-  const [draft, setDraft] = useState(bid ? { ...bid } : {
+  const initialDraft = bid ? { ...bid } : {
     rfbNumber: "",
     title: "",
     agency: "",
@@ -16744,7 +16781,10 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
     notes: "",
     tags: [],
     checklistItems: [],  // v19a: document checklist [{id, label, done, notes}]
-  });
+  };
+  // Only persist drafts for NEW bids — editing an existing one already has
+  // the server as source of truth, so draft-restore would be confusing.
+  const [draft, setDraft, wasRestored, clearDraft] = useFormDraft("bid:new", initialDraft, isNew);
   const [saving, setSaving] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [checklistInput, setChecklistInput] = useState("");  // v19a: for adding new checklist items
@@ -16791,6 +16831,7 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
         winningBidAmount: draft.winningBidAmount === "" ? null : Number(draft.winningBidAmount),
       };
       await onSave(payload);
+      clearDraft();  // saved — drop any persisted restore copy
       onClose();
     } catch (e) {
       console.error("BidModal save:", e);
@@ -16815,7 +16856,16 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
         <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>{isNew ? "NEW BID" : "EDIT BID"}</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+              {isNew ? "NEW BID" : "EDIT BID"}
+              {wasRestored && (
+                <span
+                  onClick={() => { clearDraft(); setDraft(initialDraft); }}
+                  title="Click to discard the restored draft and start fresh"
+                  style={{ marginLeft: 8, padding: "2px 6px", background: "var(--good)", color: "#FFF", fontSize: 9, cursor: "pointer", letterSpacing: "0.06em" }}
+                >● RESTORED · CLICK TO DISCARD</span>
+              )}
+            </div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>
               {draft.rfbNumber ? `${draft.rfbNumber} · ` : ""}{draft.title || "Untitled"}
             </h3>
