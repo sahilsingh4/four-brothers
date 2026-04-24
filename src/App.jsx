@@ -11314,14 +11314,17 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       </tr>`;
     }
 
-    // Emit each pay line, then if any was brokerable, emit a brokerage deduction row.
+    // v23 Session CC: Emit each pay line with inline Gross | Fee% | Fee$ | Net columns.
+    // (Previously: Gross in "Amount" column + separate "BROKERAGE DEDUCTION" row below.)
     const lineRows = payLines.map((ln, lnIdx) => {
       const isFirst = lnIdx === 0;
       const desc = (ln.item || ln.code || "").toUpperCase();
       const qty = Number(ln.qty) || 0;
       const rate = Number(ln.rate) || 0;
-      // Show GROSS in amount column — brokerage shown separately below
       const gross = Number(ln.gross) || (qty * rate);
+      const feePct = ln.brokerable ? (Number(ln.brokeragePct) || 0) : 0;
+      const feeAmt = ln.brokerable ? gross * feePct / 100 : 0;
+      const net = gross - feeAmt;
       return `<tr class="line ${isFirst ? 'line-first' : 'line-sub'}">
         <td>${isFirst ? esc(fbDate) : ''}</td>
         <td>${isFirst ? esc(fb.freightBillNumber || '—') : ''}</td>
@@ -11330,25 +11333,14 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
         <td class="r">${fmtQty(qty)}</td>
         <td class="r">${money(rate)}</td>
         <td class="r">${money(gross)}</td>
+        <td class="r" style="${feePct > 0 ? 'color: #92400E;' : 'color: #999;'}">${feePct > 0 ? feePct.toFixed(1) + '%' : '—'}</td>
+        <td class="r" style="${feeAmt > 0 ? 'color: #92400E;' : 'color: #999;'}">${feeAmt > 0 ? '−' + money(feeAmt) : '—'}</td>
+        <td class="r" style="font-weight: 700;">${money(net)}</td>
       </tr>`;
     }).join("");
 
-    // Brokerage deduction row — aggregate across all brokerable lines on this FB
-    const fbBrokerage = payLines.reduce((s, ln) => {
-      if (!ln.brokerable) return s;
-      const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
-      return s + gross * (Number(ln.brokeragePct) || 0) / 100;
-    }, 0);
-    const brokerageRow = fbBrokerage > 0
-      ? `<tr class="line line-sub brokerage-row">
-          <td></td><td></td><td></td>
-          <td style="font-style: italic; color: #92400E;">BROKERAGE DEDUCTION (${payLines.find((ln) => ln.brokerable)?.brokeragePct || 0}%)</td>
-          <td></td><td></td>
-          <td class="r" style="color: #92400E; font-weight: 700;">−${money(fbBrokerage)}</td>
-        </tr>`
-      : "";
-
-    return lineRows + brokerageRow;
+    // No separate deduction row needed — fee is inline on each line now.
+    return lineRows;
   }).join("");
 
   // Total Due = sum of all NET values across all pay lines
@@ -11444,13 +11436,16 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
   table.lines td.r { text-align: right; }
   table.lines tr.line-sub td:nth-child(-n+3) { border-top: none; border-bottom: none; }
   table.lines tr.brokerage-row td { background: #FFFBEB; }
-  table.lines th:nth-child(1), table.lines td:nth-child(1) { width: 8%; }
-  table.lines th:nth-child(2), table.lines td:nth-child(2) { width: 10%; }
-  table.lines th:nth-child(3), table.lines td:nth-child(3) { width: 8%; }
-  table.lines th:nth-child(4), table.lines td:nth-child(4) { width: 38%; }
-  table.lines th:nth-child(5), table.lines td:nth-child(5) { width: 9%; }
-  table.lines th:nth-child(6), table.lines td:nth-child(6) { width: 12%; }
-  table.lines th:nth-child(7), table.lines td:nth-child(7) { width: 15%; }
+  table.lines th:nth-child(1), table.lines td:nth-child(1) { width: 7%; }
+  table.lines th:nth-child(2), table.lines td:nth-child(2) { width: 8%; }
+  table.lines th:nth-child(3), table.lines td:nth-child(3) { width: 7%; }
+  table.lines th:nth-child(4), table.lines td:nth-child(4) { width: 24%; }
+  table.lines th:nth-child(5), table.lines td:nth-child(5) { width: 7%; }
+  table.lines th:nth-child(6), table.lines td:nth-child(6) { width: 9%; }
+  table.lines th:nth-child(7), table.lines td:nth-child(7) { width: 10%; }
+  table.lines th:nth-child(8), table.lines td:nth-child(8) { width: 7%; }
+  table.lines th:nth-child(9), table.lines td:nth-child(9) { width: 10%; }
+  table.lines th:nth-child(10), table.lines td:nth-child(10) { width: 11%; }
 
   .summary-box { display: flex; justify-content: flex-end; margin-top: 6px; }
   .summary-inner { min-width: 340px; }
@@ -11509,11 +11504,14 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
       <th>Description</th>
       <th class="r">Qty</th>
       <th class="r">Rate</th>
-      <th class="r">Amount</th>
+      <th class="r">Gross</th>
+      <th class="r">Fee%</th>
+      <th class="r">Fee $</th>
+      <th class="r">Net</th>
     </tr>
   </thead>
   <tbody>
-    ${rowsHtml || `<tr><td colspan="7" style="text-align:center; padding: 20px; color: #999; font-style: italic;">No pay lines on statement.</td></tr>`}
+    ${rowsHtml || `<tr><td colspan="10" style="text-align:center; padding: 20px; color: #999; font-style: italic;">No pay lines on statement.</td></tr>`}
   </tbody>
 </table>
 
@@ -11525,7 +11523,7 @@ const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokerage
         <span>${money(subtotalGross)}</span>
       </div>
       <div class="sum-row ded">
-        <span>Total Brokerage Deduction</span>
+        <span>Total Fees Deducted</span>
         <span>−${money(totalBrokerage)}</span>
       </div>
     ` : ''}
@@ -11809,16 +11807,23 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
   // v18 SESSION 1 (Pay Builder scaffolding): two separate builders for DRIVERS and SUBS.
   // Each has its own contact picker + date range + FB list.
   // v18 SESSION 2: pay lines editable inline with per-FB SAVE (same pattern as invoice builder).
+  // v23 Session BB: merged into a single toggle-switched panel (was 2 side-by-side).
   // ══════════════════════════════════════════════════════════════════
+  const [payScope, setPayScope] = useState("drivers"); // "drivers" | "subs"
   const [drvContactId, setDrvContactId] = useState("");
   const [drvFromDate, setDrvFromDate] = useState("");
   const [drvToDate, setDrvToDate] = useState("");
   const [drvExpandedFbIds, setDrvExpandedFbIds] = useState(new Set());
+  // v23 Session DD: user can check/uncheck which FBs to include in pay statement.
+  // null = "all selected" (default); Set = explicit selection
+  const [drvSelectedFbIds, setDrvSelectedFbIds] = useState(null);
 
   const [subContactId, setSubContactId] = useState("");
   const [subFromDate, setSubFromDate] = useState("");
   const [subToDate, setSubToDate] = useState("");
   const [subExpandedFbIds, setSubExpandedFbIds] = useState(new Set());
+  // v23 Session DD: FB selection for subs (parallel to drvSelectedFbIds)
+  const [subSelectedFbIds, setSubSelectedFbIds] = useState(null);
 
   // v18 Session 2: per-FB draft state for pay lines. Shared across drivers/subs builders.
   // Shape: { [fbId]: [...payingLines] }. Presence = dirty.
@@ -12474,9 +12479,43 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      {/* v18 Session 1: two pay statement builders side-by-side — DRIVERS + SUBS.
-          Each has its own contact picker + date range + FB list. Editing + PDF come in Session 2/3. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14 }}>
+      {/* v23 Session BB: merged into a single panel with DRIVERS/SUBS toggle.
+          Was two side-by-side panels. Toggle at top picks which builder to show. */}
+
+      {/* Toggle header */}
+      <div className="fbt-card" style={{ padding: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", border: "2px solid var(--steel)" }}>
+          <button
+            type="button"
+            onClick={() => setPayScope("drivers")}
+            style={{
+              padding: "10px 22px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+              background: payScope === "drivers" ? "#0369A1" : "#FFF",
+              color: payScope === "drivers" ? "#FFF" : "var(--steel)",
+              border: "none", cursor: "pointer",
+            }}
+          >
+            <User size={13} style={{ marginRight: 6, marginBottom: -2 }} /> DRIVERS ({driverContacts.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setPayScope("subs")}
+            style={{
+              padding: "10px 22px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+              background: payScope === "subs" ? "#9A3412" : "#FFF",
+              color: payScope === "subs" ? "#FFF" : "var(--steel)",
+              border: "none", borderLeft: "2px solid var(--steel)", cursor: "pointer",
+            }}
+          >
+            <Building2 size={13} style={{ marginRight: 6, marginBottom: -2 }} /> SUBS ({subContactsList.length})
+          </button>
+        </div>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", flex: 1 }}>
+          ▸ BUILDING PAY STATEMENT FOR {payScope === "drivers" ? "EMPLOYEE DRIVERS" : "SUBCONTRACTORS"}
+        </div>
+      </div>
+
+      <div style={{ display: payScope === "drivers" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
         {/* DRIVERS BUILDER */}
         <div className="fbt-card" style={{ padding: 18, background: "#F0F9FF", border: "2px solid #0369A1" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -12525,9 +12564,25 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                 <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
                   ▸ {drvFbs.length} FB{drvFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDIT PAY LINES ON RIGHT
                 </div>
+                {drvFbs.length > 0 && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={drvSelectedFbIds === null || drvSelectedFbIds.size === drvFbs.length}
+                        onChange={(e) => setDrvSelectedFbIds(e.target.checked ? null : new Set())}
+                      />
+                      SELECT ALL
+                    </label>
+                    <span style={{ color: "var(--concrete)", marginLeft: "auto" }}>
+                      {drvSelectedFbIds === null ? drvFbs.length : drvSelectedFbIds.size} of {drvFbs.length} selected
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto" }}>
                   {drvFbs.map((fb) => {
                     const expanded = drvExpandedFbIds.has(fb.id);
+                    const isSelected = drvSelectedFbIds === null || drvSelectedFbIds.has(fb.id);
                     const disp = dispatches.find((d) => d.id === fb.dispatchId);
                     const payLines = getPayLines(fb.id);  // v18 Session 2: draft-aware
                     const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
@@ -12535,16 +12590,31 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                     const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                     const dirty = isPayDirty(fb.id);
                     return (
-                      <div key={fb.id} style={{ background: dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${dirty ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
+                      <div key={fb.id} style={{ background: !isSelected ? "#F5F5F4" : dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${!isSelected ? "#D6D3D1" : dirty ? "var(--hazard-deep)" : "var(--concrete)"}`, opacity: !isSelected ? 0.6 : 1 }}>
                         <div
-                          onClick={() => {
-                            const next = new Set(drvExpandedFbIds);
-                            if (expanded) next.delete(fb.id); else next.add(fb.id);
-                            setDrvExpandedFbIds(next);
-                          }}
-                          style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
                         >
-                          <span style={{ fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              // Switch to explicit selection mode on first interaction
+                              const current = drvSelectedFbIds === null ? new Set(drvFbs.map((f) => f.id)) : new Set(drvSelectedFbIds);
+                              if (e.target.checked) current.add(fb.id); else current.delete(fb.id);
+                              setDrvSelectedFbIds(current);
+                            }}
+                            title="Include this FB in the pay statement"
+                          />
+                          <span
+                            onClick={() => {
+                              const next = new Set(drvExpandedFbIds);
+                              if (expanded) next.delete(fb.id); else next.add(fb.id);
+                              setDrvExpandedFbIds(next);
+                            }}
+                            style={{ cursor: "pointer", fontWeight: 700 }}
+                          >
                             FB#{fb.freightBillNumber || "—"}
                             {dirty && <span title="Unsaved pay edits" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
                           </span>
@@ -12553,7 +12623,15 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                             {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
                           </span>
                           <span style={{ fontWeight: 700, color: "#0369A1" }}>${payTotal.toFixed(2)}</span>
-                          <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                          <ChevronDown
+                            size={12}
+                            onClick={() => {
+                              const next = new Set(drvExpandedFbIds);
+                              if (expanded) next.delete(fb.id); else next.add(fb.id);
+                              setDrvExpandedFbIds(next);
+                            }}
+                            style={{ cursor: "pointer", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }}
+                          />
                         </div>
                         {expanded && (
                           <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -12638,11 +12716,18 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                             return;
                           }
                           try {
+                            const selectedFbs = drvSelectedFbIds === null
+                              ? drvFbs
+                              : drvFbs.filter((fb) => drvSelectedFbIds.has(fb.id));
+                            if (selectedFbs.length === 0) {
+                              onToast("⚠ NO FBs SELECTED — CHECK AT LEAST ONE");
+                              return;
+                            }
                             generatePayStubPDF({
                               subName: driverContact?.contactName || driverContact?.companyName || "Driver",
                               subKind: "driver",
                               subId: drvContactId,
-                              fbs: drvFbs,
+                              fbs: selectedFbs,
                               payRecord: null,
                               brokeragePct: 0,
                               brokerageApplies: false,
@@ -12652,7 +12737,7 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                               contact: driverContact,
                               isHistorical: false,
                             });
-                            onToast("✓ PAY STATEMENT OPENED");
+                            onToast(`✓ PAY STATEMENT OPENED · ${selectedFbs.length} FB${selectedFbs.length !== 1 ? "s" : ""}`);
                           } catch (err) {
                             console.error("Pay statement PDF failed:", err);
                             onToast("⚠ POPUP BLOCKED — ALLOW POPUPS");
@@ -12676,7 +12761,9 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
             </div>
           )}
         </div>
+      </div>
 
+      <div style={{ display: payScope === "subs" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
         {/* SUBS BUILDER */}
         <div className="fbt-card" style={{ padding: 18, background: "#FEF3C7", border: "2px solid #9A3412" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -12726,9 +12813,25 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                 <div className="fbt-mono" style={{ fontSize: 10, color: "#9A3412", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
                   ▸ {subFbs.length} FB{subFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDIT PAY LINES ON RIGHT
                 </div>
+                {subFbs.length > 0 && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={subSelectedFbIds === null || subSelectedFbIds.size === subFbs.length}
+                        onChange={(e) => setSubSelectedFbIds(e.target.checked ? null : new Set())}
+                      />
+                      SELECT ALL
+                    </label>
+                    <span style={{ color: "var(--concrete)", marginLeft: "auto" }}>
+                      {subSelectedFbIds === null ? subFbs.length : subSelectedFbIds.size} of {subFbs.length} selected
+                    </span>
+                  </div>
+                )}
                 <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto" }}>
                   {subFbs.map((fb) => {
                     const expanded = subExpandedFbIds.has(fb.id);
+                    const isSelected = subSelectedFbIds === null || subSelectedFbIds.has(fb.id);
                     const disp = dispatches.find((d) => d.id === fb.dispatchId);
                     const payLines = getPayLines(fb.id);  // v18 Session 2: draft-aware
                     const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
@@ -12736,16 +12839,30 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                     const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                     const dirty = isPayDirty(fb.id);
                     return (
-                      <div key={fb.id} style={{ background: dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${dirty ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
+                      <div key={fb.id} style={{ background: !isSelected ? "#F5F5F4" : dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${!isSelected ? "#D6D3D1" : dirty ? "var(--hazard-deep)" : "var(--concrete)"}`, opacity: !isSelected ? 0.6 : 1 }}>
                         <div
-                          onClick={() => {
-                            const next = new Set(subExpandedFbIds);
-                            if (expanded) next.delete(fb.id); else next.add(fb.id);
-                            setSubExpandedFbIds(next);
-                          }}
-                          style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
                         >
-                          <span style={{ fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              const current = subSelectedFbIds === null ? new Set(subFbs.map((f) => f.id)) : new Set(subSelectedFbIds);
+                              if (e.target.checked) current.add(fb.id); else current.delete(fb.id);
+                              setSubSelectedFbIds(current);
+                            }}
+                            title="Include this FB in the pay statement"
+                          />
+                          <span
+                            onClick={() => {
+                              const next = new Set(subExpandedFbIds);
+                              if (expanded) next.delete(fb.id); else next.add(fb.id);
+                              setSubExpandedFbIds(next);
+                            }}
+                            style={{ cursor: "pointer", fontWeight: 700 }}
+                          >
                             FB#{fb.freightBillNumber || "—"}
                             {dirty && <span title="Unsaved pay edits" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
                           </span>
@@ -12754,7 +12871,15 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                             {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
                           </span>
                           <span style={{ fontWeight: 700, color: "#9A3412" }}>${payTotal.toFixed(2)}</span>
-                          <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                          <ChevronDown
+                            size={12}
+                            onClick={() => {
+                              const next = new Set(subExpandedFbIds);
+                              if (expanded) next.delete(fb.id); else next.add(fb.id);
+                              setSubExpandedFbIds(next);
+                            }}
+                            style={{ cursor: "pointer", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }}
+                          />
                         </div>
                         {expanded && (
                           <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -12839,11 +12964,18 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                             return;
                           }
                           try {
+                            const selectedFbs = subSelectedFbIds === null
+                              ? subFbs
+                              : subFbs.filter((fb) => subSelectedFbIds.has(fb.id));
+                            if (selectedFbs.length === 0) {
+                              onToast("⚠ NO FBs SELECTED — CHECK AT LEAST ONE");
+                              return;
+                            }
                             generatePayStubPDF({
                               subName: subContactRec?.companyName || subContactRec?.contactName || "Subcontractor",
                               subKind: "sub",
                               subId: subContactId,
-                              fbs: subFbs,
+                              fbs: selectedFbs,
                               payRecord: null,
                               brokeragePct: Number(subContactRec?.brokeragePercent || 10),
                               brokerageApplies: !!subContactRec?.brokerageApplies,
@@ -12853,7 +12985,7 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                               contact: subContactRec,
                               isHistorical: false,
                             });
-                            onToast("✓ PAY STATEMENT OPENED");
+                            onToast(`✓ PAY STATEMENT OPENED · ${selectedFbs.length} FB${selectedFbs.length !== 1 ? "s" : ""}`);
                           } catch (err) {
                             console.error("Pay statement PDF failed:", err);
                             onToast("⚠ POPUP BLOCKED — ALLOW POPUPS");
