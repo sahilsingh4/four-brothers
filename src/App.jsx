@@ -21893,12 +21893,17 @@ export default function App() {
   const setCompany = async (val) => { setCompanyState(val); await storageSet("fbt:company", val); };
   const setLastViewedMondayReport = async (val) => { setLastViewedMondayReportState(val); await storageSet("fbt:lastViewedMondayReport", val); };
 
-  // Dispatch & freight bill operations — now go through Supabase
+  // Dispatch & freight bill operations — now go through Supabase.
   // The setter receives the NEW FULL ARRAY (how the UI calls it today).
   // We diff against current state to figure out insert/update/delete.
+  // Optimistic: update local state immediately, then reconcile with server
+  // truth (real IDs / updatedAt) when the API calls finish. On failure
+  // we roll back to `previous` so the UI doesn't lie about what's saved.
   const setDispatchesShared = async (val) => {
-    // Diff: find new/updated/deleted items
-    const currentMap = new Map(dispatches.map((d) => [d.id, d]));
+    const previous = dispatches;
+    setDispatches(val);  // optimistic — UI reflects change instantly
+
+    const currentMap = new Map(previous.map((d) => [d.id, d]));
     const newMap = new Map(val.map((d) => [d.id, d]));
 
     try {
@@ -21931,15 +21936,17 @@ export default function App() {
       setDispatches(saved);
     } catch (e) {
       console.error("setDispatchesShared failed:", e);
-      // Fall back to optimistic local update so user's screen still reflects their change
-      setDispatches(val);
-      // v18: surface the error — previously silent failure meant user didn't know save failed
-      showToast("⚠ SAVE FAILED — CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setDispatches(previous);  // roll back the optimistic update
+      showToast("⚠ SAVE FAILED — REVERTED LOCAL CHANGES. CHECK CONNECTION.");
     }
   };
 
   const setFreightBillsShared = async (val) => {
-    const currentMap = new Map(freightBills.map((fb) => [fb.id, fb]));
+    const previous = freightBills;
+    setFreightBills(val);  // optimistic
+    prevFbIdsRef.current = new Set(val.map((x) => x.id));
+
+    const currentMap = new Map(previous.map((fb) => [fb.id, fb]));
     const newMap = new Map(val.map((fb) => [fb.id, fb]));
 
     try {
@@ -21962,8 +21969,9 @@ export default function App() {
       prevFbIdsRef.current = new Set(saved.map((x) => x.id));
     } catch (e) {
       console.error("setFreightBillsShared failed:", e);
-      setFreightBills(val);
-      showToast("⚠ SAVE FAILED — FB CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setFreightBills(previous);  // roll back
+      prevFbIdsRef.current = new Set(previous.map((x) => x.id));
+      showToast("⚠ SAVE FAILED — REVERTED FB CHANGES. CHECK CONNECTION.");
     }
   };
 
@@ -21971,7 +21979,9 @@ export default function App() {
 
   // --- Contacts (Supabase) ---
   const setContacts = async (val) => {
-    const currentMap = new Map(contacts.map((c) => [c.id, c]));
+    const previous = contacts;
+    setContactsState(val);  // optimistic
+    const currentMap = new Map(previous.map((c) => [c.id, c]));
     const newMap = new Map(val.map((c) => [c.id, c]));
     try {
       for (const [id] of currentMap) {
@@ -21999,20 +22009,22 @@ export default function App() {
       }
       setContactsState(saved);
     } catch (e) {
+      // Roll back the optimistic update in either failure mode.
+      setContactsState(previous);
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A CONTACT — RELOAD");
-        // Don't update local state; next realtime refresh will fix it
         return;
       }
       console.error("setContacts failed:", e);
-      setContactsState(val);
-      showToast("⚠ SAVE FAILED — CONTACT CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED CONTACT CHANGES. CHECK CONNECTION.");
     }
   };
 
   // --- Quarries (Supabase) ---
   const setQuarries = async (val) => {
-    const currentMap = new Map(quarries.map((q) => [q.id, q]));
+    const previous = quarries;
+    setQuarriesState(val);  // optimistic
+    const currentMap = new Map(previous.map((q) => [q.id, q]));
     const newMap = new Map(val.map((q) => [q.id, q]));
     try {
       for (const [id] of currentMap) {
@@ -22039,20 +22051,22 @@ export default function App() {
       }
       setQuarriesState(saved);
     } catch (e) {
+      setQuarriesState(previous);  // roll back
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A QUARRY — RELOAD");
         return;
       }
       console.error("setQuarries failed:", e);
-      setQuarriesState(val);
-      showToast("⚠ SAVE FAILED — QUARRY CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED QUARRY CHANGES. CHECK CONNECTION.");
     }
   };
 
   // --- Invoices (Supabase) ---
   // Invoices are append-only mostly — we just insert new ones
   const setInvoices = async (val) => {
-    const currentIds = new Set(invoices.map((i) => i.id));
+    const previous = invoices;
+    setInvoicesState(val);  // optimistic
+    const currentIds = new Set(previous.map((i) => i.id));
     try {
       // Find deleted ones
       const newIds = new Set(val.map((i) => i.id));
@@ -22075,8 +22089,8 @@ export default function App() {
       setInvoicesState(saved);
     } catch (e) {
       console.error("setInvoices failed:", e);
-      setInvoicesState(val);
-      showToast("⚠ SAVE FAILED — INVOICE CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setInvoicesState(previous);  // roll back
+      showToast("⚠ SAVE FAILED — REVERTED INVOICE CHANGES. CHECK CONNECTION.");
     }
   };
 
@@ -22108,7 +22122,9 @@ export default function App() {
 
   // --- Projects (Supabase) ---
   const setProjects = async (val) => {
-    const currentMap = new Map(projects.map((p) => [p.id, p]));
+    const previous = projects;
+    setProjectsState(val);  // optimistic
+    const currentMap = new Map(previous.map((p) => [p.id, p]));
     const newMap = new Map(val.map((p) => [p.id, p]));
     try {
       for (const [id] of currentMap) {
@@ -22135,13 +22151,13 @@ export default function App() {
       }
       setProjectsState(saved);
     } catch (e) {
+      setProjectsState(previous);  // roll back
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A PROJECT — RELOAD");
         return;
       }
       console.error("setProjects failed:", e);
-      setProjectsState(val);
-      showToast("⚠ SAVE FAILED — PROJECT CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED PROJECT CHANGES. CHECK CONNECTION.");
     }
   };
 
