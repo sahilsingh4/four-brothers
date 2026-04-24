@@ -2666,7 +2666,18 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     window.location.href = url;
   };
 
-  const fbForDispatch = (id) => freightBills.filter((fb) => fb.dispatchId === id);
+  // Index freight bills by dispatchId once so inline lookups are O(1)
+  // instead of O(N) per render. Big win when there are hundreds of FBs
+  // and every dispatch row filters across them.
+  const fbsByDispatch = useMemo(() => {
+    const map = new Map();
+    for (const fb of freightBills) {
+      const list = map.get(fb.dispatchId);
+      if (list) list.push(fb); else map.set(fb.dispatchId, [fb]);
+    }
+    return map;
+  }, [freightBills]);
+  const fbForDispatch = (id) => fbsByDispatch.get(id) || [];
 
   const filteredDispatches = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -2675,11 +2686,11 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       if (d.jobName.toLowerCase().includes(s)) return true;
       if ((d.subContractor || "").toLowerCase().includes(s)) return true;
       if (d.code.toLowerCase().includes(s)) return true;
-      const fbs = freightBills.filter((fb) => fb.dispatchId === d.id);
+      const fbs = fbsByDispatch.get(d.id) || [];
       if (fbs.some((fb) => (fb.freightBillNumber || "").toLowerCase().includes(s) || (fb.driverName || "").toLowerCase().includes(s) || (fb.truckNumber || "").toLowerCase().includes(s))) return true;
       return false;
     });
-  }, [dispatches, freightBills, search]);
+  }, [dispatches, fbsByDispatch, search]);
 
   // v18: group dispatches by day — key = YYYY-MM-DD of the "order date"
   // (order date is `date` field if present, else createdAt, else submittedAt).
