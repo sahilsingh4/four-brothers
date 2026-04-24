@@ -1,15 +1,28 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchPublicProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes, fetchDeletedQuotes, recoverQuote, hardDeleteQuote, fetchBids, insertBid, updateBid, deleteBid, subscribeToBids, fetchDeletedBids, recoverBid, hardDeleteBid, logAudit, fetchAuditLog, fetchTestimonials, fetchPublicTestimonials, insertTestimonial, updateTestimonial, deleteTestimonial, fetchSubPayByToken, COMPLIANCE_DOC_TYPES, getComplianceStatus, fetchComplianceDocs, insertComplianceDoc, updateComplianceDoc, deleteComplianceDoc, uploadComplianceFile, getComplianceFileUrl, deleteComplianceFile } from "./db";
 import {
-  hoursFromTimes as mathHoursFromTimes,
-  computeLineNet as mathComputeLineNet,
-  recomputeLine as mathRecomputeLine,
-  totalLines as mathTotalLines,
-  seedHoursForFb as mathSeedHoursForFb,
-  billableHoursForInvoice as mathBillableHoursForInvoice,
-  contactBrokeragePct as mathContactBrokeragePct,
-} from "./math";
+  fetchDispatches, insertDispatch, updateDispatch, deleteDispatch,
+  fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill,
+  subscribeToDispatches, subscribeToFreightBills,
+  fetchContacts, insertContact, updateContact, deleteContact,
+  fetchQuarries, insertQuarry, updateQuarry, deleteQuarry,
+  fetchInvoices, insertInvoice, updateInvoice, deleteInvoice,
+  subscribeToContacts, subscribeToQuarries, subscribeToInvoices,
+  fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects,
+  fetchPublicProjects, fetchCustomerByToken,
+  fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices,
+  recoverDispatch, recoverFreightBill, recoverInvoice,
+  hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice,
+  autoPurgeDeleted,
+  fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes,
+  fetchDeletedQuotes, recoverQuote, hardDeleteQuote,
+  fetchBids, insertBid, updateBid, deleteBid, subscribeToBids,
+  logAudit, fetchAuditLog,
+  fetchTestimonials, fetchPublicTestimonials,
+  insertTestimonial, updateTestimonial, deleteTestimonial,
+  fetchSubPayByToken,
+  COMPLIANCE_DOC_TYPES,
+} from "./db";
 import {
   Activity,
   AlertCircle,
@@ -1617,7 +1630,6 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
                 <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
                   {form.extras.map((x, idx) => {
                     const hasQtyRate = (Number(x.qty) > 0) && (Number(x.rate) > 0);
-                    const computed = hasQtyRate ? (Number(x.qty) * Number(x.rate)).toFixed(2) : "";
                     return (
                       <div key={idx} style={{ border: "1px solid var(--concrete)", padding: 8, background: "#FFF" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
@@ -2727,12 +2739,9 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               // Find the newly-inserted contact (will be last one with matching name, since setContacts diff'd & returned real id)
               // Best effort: wait one tick for state to settle, then find by name match
               setTimeout(() => {
-                const updatedContacts = nextList;  // parent contacts array will update via state refresh
-                // The real contact has been saved; we need to pick it up by its properties.
-                // Easiest: use the staged contact's temp id — it won't match after save, so admin picks again from dropdown.
-                // Actually we can look at latest contacts passed back via parent.
-                // Simpler approach: trust that realtime/parent re-passes `contacts` prop; the new contact will appear in dropdown.
-                // Pre-fill the current assignment row with the staged contact details so admin doesn't have to re-pick.
+                // The saved contact will reappear via the realtime contacts subscription;
+                // meanwhile pre-fill the current assignment row with the staged contact details
+                // so admin doesn't have to re-pick.
                 const next = [...draft.assignments];
                 const idx = quickAddContact.idx;
                 next[idx] = {
@@ -2792,8 +2801,6 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         // Find the order fresh each render so we pick up state changes
         const dispatch = dispatches.find((x) => x.id === sendLinksTarget.id) || sendLinksTarget;
         const assignmentsToNotify = (dispatch.assignments || []).filter((a) => a.contactId);
-        const project = projects.find((p) => p.id === dispatch.projectId);
-        const customer = contacts.find((c) => c.id === dispatch.clientId);
 
         return (
           <div className="modal-bg" onClick={() => setSendLinksTarget(null)} style={{ zIndex: 108 }}>
@@ -3614,7 +3621,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                   <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginTop: 4, fontWeight: 700 }}>
                                     ▸ START: {a.startTimes
                                       .filter((r) => r && (r.time || r.location))
-                                      .map((r, i) => {
+                                      .map((r) => {
                                         const t = r.time ? formatTime12h(r.time) : "TBD";
                                         const loc = r.location ? ` @ ${r.location}` : "";
                                         return `${t}${loc}`;
@@ -4978,7 +4985,6 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     if (hasLines) {
       return fb.billingLines.map((ln, lnIdx) => {
         const isFirst = lnIdx === 0;
-        const unit = ln.code === "H" ? "" : ""; // sample doesn't show units — they're baked into description
         // Description — if HOURLY show "HOURLY", if LOAD show "LOAD", if TOLL show "TOLL EMPTY" or "TOLL LOADED" etc.
         const desc = (ln.item || ln.code || "").toUpperCase();
         const qty = Number(ln.qty) || 0;
@@ -5736,7 +5742,7 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
 
 // ========== INVOICES TAB ==========
 // ========== RECORD PAYMENT MODAL ==========
-const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoices, invoices, onClose, onToast }) => {
+const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
 
@@ -8225,22 +8231,6 @@ const buildEmailLink = (email, subject, body) => {
   if (body) params.push(`body=${encodeURIComponent(body)}`);
   return `mailto:${email}${params.length ? "?" + params.join("&") : ""}`;
 };
-const buildDispatchMessage = (dispatch, url, companyName) => {
-  const lines = [
-    `${companyName || "4 Brothers Trucking"} — Dispatch #${dispatch.code}`,
-    "",
-    `Job: ${dispatch.jobName}`,
-    `Date: ${dispatch.date}`,
-  ];
-  if (dispatch.pickup) lines.push(`Pickup: ${dispatch.pickup}`);
-  if (dispatch.dropoff) lines.push(`Dropoff: ${dispatch.dropoff}`);
-  if (dispatch.material) lines.push(`Material: ${dispatch.material}`);
-  lines.push(`Trucks needed: ${dispatch.trucksExpected}`);
-  lines.push("");
-  lines.push("Upload your freight bill + scale tickets here (one submission per truck):");
-  lines.push(url);
-  return lines.join("\n");
-};
 
 // ========== CONTACT MODAL ==========
 const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
@@ -8573,7 +8563,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
 };
 
 // ========== CONTACT DETAIL MODAL ==========
-const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
+const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
   const history = useMemo(() => {
     return dispatches.filter((d) => d.subContractorId === contact.id || (d.subContractor && contact.companyName && d.subContractor.toLowerCase() === contact.companyName.toLowerCase()));
   }, [dispatches, contact]);
@@ -8582,10 +8572,6 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
   const totalTons = history.reduce((s, d) => {
     return s + freightBills.filter((fb) => fb.dispatchId === d.id).reduce((ss, fb) => ss + (Number(fb.tonnage) || 0), 0);
   }, 0);
-
-  const copyPhoneText = () => {
-    if (contact.phone) { navigator.clipboard?.writeText(contact.phone); onToast("PHONE COPIED"); }
-  };
 
   // Portal link generation for customer contacts
   const generateToken = () => {
@@ -9104,7 +9090,6 @@ const newMaterialRow = (name = "", price = "") => ({
 // ========== QUARRY MODAL ==========
 const QuarryModal = ({ quarry, onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(quarry ? JSON.parse(JSON.stringify(quarry)) : newQuarryDraft());
-  const [priceChanges, setPriceChanges] = useState([]); // [{ name, old, new }]
 
   const updateMaterial = (idx, field, value) => {
     const next = [...draft.materials];
@@ -9783,16 +9768,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
   // LINE-ITEM HELPERS (v16 unified structure)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  // Compute net for a line based on gross, brokerable flag, and brokerage %
-  const computeLineNet = (line) => {
-    const gross = Number(line.gross) || (Number(line.qty) || 0) * (Number(line.rate) || 0);
-    if (line.brokerable) {
-      const pct = Number(line.brokeragePct) || 0;
-      return Number((gross - gross * pct / 100).toFixed(2));
-    }
-    return Number(gross.toFixed(2));
-  };
-
   // Recompute gross + net for a line after qty/rate/brokerable/brokeragePct changes
   const recomputeLine = (line) => {
     const qty = Number(line.qty) || 0;
@@ -10247,7 +10222,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   ⚠ POSSIBLE DUPLICATE — FB #{fb.freightBillNumber} MATCHES {duplicates.length} OTHER FB{duplicates.length !== 1 ? "S" : ""}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1.6 }}>
-                  {duplicates.slice(0, 5).map((dup, i) => (
+                  {duplicates.slice(0, 5).map((dup) => (
                     <div key={dup.fb.id} style={{ marginBottom: 4 }}>
                       ▸ <strong>FB #{dup.fb.freightBillNumber}</strong> ·{" "}
                       {dup.dispatch ? `Order #${dup.dispatch.code}` : "no order"}
@@ -11075,7 +11050,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 };
 
 // ========== REVIEW TAB (End-of-day approval screen) ==========
-const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, projects = [], editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
+const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -11360,7 +11335,7 @@ const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
 // ========== PAY STATEMENT PDF GENERATOR (v18 Session 3) ==========
 // Clean invoice-style layout: centered SVG logo · 3-col header · Pay To block · sparse table ·
 // per-FB brokerage deduction · boxed total · thank you + notes footer.
-const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokeragePct, brokerageApplies, allFreightBills, allDispatches, company, contact, isHistorical = false, statementNumber = null }) => {
+const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, allDispatches, company, contact, statementNumber = null }) => {
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
   const fmtQty = (n) => Number(n || 0).toFixed(2);
@@ -11644,7 +11619,7 @@ ${paidInfoHtml}
 };
 
 // ========== PAY STUB MODAL (offered after marking paid) ==========
-const PayStubOfferModal = ({ target, fbs, payRecord, allFreightBills, allDispatches, company, onPrint, onClose }) => {
+const PayStubOfferModal = ({ target, onPrint, onClose }) => {
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
@@ -13341,8 +13316,6 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                       const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
                       const paidFbs = sub.fbs.filter((x) => !!x.fb.paidAt);
                       const unpaidGross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
-                      const unpaidBrok = sub.brokerageApplies ? unpaidGross * (sub.brokeragePct / 100) : 0;
-                      const unpaidNet = unpaidGross - unpaidBrok;
                       const isAllPaid = unpaidFbs.length === 0 && paidFbs.length > 0;
                       // Missing-rate detection: any FB whose assignment has no payRate configured
                       const missingRateFbs = sub.fbs.filter((x) => {
@@ -14371,7 +14344,7 @@ const daysAgoRange = (days) => {
 const toISODate = (d) => d.toISOString().slice(0, 10);
 
 // Core computation — returns a full report object
-const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries, contacts }) => {
+const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries }) => {
   const fromT = from.getTime();
   const toT = to.getTime();
 
@@ -19025,7 +18998,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
   const [stmtOpenOnly, setStmtOpenOnly] = useState(true);
   const customers = useMemo(() => (contacts || []).filter((c) => c.type === "customer"), [contacts]);
 
-  const { from, to, label } = useMemo(() => {
+  const { from, to } = useMemo(() => {
     if (rangePreset === "lastweek") {
       const r = lastWeekRange();
       return { ...r, label: "Last week (Mon–Sun)" };
@@ -20151,7 +20124,7 @@ const DriverPayPortalPage = ({ token, onBack }) => {
 // ========== DRIVER / SUB PAY PORTAL (v23 Session Y) ==========
 // Public page at /#/pay/:token. Sub/driver sees their own pay activity only.
 // Privacy: never shows other subs, customer amounts, or company margins.
-const CustomerPortal = ({ token, onBack }) => {
+const CustomerPortal = ({ token }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20166,7 +20139,7 @@ const CustomerPortal = ({ token, onBack }) => {
         const result = await fetchCustomerByToken(token);
         if (!result) { setError("Invalid or expired portal link"); }
         else { setData(result); }
-      } catch (e) {
+      } catch {
         setError("Failed to load portal — please try again");
       } finally {
         setLoading(false);
@@ -20429,7 +20402,7 @@ const CustomerPortal = ({ token, onBack }) => {
 // ========== HOME / DASHBOARD TAB ==========
 const HomeTab = ({
   freightBills, dispatches, contacts, projects, invoices, quotes, bids = [], company,
-  onJumpTab, onToast,
+  onJumpTab,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -21555,7 +21528,7 @@ export default function App() {
       }
 
       // Listen for auth changes (login/logout from other tabs)
-      supabase.auth.onAuthStateChange((event, sess) => {
+      supabase.auth.onAuthStateChange((event, _sess) => {
         if (event === "SIGNED_IN") { setAuthed(true); setView("dashboard"); }
         if (event === "SIGNED_OUT") { setAuthed(false); setView("public"); }
       });
@@ -21573,8 +21546,9 @@ export default function App() {
       const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "click"];
       activityEvents.forEach((evt) => window.addEventListener(evt, markActive, { passive: true }));
 
-      // Check for idle every 10 seconds
-      const idleCheckInterval = setInterval(() => {
+      // Check for idle every 10 seconds. We intentionally don't clear this:
+      // Dashboard is the top-level view so the interval lives for the app's lifetime.
+      setInterval(() => {
         const idleMs = Date.now() - lastActivityRef.current;
         if (idleMs >= IDLE_TIMEOUT_MS) {
           setIdleWarning(true);
@@ -21654,7 +21628,7 @@ export default function App() {
     firstLoadRef.current = true;
     setTimeout(() => { firstLoadRef.current = false; }, 2000);
 
-    const unsubFB = subscribeToFreightBills(async (payload) => {
+    const unsubFB = subscribeToFreightBills(async (_payload) => {
       // Refetch to get fresh data
       const fresh = await fetchFreightBills();
       const freshIds = new Set(fresh.map((x) => x.id));
@@ -21785,7 +21759,7 @@ export default function App() {
 
     try {
       // Deletes: in current but not in new
-      for (const [id, d] of currentMap) {
+      for (const [id] of currentMap) {
         if (!newMap.has(id) && !String(id).startsWith("temp-")) {
           await deleteDispatch(id);
         }
@@ -22118,7 +22092,7 @@ export default function App() {
   };
 
   // Auth handlers
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = () => {
     setAuthed(true);
     setView("dashboard");
     showToast("LOGGED IN");
