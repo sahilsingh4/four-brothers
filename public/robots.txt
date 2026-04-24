@@ -1,0 +1,19 @@
+# robots.txt for 4brotherstruck.com
+# Session U: SEO
+
+# Allow everything by default — public site is meant to be indexed
+User-agent: *
+Allow: /
+
+# Block the private areas (hash routes for the app's admin/driver/customer portals)
+# Note: Since these are hash routes (#/admin, #/submit/*, etc.), search engines
+# generally don't index them anyway, but we're explicit.
+Disallow: /#/admin
+Disallow: /#/submit/
+Disallow: /#/track/
+Disallow: /#/customer/
+Disallow: /#/client/
+Disallow: /#/login
+
+# Sitemap location
+Sitemap: https://4brotherstruck.com/sitemap.xml
