@@ -10,7 +10,7 @@ import {
   billableHoursForInvoice as mathBillableHoursForInvoice,
   contactBrokeragePct as mathContactBrokeragePct,
 } from "./math";
-import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, Database, HardDrive, RefreshCw, Users, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, Package, Mountain, BarChart3, History, Calendar, DollarSign, Banknote, Award, Briefcase, ShieldCheck, Clock, Save, Send } from "lucide-react";
+import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, Database, HardDrive, RefreshCw, Users, User, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, Package, Mountain, BarChart3, History, Calendar, DollarSign, Banknote, Award, Briefcase, ShieldCheck, Clock, Save, Send } from "lucide-react";
 
 const GlobalStyles = () => (
   <style>{`
@@ -10730,6 +10730,49 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
   const [traceFB, setTraceFB] = useState(null); // NEW: for traceability modal
   const [stubOffer, setStubOffer] = useState(null); // {target, fbs, payRecord} for auto-offer after pay
 
+  // ══════════════════════════════════════════════════════════════════
+  // v18 SESSION 1 (Pay Builder scaffolding): two separate builders for DRIVERS and SUBS.
+  // Each has its own contact picker + date range + FB list.
+  // Editing inline + per-FB save comes in Session 2.
+  // ══════════════════════════════════════════════════════════════════
+  const [drvContactId, setDrvContactId] = useState("");
+  const [drvFromDate, setDrvFromDate] = useState("");
+  const [drvToDate, setDrvToDate] = useState("");
+  const [drvExpandedFbIds, setDrvExpandedFbIds] = useState(new Set());
+
+  const [subContactId, setSubContactId] = useState("");
+  const [subFromDate, setSubFromDate] = useState("");
+  const [subToDate, setSubToDate] = useState("");
+  const [subExpandedFbIds, setSubExpandedFbIds] = useState(new Set());
+
+  // Contact lists filtered by type
+  const driverContacts = useMemo(() => (contacts || []).filter((c) => c.type === "driver"), [contacts]);
+  const subContactsList = useMemo(() => (contacts || []).filter((c) => c.type === "sub"), [contacts]);
+
+  // FB matching helper — filters by contact (via assignment), date range, approved, customer-paid (only include billable),
+  // and NOT already part of a prior pay statement (i.e. not yet paid).
+  const fbsForContact = (contactId, fromD, toD) => {
+    if (!contactId) return [];
+    return (freightBills || []).filter((fb) => {
+      if (fb.status !== "approved") return false;       // only approved FBs go on pay statements
+      if (fb.paidAt || fb.payStatementLockedAt) return false; // not already paid/locked
+      const fbDate = fb.submittedAt ? fb.submittedAt.slice(0, 10) : "";
+      if (fromD && fbDate < fromD) return false;
+      if (toD && fbDate > toD) return false;
+
+      const disp = dispatches.find((d) => d.id === fb.dispatchId);
+      const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
+      if (!assignment) return false;
+      return String(assignment.contactId) === String(contactId);
+    }).sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
+  };
+
+  const drvFbs = useMemo(() => fbsForContact(drvContactId, drvFromDate, drvToDate),
+    [drvContactId, drvFromDate, drvToDate, freightBills, dispatches]);
+  const subFbs = useMemo(() => fbsForContact(subContactId, subFromDate, subToDate),
+    [subContactId, subFromDate, subToDate, freightBills, dispatches]);
+
+
   // Auto-expand a sub's row when jumped from home dashboard
   useEffect(() => {
     if (pendingPaySubId) {
@@ -11125,6 +11168,308 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
+      {/* v18 Session 1: two pay statement builders side-by-side — DRIVERS + SUBS.
+          Each has its own contact picker + date range + FB list. Editing + PDF come in Session 2/3. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14 }}>
+        {/* DRIVERS BUILDER */}
+        <div className="fbt-card" style={{ padding: 18, background: "#F0F9FF", border: "2px solid #0369A1" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 6, height: 22, background: "#0369A1" }} />
+            <h3 className="fbt-display" style={{ fontSize: 16, margin: 0, color: "#0369A1" }}>PAY STATEMENT · DRIVERS</h3>
+          </div>
+
+          <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label className="fbt-label" style={{ fontSize: 10 }}>Select Driver</label>
+              <select
+                className="fbt-select"
+                value={drvContactId}
+                onChange={(e) => { setDrvContactId(e.target.value); setDrvExpandedFbIds(new Set()); }}
+              >
+                <option value="">— Pick a driver —</option>
+                {driverContacts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.favorite ? "★ " : ""}{c.contactName || c.companyName}
+                    {c.defaultPayRate ? ` · $${c.defaultPayRate}/${c.defaultPayMethod || "hr"}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <label className="fbt-label" style={{ fontSize: 10 }}>From Date</label>
+                <input type="date" className="fbt-input" value={drvFromDate} onChange={(e) => setDrvFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="fbt-label" style={{ fontSize: 10 }}>To Date</label>
+                <input type="date" className="fbt-input" value={drvToDate} onChange={(e) => setDrvToDate(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {drvContactId ? (
+            drvFbs.length === 0 ? (
+              <div style={{ padding: 16, background: "#FFF", border: "1.5px dashed var(--concrete)", textAlign: "center" }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
+                  ▸ NO UNPAID APPROVED FBs FOR THIS DRIVER IN SELECTED RANGE
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                  ▸ {drvFbs.length} FB{drvFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDITING COMING NEXT SESSION
+                </div>
+                <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+                  {drvFbs.map((fb) => {
+                    const expanded = drvExpandedFbIds.has(fb.id);
+                    const disp = dispatches.find((d) => d.id === fb.dispatchId);
+                    const payLines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+                    const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    const billLines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                    const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    return (
+                      <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                        <div
+                          onClick={() => {
+                            const next = new Set(drvExpandedFbIds);
+                            if (expanded) next.delete(fb.id); else next.add(fb.id);
+                            setDrvExpandedFbIds(next);
+                          }}
+                          style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                        >
+                          <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                          <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
+                          <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
+                          </span>
+                          <span style={{ fontWeight: 700, color: "#0369A1" }}>${payTotal.toFixed(2)}</span>
+                          <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                        </div>
+                        {expanded && (
+                          <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            {/* LEFT: Billed to customer (read-only) */}
+                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                                💰 BILLED TO CUSTOMER (READ-ONLY)
+                              </div>
+                              {billLines.length === 0 ? (
+                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No billing lines</div>
+                              ) : (
+                                billLines.map((ln) => (
+                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
+                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
+                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
+                                  </div>
+                                ))
+                              )}
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                                <span>BILL TOTAL</span>
+                                <span style={{ color: "var(--hazard-deep)" }}>${billTotal.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            {/* RIGHT: Paying to driver */}
+                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid #0369A1" }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                                🚚 PAYING TO DRIVER (EDITING NEXT SESSION)
+                              </div>
+                              {payLines.length === 0 ? (
+                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No pay lines — will be editable next session</div>
+                              ) : (
+                                payLines.map((ln) => (
+                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
+                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
+                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
+                                  </div>
+                                ))
+                              )}
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid #0369A1", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                                <span>PAY TOTAL</span>
+                                <span style={{ color: "#0369A1" }}>${payTotal.toFixed(2)}</span>
+                              </div>
+                              {billTotal > 0 && payTotal > 0 && (
+                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                  <span style={{ fontWeight: 700 }}>MARGIN</span>
+                                  <span style={{ fontWeight: 700, color: "var(--good)" }}>
+                                    ${(billTotal - payTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - payTotal) / billTotal * 100).toFixed(0) : "0"}%)
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          ) : (
+            <div style={{ padding: 20, background: "#FFF", border: "1.5px dashed var(--concrete)", textAlign: "center" }}>
+              <User size={22} style={{ color: "var(--concrete)", marginBottom: 6 }} />
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>▸ PICK A DRIVER TO START</div>
+            </div>
+          )}
+        </div>
+
+        {/* SUBS BUILDER */}
+        <div className="fbt-card" style={{ padding: 18, background: "#FEF3C7", border: "2px solid #9A3412" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 6, height: 22, background: "#9A3412" }} />
+            <h3 className="fbt-display" style={{ fontSize: 16, margin: 0, color: "#9A3412" }}>PAY STATEMENT · SUBS</h3>
+          </div>
+
+          <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
+            <div>
+              <label className="fbt-label" style={{ fontSize: 10 }}>Select Subcontractor</label>
+              <select
+                className="fbt-select"
+                value={subContactId}
+                onChange={(e) => { setSubContactId(e.target.value); setSubExpandedFbIds(new Set()); }}
+              >
+                <option value="">— Pick a sub —</option>
+                {subContactsList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
+                    {c.brokerageApplies ? ` · ${c.brokeragePercent || 10}% brok` : ""}
+                    {c.defaultPayRate ? ` · $${c.defaultPayRate}/${c.defaultPayMethod || "hr"}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <label className="fbt-label" style={{ fontSize: 10 }}>From Date</label>
+                <input type="date" className="fbt-input" value={subFromDate} onChange={(e) => setSubFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="fbt-label" style={{ fontSize: 10 }}>To Date</label>
+                <input type="date" className="fbt-input" value={subToDate} onChange={(e) => setSubToDate(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {subContactId ? (
+            subFbs.length === 0 ? (
+              <div style={{ padding: 16, background: "#FFF", border: "1.5px dashed var(--concrete)", textAlign: "center" }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
+                  ▸ NO UNPAID APPROVED FBs FOR THIS SUB IN SELECTED RANGE
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#9A3412", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                  ▸ {subFbs.length} FB{subFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDITING COMING NEXT SESSION
+                </div>
+                <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto" }}>
+                  {subFbs.map((fb) => {
+                    const expanded = subExpandedFbIds.has(fb.id);
+                    const disp = dispatches.find((d) => d.id === fb.dispatchId);
+                    const payLines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+                    const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    const billLines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                    const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    return (
+                      <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                        <div
+                          onClick={() => {
+                            const next = new Set(subExpandedFbIds);
+                            if (expanded) next.delete(fb.id); else next.add(fb.id);
+                            setSubExpandedFbIds(next);
+                          }}
+                          style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                        >
+                          <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                          <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
+                          <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
+                          </span>
+                          <span style={{ fontWeight: 700, color: "#9A3412" }}>${payTotal.toFixed(2)}</span>
+                          <ChevronDown size={12} style={{ transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.15s", color: "var(--concrete)" }} />
+                        </div>
+                        {expanded && (
+                          <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            {/* LEFT: Billed to customer (read-only) */}
+                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                                💰 BILLED TO CUSTOMER (READ-ONLY)
+                              </div>
+                              {billLines.length === 0 ? (
+                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No billing lines</div>
+                              ) : (
+                                billLines.map((ln) => (
+                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
+                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
+                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
+                                  </div>
+                                ))
+                              )}
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                                <span>BILL TOTAL</span>
+                                <span style={{ color: "var(--hazard-deep)" }}>${billTotal.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            {/* RIGHT: Paying to sub */}
+                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid #9A3412" }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "#9A3412", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                                🚚 PAYING TO SUB (EDITING NEXT SESSION)
+                              </div>
+                              {payLines.length === 0 ? (
+                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No pay lines — will be editable next session</div>
+                              ) : (
+                                payLines.map((ln) => (
+                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
+                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
+                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
+                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
+                                  </div>
+                                ))
+                              )}
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid #9A3412", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                                <span>PAY TOTAL</span>
+                                <span style={{ color: "#9A3412" }}>${payTotal.toFixed(2)}</span>
+                              </div>
+                              {billTotal > 0 && payTotal > 0 && (
+                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                  <span style={{ fontWeight: 700 }}>MARGIN</span>
+                                  <span style={{ fontWeight: 700, color: "var(--good)" }}>
+                                    ${(billTotal - payTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - payTotal) / billTotal * 100).toFixed(0) : "0"}%)
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          ) : (
+            <div style={{ padding: 20, background: "#FFF", border: "1.5px dashed var(--concrete)", textAlign: "center" }}>
+              <Building2 size={22} style={{ color: "var(--concrete)", marginBottom: 6 }} />
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>▸ PICK A SUB TO START</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section divider before existing payroll UI */}
+      <div style={{ padding: "10px 0", borderTop: "2px solid var(--concrete)", marginTop: 8 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+          ▸ RECENT STATEMENTS · GROUPED BY SUB/DRIVER
+        </div>
+      </div>
+
       {payTarget && (
         <PaidModal
           target={payTarget}
