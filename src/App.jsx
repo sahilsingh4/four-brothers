@@ -247,9 +247,29 @@ const Logo = ({ size = "md" }) => {
   );
 };
 
+// Toast accepts either a plain string (legacy calls) or
+// { msg, action: { label, onClick }, duration } for interactive toasts (e.g. undo).
 const Toast = ({ msg, onClose }) => {
-  useEffect(() => { const t = setTimeout(onClose, 2800); return () => clearTimeout(t); }, [onClose]);
-  return <div className="toast"><CheckCircle2 size={18} /> {msg}</div>;
+  const isObj = msg && typeof msg === "object";
+  const text = isObj ? msg.msg : msg;
+  const action = isObj ? msg.action : null;
+  const duration = isObj && msg.duration ? msg.duration : (action ? 6000 : 2800);
+  useEffect(() => { const t = setTimeout(onClose, duration); return () => clearTimeout(t); }, [onClose, duration]);
+  return (
+    <div className="toast">
+      <CheckCircle2 size={18} /> {text}
+      {action && (
+        <button
+          onClick={() => { action.onClick(); onClose(); }}
+          style={{
+            marginLeft: 10, background: "var(--hazard)", color: "var(--steel)",
+            border: "2px solid var(--hazard)", padding: "4px 10px", cursor: "pointer",
+            fontFamily: "inherit", fontWeight: 700, fontSize: 12, letterSpacing: "0.08em",
+          }}
+        >{action.label}</button>
+      )}
+    </div>
+  );
 };
 
 const Lightbox = ({ src, onClose }) => (
@@ -2444,7 +2464,23 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       await deleteDispatch(id, { deletedBy: "admin", reason });
       const nextD = dispatches.filter((x) => x.id !== id);
       await setDispatches(nextD);
-      onToast("ORDER DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "ORDER DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverDispatch(id);
+              const fresh = await fetchDispatches();
+              await setDispatches(fresh);
+              onToast("ORDER RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -2488,7 +2524,23 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       await deleteFreightBill(id, { deletedBy: "admin", reason });
       const next = freightBills.filter((x) => x.id !== id);
       await setFreightBills(next);
-      onToast("FREIGHT BILL DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "FB DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverFreightBill(id);
+              const fresh = await fetchFreightBills();
+              await setFreightBills(fresh);
+              onToast("FB RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -7099,10 +7151,27 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
         },
       });
 
-      const toastMsg = affectedFbs.length > 0
-        ? `INVOICE DELETED · ${affectedFbs.length - unlockFailures.length} FB${(affectedFbs.length - unlockFailures.length) !== 1 ? "S" : ""} UNLOCKED (RECOVERABLE 30 DAYS)`
-        : "INVOICE DELETED (RECOVERABLE 30 DAYS)";
-      onToast(toastMsg);
+      // Undo: recover the invoice. Note: unlocked FBs do NOT auto-relock —
+      // user will need to re-invoice them manually. That's an acceptable
+      // tradeoff since re-locking would silently change FB state.
+      const shortMsg = affectedFbs.length > 0
+        ? `INVOICE DELETED · ${affectedFbs.length - unlockFailures.length} FB${(affectedFbs.length - unlockFailures.length) !== 1 ? "S" : ""} UNLOCKED`
+        : "INVOICE DELETED";
+      onToast({
+        msg: shortMsg,
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverInvoice(inv.id);
+              onToast("INVOICE RESTORED — RE-INVOICE UNLOCKED FBs MANUALLY");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete invoice failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -10141,7 +10210,21 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         entityLabel: `FB#${fb.freightBillNumber || "—"}`,
         metadata: { reason, status: fb.status, driverName: fb.driverName },
       });
-      onToast("✓ FB DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "✓ FB DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverFreightBill(fb.id);
+              onToast("FB RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
       onClose();
     } catch (e) {
       console.error("Delete failed:", e);
