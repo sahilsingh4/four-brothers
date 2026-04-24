@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchPublicProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes, fetchDeletedQuotes, recoverQuote, hardDeleteQuote, fetchBids, insertBid, updateBid, deleteBid, subscribeToBids, fetchDeletedBids, recoverBid, hardDeleteBid, logAudit, fetchAuditLog, fetchTestimonials, fetchPublicTestimonials, insertTestimonial, updateTestimonial, deleteTestimonial, fetchSubPayByToken } from "./db";
+import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchPublicProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes, fetchDeletedQuotes, recoverQuote, hardDeleteQuote, fetchBids, insertBid, updateBid, deleteBid, subscribeToBids, fetchDeletedBids, recoverBid, hardDeleteBid, logAudit, fetchAuditLog, fetchTestimonials, fetchPublicTestimonials, insertTestimonial, updateTestimonial, deleteTestimonial, fetchSubPayByToken, COMPLIANCE_DOC_TYPES, getComplianceStatus, fetchComplianceDocs, insertComplianceDoc, updateComplianceDoc, deleteComplianceDoc, uploadComplianceFile, getComplianceFileUrl, deleteComplianceFile } from "./db";
 import {
   hoursFromTimes as mathHoursFromTimes,
   computeLineNet as mathComputeLineNet,
@@ -8524,6 +8524,10 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
   const portalUrl = contact.portalToken
     ? `${window.location.origin}${window.location.pathname}#/customer/${contact.portalToken}`
     : null;
+  // v23 Session Y
+  const payPortalUrl = contact.portalToken
+    ? `${window.location.origin}${window.location.pathname}#/pay/${contact.portalToken}`
+    : null;
 
   return (
     <div className="modal-bg" onClick={onClose}>
@@ -8632,6 +8636,72 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
                       {contact.email && (
                         <a
                           href={buildEmailLink(contact.email, `Your 4 Brothers Trucking Portal Access`, `Hi ${contact.contactName || contact.companyName},\n\nYou can now view your freight bills and scale tickets any time at this link:\n\n${portalUrl}\n\nThanks,\n4 Brothers Trucking, LLC`) || "#"}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: "6px 10px", textDecoration: "none" }}
+                        >
+                          <Mail size={11} style={{ marginRight: 3 }} /> EMAIL
+                        </a>
+                      )}
+                      <button className="btn-ghost" style={{ fontSize: 10, padding: "6px 10px" }} onClick={regenerateToken}>
+                        <RefreshCw size={11} style={{ marginRight: 3 }} /> NEW LINK
+                      </button>
+                      <button className="btn-danger" style={{ fontSize: 10, padding: "6px 10px" }} onClick={disablePortal}>
+                        <Lock size={11} style={{ marginRight: 3 }} /> DISABLE
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* v23 Session Y: Driver/Sub Pay Portal */}
+          {(contact.type === "driver" || contact.type === "sub" || contact.type === "subcontractor") && onSaveContact && (
+            <>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ PAY PORTAL ACCESS</div>
+              <div style={{ padding: 14, background: contact.portalEnabled ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (contact.portalEnabled ? "var(--good)" : "var(--concrete)"), marginBottom: 20 }}>
+                {!contact.portalEnabled ? (
+                  <>
+                    <div className="fbt-mono" style={{ fontSize: 11, marginBottom: 10 }}>PAY PORTAL DISABLED</div>
+                    <p style={{ fontSize: 12, color: "var(--concrete)", margin: "0 0 10px" }}>
+                      Enable a private link that lets this {contact.type === "driver" ? "driver" : "sub"} see their pay for the last 90 days — unpaid FBs, paid history, pay statement PDFs. They only see their own work.
+                    </p>
+                    <button onClick={enablePortal} className="btn-primary" style={{ fontSize: 11 }}>
+                      <ShieldCheck size={14} /> ENABLE PAY PORTAL
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                      <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>● ACTIVE</span>
+                      <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>VIEW-ONLY · LAST 90 DAYS · THEIR PAY ONLY</span>
+                    </div>
+                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 10 }}>
+                      {payPortalUrl}
+                    </code>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        className="btn-ghost"
+                        style={{ fontSize: 10, padding: "6px 10px" }}
+                        onClick={async () => {
+                          try { await navigator.clipboard.writeText(payPortalUrl); onToast("PAY PORTAL LINK COPIED"); }
+                          catch { onToast("COPY FAILED"); }
+                        }}
+                      >
+                        <Link2 size={11} style={{ marginRight: 3 }} /> COPY LINK
+                      </button>
+                      {contact.phone && (
+                        <a
+                          href={buildSMSLink(contact.phone, `Hi ${contact.contactName || contact.companyName} — your 4 Brothers pay portal: ${payPortalUrl}`) || "#"}
+                          className="btn-ghost"
+                          style={{ fontSize: 10, padding: "6px 10px", textDecoration: "none" }}
+                        >
+                          <MessageSquare size={11} style={{ marginRight: 3 }} /> TEXT
+                        </a>
+                      )}
+                      {contact.email && (
+                        <a
+                          href={buildEmailLink(contact.email, `Your 4 Brothers Pay Portal`, `Hi ${contact.contactName || contact.companyName},\n\nCheck your pay any time at this private link:\n\n${payPortalUrl}\n\nShows last 90 days of your pay activity — unpaid, paid, statement PDFs. Don't share the link.\n\nThanks,\n4 Brothers Trucking, LLC`) || "#"}
                           className="btn-ghost"
                           style={{ fontSize: 10, padding: "6px 10px", textDecoration: "none" }}
                         >
@@ -18372,6 +18442,349 @@ const AuditTab = ({ onToast }) => {
   );
 };
 
+// ========== DRIVER PERFORMANCE PANEL (v23 Session Z) ==========
+// Per-driver and per-sub performance metrics from existing FB + dispatch data.
+// Only uses data we can verify — no fake on-time % or synthetic scores.
+//
+// Metrics:
+//   - Tons hauled (sum of fb.tonnage on approved/paid FBs)
+//   - Loads completed (count of approved/paid FBs)
+//   - Hours worked (sum of fb.hoursBilled)
+//   - Revenue contributed (sum of fb billingLines gross — what customer was billed)
+//   - Direct pay cost (sum of fb.paidAmount)
+//   - Photo compliance (% FBs with photos)
+//   - Reliability (submitted ÷ expected trucks across dispatches they were on)
+const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts = [], onToast }) => {
+  const [scope, setScope] = useState("drivers"); // 'drivers' | 'subs'
+  const [dateRange, setDateRange] = useState("90"); // '30' | '90' | '365' | 'all'
+  const [expanded, setExpanded] = useState(null);
+  const [sortBy, setSortBy] = useState("tons"); // tons | loads | revenue | reliability
+
+  const cutoff = useMemo(() => {
+    if (dateRange === "all") return null;
+    const days = Number(dateRange);
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString();
+  }, [dateRange]);
+
+  const performance = useMemo(() => {
+    const targetType = scope === "drivers" ? "driver" : "sub";
+    const people = contacts.filter((c) => c.type === targetType);
+
+    return people.map((person) => {
+      // Find all dispatches where this contact is on an assignment
+      const relatedDispatches = dispatches.filter((d) => {
+        if (d.deletedAt) return false;
+        return (d.assignments || []).some((a) => a.contactId === person.id);
+      });
+
+      // Find FBs — tied to this person via assignment OR via driverId (for drivers)
+      const personFBs = freightBills.filter((fb) => {
+        if (fb.deletedAt) return false;
+        if (fb.status === "rejected") return false;
+        if (cutoff && fb.submittedAt && fb.submittedAt < cutoff) return false;
+        // Match by assignment
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        if (d) {
+          const assignment = (d.assignments || []).find((a) => a.aid === fb.assignmentId);
+          if (assignment?.contactId === person.id) return true;
+        }
+        // Fallback: driverId match (for drivers)
+        if (targetType === "driver" && fb.driverId === person.id) return true;
+        return false;
+      });
+
+      // Calculate metrics
+      const loadCount = personFBs.length;
+      const totalTons = personFBs.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+      const totalHours = personFBs.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0);
+      const revenueContributed = personFBs.reduce((s, fb) => {
+        const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+        return s + lines.reduce((ls, ln) => ls + (Number(ln.gross) || 0), 0);
+      }, 0);
+      const directPayCost = personFBs.reduce((s, fb) => s + (Number(fb.paidAmount) || 0), 0);
+      const fbsWithPhotos = personFBs.filter((fb) => Array.isArray(fb.photos) && fb.photos.length > 0).length;
+      const photoCompliance = loadCount > 0 ? (fbsWithPhotos / loadCount) * 100 : 0;
+
+      // Reliability: did they submit for all expected trucks on dispatches they were assigned to?
+      let totalExpected = 0;
+      let totalSubmitted = 0;
+      relatedDispatches.forEach((d) => {
+        // Filter by date if cutoff active
+        if (cutoff && d.createdAt && d.createdAt < cutoff) return;
+        const theirAssignments = (d.assignments || []).filter((a) => a.contactId === person.id);
+        theirAssignments.forEach((a) => {
+          const expected = Number(a.trucks) || 1;
+          const submitted = personFBs.filter((fb) => fb.dispatchId === d.id && fb.assignmentId === a.aid).length;
+          totalExpected += expected;
+          totalSubmitted += submitted;
+        });
+      });
+      const reliability = totalExpected > 0 ? Math.min(100, (totalSubmitted / totalExpected) * 100) : null;
+
+      return {
+        person,
+        loadCount,
+        totalTons,
+        totalHours,
+        revenueContributed,
+        directPayCost,
+        photoCompliance,
+        reliability,
+        totalExpected,
+        totalSubmitted,
+        fbs: personFBs,
+      };
+    }).filter((row) => row.loadCount > 0 || row.totalExpected > 0);
+  }, [scope, dateRange, cutoff, contacts, dispatches, freightBills]);
+
+  const sorted = useMemo(() => {
+    const list = [...performance];
+    list.sort((a, b) => {
+      if (sortBy === "tons") return b.totalTons - a.totalTons;
+      if (sortBy === "loads") return b.loadCount - a.loadCount;
+      if (sortBy === "revenue") return b.revenueContributed - a.revenueContributed;
+      if (sortBy === "reliability") return (b.reliability ?? 0) - (a.reliability ?? 0);
+      return 0;
+    });
+    return list;
+  }, [performance, sortBy]);
+
+  const totals = useMemo(() => {
+    return performance.reduce((acc, r) => ({
+      loadCount: acc.loadCount + r.loadCount,
+      totalTons: acc.totalTons + r.totalTons,
+      totalHours: acc.totalHours + r.totalHours,
+      revenueContributed: acc.revenueContributed + r.revenueContributed,
+      directPayCost: acc.directPayCost + r.directPayCost,
+    }), { loadCount: 0, totalTons: 0, totalHours: 0, revenueContributed: 0, directPayCost: 0 });
+  }, [performance]);
+
+  const exportCSV = () => {
+    const rows = [[
+      scope === "drivers" ? "Driver" : "Subcontractor",
+      "Loads", "Tons", "Hours",
+      "Revenue Contributed", "Direct Pay Cost", "Margin",
+      "Expected Trucks", "Submitted", "Reliability %",
+      "Photo Compliance %",
+    ]];
+    sorted.forEach((r) => {
+      const margin = r.revenueContributed - r.directPayCost;
+      rows.push([
+        r.person.contactName || r.person.companyName || "—",
+        r.loadCount,
+        r.totalTons.toFixed(2),
+        r.totalHours.toFixed(2),
+        r.revenueContributed.toFixed(2),
+        r.directPayCost.toFixed(2),
+        margin.toFixed(2),
+        r.totalExpected,
+        r.totalSubmitted,
+        r.reliability != null ? r.reliability.toFixed(1) : "",
+        r.photoCompliance.toFixed(1),
+      ]);
+    });
+    const csv = rowsToCSV(rows);
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${scope}-performance-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    onToast(`✓ ${scope.toUpperCase()} PERFORMANCE EXPORTED`);
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <BarChart3 size={22} style={{ color: "var(--steel)" }} />
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div className="fbt-display" style={{ fontSize: 18 }}>
+            {scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"} PERFORMANCE
+          </div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
+            {performance.length} {scope === "drivers" ? "DRIVER" : "SUB"}{performance.length !== 1 ? "S" : ""} · {totals.loadCount} LOAD{totals.loadCount !== 1 ? "S" : ""} · {totals.totalTons.toFixed(0)} TONS
+          </div>
+        </div>
+        <button onClick={exportCSV} disabled={sorted.length === 0} className="btn-ghost" style={{ padding: "6px 12px", fontSize: 11 }}>
+          <Download size={12} /> CSV
+        </button>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ display: "flex", border: "1.5px solid var(--steel)" }}>
+          <button
+            type="button"
+            onClick={() => setScope("drivers")}
+            style={{
+              padding: "6px 14px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              background: scope === "drivers" ? "var(--steel)" : "#FFF",
+              color: scope === "drivers" ? "var(--cream)" : "var(--steel)",
+              border: "none", cursor: "pointer",
+            }}
+          >DRIVERS</button>
+          <button
+            type="button"
+            onClick={() => setScope("subs")}
+            style={{
+              padding: "6px 14px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              background: scope === "subs" ? "var(--steel)" : "#FFF",
+              color: scope === "subs" ? "var(--cream)" : "var(--steel)",
+              border: "none", borderLeft: "1.5px solid var(--steel)", cursor: "pointer",
+            }}
+          >SUBS</button>
+        </div>
+
+        <select className="fbt-select" style={{ padding: "6px 10px", fontSize: 11, width: "auto" }} value={dateRange} onChange={(e) => setDateRange(e.target.value)}>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last year</option>
+          <option value="all">All time</option>
+        </select>
+
+        <select className="fbt-select" style={{ padding: "6px 10px", fontSize: 11, width: "auto" }} value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+          <option value="tons">Sort: Tons</option>
+          <option value="loads">Sort: Loads</option>
+          <option value="revenue">Sort: Revenue</option>
+          <option value="reliability">Sort: Reliability</option>
+        </select>
+      </div>
+
+      {sorted.length === 0 ? (
+        <div style={{ padding: 40, textAlign: "center", background: "#FAFAF9", border: "1px dashed var(--concrete)" }}>
+          <div className="fbt-display" style={{ fontSize: 14, marginBottom: 6, color: "var(--concrete)" }}>NO DATA</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
+            NO {scope.toUpperCase()} ACTIVITY IN THIS DATE RANGE
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: "#FFF", border: "1.5px solid var(--steel)", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "JetBrains Mono, monospace", minWidth: 720 }}>
+            <thead>
+              <tr style={{ background: "var(--steel)", color: "var(--cream)" }}>
+                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, letterSpacing: "0.05em" }}>{scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"}</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>LOADS</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>TONS</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>REVENUE</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>MARGIN</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em" }}>RELIABILITY</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em" }}>PHOTOS</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em", width: 40 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r) => {
+                const name = r.person.contactName || r.person.companyName || "—";
+                const margin = r.revenueContributed - r.directPayCost;
+                const marginPct = r.revenueContributed > 0 ? (margin / r.revenueContributed) * 100 : 0;
+                const isExpanded = expanded === r.person.id;
+                const relColor = r.reliability == null ? "var(--concrete)"
+                  : r.reliability >= 95 ? "var(--good)"
+                  : r.reliability >= 80 ? "var(--hazard-deep)"
+                  : "var(--safety)";
+                const photoColor = r.photoCompliance >= 90 ? "var(--good)"
+                  : r.photoCompliance >= 70 ? "var(--hazard-deep)"
+                  : "var(--safety)";
+
+                return (
+                  <React.Fragment key={r.person.id}>
+                    <tr
+                      style={{ borderTop: "1px solid #E7E5E4", cursor: "pointer", background: isExpanded ? "#FEF3C7" : undefined }}
+                      onClick={() => setExpanded(isExpanded ? null : r.person.id)}
+                    >
+                      <td style={{ padding: "10px 12px", fontWeight: 700 }}>
+                        {name}
+                        {r.person.companyName && r.person.contactName && (
+                          <div style={{ fontSize: 10, color: "var(--concrete)", fontWeight: 400, marginTop: 2 }}>{r.person.companyName}</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{r.loadCount}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{r.totalTons.toFixed(1)}</td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", color: r.revenueContributed > 0 ? "var(--good)" : "var(--concrete)" }}>
+                        {r.revenueContributed > 0 ? fmt$(r.revenueContributed) : "—"}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "right", color: margin >= 0 ? "var(--steel)" : "var(--safety)", fontWeight: 700 }}>
+                        {r.revenueContributed > 0 || r.directPayCost > 0 ? fmt$(margin) : "—"}
+                        {marginPct !== 0 && r.revenueContributed > 0 && (
+                          <div style={{ fontSize: 10, color: "var(--concrete)", fontWeight: 400, marginTop: 2 }}>{marginPct.toFixed(0)}%</div>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "center", color: relColor, fontWeight: 700 }}>
+                        {r.reliability != null ? `${r.reliability.toFixed(0)}%` : "—"}
+                        {r.totalExpected > 0 && (
+                          <div style={{ fontSize: 10, color: "var(--concrete)", fontWeight: 400, marginTop: 2 }}>
+                            {r.totalSubmitted}/{r.totalExpected}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "center", color: photoColor, fontWeight: 700 }}>
+                        {r.photoCompliance.toFixed(0)}%
+                      </td>
+                      <td style={{ padding: "10px 12px", textAlign: "center", color: "var(--concrete)", fontSize: 10 }}>
+                        {isExpanded ? "▲" : "▼"}
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 0, background: "#FFFBEB" }}>
+                          <div style={{ padding: 14, borderTop: "1px dashed var(--hazard-deep)" }}>
+                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+                              ▸ RECENT LOADS ({Math.min(r.fbs.length, 15)} OF {r.fbs.length})
+                            </div>
+                            <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                              {r.fbs.slice(0, 15).map((fb) => {
+                                const d = dispatches.find((x) => x.id === fb.dispatchId);
+                                const grossFromBilling = Array.isArray(fb.billingLines)
+                                  ? fb.billingLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0)
+                                  : 0;
+                                return (
+                                  <div key={fb.id} style={{ display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px dotted #E7E5E4", flexWrap: "wrap", alignItems: "center" }}>
+                                    <span style={{ fontWeight: 700, minWidth: 70 }}>FB #{fb.freightBillNumber || "—"}</span>
+                                    <span style={{ color: "var(--concrete)", minWidth: 80 }}>
+                                      {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—"}
+                                    </span>
+                                    <span style={{ flex: 1, minWidth: 140 }}>{d?.jobName?.slice(0, 40) || "—"}</span>
+                                    {fb.tonnage > 0 && <span style={{ color: "var(--steel)" }}>{Number(fb.tonnage).toFixed(1)} tn</span>}
+                                    {grossFromBilling > 0 && <span style={{ color: "var(--good)", fontWeight: 700, minWidth: 80, textAlign: "right" }}>{fmt$(grossFromBilling)}</span>}
+                                    <span style={{ padding: "1px 6px", fontSize: 9, background: fb.status === "approved" ? "#DCFCE7" : "#FEF3C7", color: fb.status === "approved" ? "#166534" : "#92400E", fontWeight: 700, letterSpacing: "0.05em" }}>
+                                      {fb.status?.toUpperCase()}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                              {r.fbs.length > 15 && (
+                                <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>+ {r.fbs.length - 15} older loads…</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.05em", lineHeight: 1.6 }}>
+        ▸ REVENUE = WHAT CUSTOMER WAS BILLED FOR THIS {scope === "drivers" ? "DRIVER'S" : "SUB'S"} WORK (FROM BILLING LINES)<br/>
+        ▸ MARGIN = REVENUE − DIRECT PAY COST (NOT INCLUDING OVERHEAD OR FUEL)<br/>
+        ▸ RELIABILITY = SUBMITTED ÷ EXPECTED TRUCKS ON DISPATCHES THEY WERE ASSIGNED TO<br/>
+        ▸ PHOTOS = % OF FBs WITH AT LEAST ONE SCALE TICKET OR LOAD PHOTO ATTACHED<br/>
+        ▸ CLICK ANY ROW FOR RECENT LOAD DETAIL
+      </div>
+    </div>
+  );
+};
+
 const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
@@ -18541,6 +18954,14 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
       {/* v19b Session I: Monthly P&L */}
       <MonthlyPLPanel
         invoices={invoices || []}
+        freightBills={freightBills || []}
+        dispatches={dispatches || []}
+        contacts={contacts || []}
+        onToast={onToast}
+      />
+
+      {/* v23 Session Z: Driver / Sub Performance */}
+      <DriverPerformancePanel
         freightBills={freightBills || []}
         dispatches={dispatches || []}
         contacts={contacts || []}
@@ -19160,6 +19581,348 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
 };
 
 // ========== CUSTOMER PORTAL (public, token-based access) ==========
+// ========== DRIVER / SUB PAY PORTAL (v23 Session Y) ==========
+// Public page — sub/driver taps /#/pay/:token to see their pay activity.
+// 90-day window enforced server-side. Privacy-first: only their own FBs.
+
+// Portal-specific pay stub PDF generator — standalone, no admin state needed.
+// Uses hardcoded company info (matches public site) so it works anonymously.
+const generatePortalPayStubPDF = ({ payRun, contact }) => {
+  const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+
+  const logoSvg = `<svg viewBox="0 0 120 120" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="56" fill="#FFF" stroke="#1C1917" stroke-width="3"/>
+    <circle cx="60" cy="60" r="48" fill="none" stroke="#1C1917" stroke-width="1"/>
+    <path d="M 10 56 L 110 56 L 110 74 L 10 74 Z" fill="#1C1917"/>
+    <path d="M 2 58 L 10 56 L 10 74 L 2 76 Z" fill="#1C1917"/>
+    <path d="M 118 58 L 110 56 L 110 74 L 118 76 Z" fill="#1C1917"/>
+    <text x="60" y="69" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="10" font-weight="900" fill="#FFF" letter-spacing="0.5">4 BROTHERS</text>
+    <text x="60" y="38" text-anchor="middle" font-family="Arial Black, sans-serif" font-size="22" font-weight="900" fill="#1C1917" letter-spacing="-1">4B</text>
+    <path d="M 22 44 Q 60 32 98 44" fill="none" stroke="#1C1917" stroke-width="1.2"/>
+    <text x="60" y="100" text-anchor="middle" font-family="Arial, sans-serif" font-size="7" font-weight="700" fill="#1C1917" letter-spacing="1">TRUCKING, LLC</text>
+  </svg>`;
+
+  const fbsRows = payRun.fbs.map((fb) => `
+    <tr>
+      <td>${esc(fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—")}</td>
+      <td><strong>#${esc(fb.freightBillNumber || "—")}</strong></td>
+      <td>${esc(fb.jobName || "—")}${fb.dispatchCode ? ` <span style="color:#78716C">· Order #${esc(fb.dispatchCode)}</span>` : ""}</td>
+      <td>${fb.truckNumber ? `T${esc(fb.truckNumber)}` : "—"}</td>
+      <td style="text-align:right">${money(fb.paidAmount)}</td>
+    </tr>
+  `).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pay Statement ${esc(payRun.statementNumber || "")}</title>
+<style>
+  @page { size: letter; margin: 0.6in; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; color: #1C1917; font-size: 11pt; line-height: 1.4; }
+  .page { max-width: 7.3in; margin: 0 auto; }
+  .hdr { display: flex; gap: 16px; align-items: flex-start; padding-bottom: 14px; border-bottom: 3px solid #1C1917; margin-bottom: 16px; }
+  .hdr .txt { flex: 1; }
+  .hdr .label { font-size: 8pt; color: #78716C; letter-spacing: 0.2em; font-weight: 700; }
+  .hdr .co { font-size: 18pt; font-weight: 900; letter-spacing: -0.02em; margin: 4px 0 2px; }
+  .hdr .contact { font-size: 9pt; color: #57534E; }
+  .pay-to { background: #FAFAF9; padding: 12px 16px; border-left: 4px solid #F59E0B; margin-bottom: 16px; }
+  .pay-to .lbl { font-size: 8pt; color: #78716C; letter-spacing: 0.15em; font-weight: 700; }
+  .pay-to .name { font-size: 15pt; font-weight: 800; margin-top: 2px; }
+  .pay-to .sub { font-size: 10pt; color: #57534E; margin-top: 2px; }
+  .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; font-size: 10pt; }
+  .meta .cell .lbl { font-size: 8pt; color: #78716C; letter-spacing: 0.1em; font-weight: 700; }
+  .meta .cell .val { font-size: 12pt; font-weight: 700; margin-top: 2px; }
+  .sec-title { font-size: 9pt; font-weight: 900; letter-spacing: 0.12em; color: #78716C; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #1C1917; text-transform: uppercase; }
+  table.fbs { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  table.fbs th { background: #1C1917; color: #F59E0B; text-align: left; padding: 6px 8px; font-size: 9pt; letter-spacing: 0.08em; font-weight: 700; }
+  table.fbs td { padding: 6px 8px; border-bottom: 1px solid #E7E5E4; }
+  table.fbs tr:nth-child(even) td { background: #FAFAF9; }
+  .total { background: #1C1917; color: #F59E0B; padding: 14px 18px; margin-top: 4px; display: flex; justify-content: space-between; align-items: center; font-weight: 900; font-size: 14pt; letter-spacing: 0.05em; }
+  .foot { margin-top: 24px; padding-top: 12px; border-top: 2px solid #1C1917; font-size: 8pt; color: #78716C; text-align: center; letter-spacing: 0.05em; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="hdr">
+      ${logoSvg}
+      <div class="txt">
+        <div class="label">PAY STATEMENT</div>
+        <div class="co">4 BROTHERS TRUCKING, LLC</div>
+        <div class="contact">Bay Point, CA · (626) 814-5541 · office@4brotherstruck.com</div>
+      </div>
+    </div>
+    <div class="pay-to">
+      <div class="lbl">PAY TO</div>
+      <div class="name">${esc(contact.name)}</div>
+      ${contact.companyName && contact.companyName !== contact.name ? `<div class="sub">${esc(contact.companyName)}</div>` : ""}
+    </div>
+    <div class="meta">
+      <div class="cell"><div class="lbl">STATEMENT #</div><div class="val">${esc(payRun.statementNumber || "—")}</div></div>
+      <div class="cell"><div class="lbl">PAY DATE</div><div class="val">${esc(payRun.paidAt ? new Date(payRun.paidAt).toLocaleDateString() : "—")}</div></div>
+      <div class="cell"><div class="lbl">METHOD</div><div class="val">${esc((payRun.method || "—").toUpperCase())}</div></div>
+      <div class="cell"><div class="lbl">CHECK #</div><div class="val">${esc(payRun.checkNumber || "—")}</div></div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div class="sec-title">▸ FREIGHT BILLS PAID</div>
+      <table class="fbs">
+        <thead><tr><th>Date</th><th>FB #</th><th>Job</th><th>Truck</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${fbsRows}</tbody>
+      </table>
+    </div>
+    <div class="total"><span>TOTAL PAID</span><span>${money(payRun.total)}</span></div>
+    <div class="foot">Generated ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Questions? Contact dispatch at (626) 814-5541</div>
+  </div>
+  <script>window.onload = function() { setTimeout(function(){ window.print(); }, 350); };</script>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) throw new Error("Popup blocked — allow popups and try again");
+  win.document.write(html);
+  win.document.close();
+};
+
+const DriverPayPortalPage = ({ token, onBack }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState("unpaid");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await fetchSubPayByToken(token);
+        if (!result) { setError("Invalid or expired portal link — ask dispatch for a new one"); }
+        else { setData(result); }
+      } catch (e) {
+        console.error("pay portal load:", e);
+        setError("Failed to load — please try again");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [token]);
+
+  if (loading) {
+    return (
+      <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+        <GlobalStyles />
+        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em" }}>▸ LOADING YOUR PAY…</div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 20 }}>
+        <GlobalStyles />
+        <div className="fbt-card" style={{ padding: 40, maxWidth: 440, textAlign: "center" }}>
+          <AlertCircle size={40} style={{ color: "var(--safety)", margin: "0 auto 14px", display: "block" }} />
+          <div className="fbt-display" style={{ fontSize: 18, marginBottom: 8 }}>PORTAL UNAVAILABLE</div>
+          <div className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)", marginBottom: 16 }}>{error}</div>
+          <button onClick={onBack} className="btn-ghost">← BACK</button>
+        </div>
+      </div>
+    );
+  }
+
+  const { contact, freightBills = [], windowDays = 90 } = data;
+
+  const fbsWithPay = freightBills.map((fb) => {
+    const linesTotal = Array.isArray(fb.payingLines)
+      ? fb.payingLines.reduce((s, ln) => s + (Number(ln.gross) || 0), 0)
+      : 0;
+    const expectedPay = linesTotal > 0 ? linesTotal : (Number(fb.paidAmount) || 0);
+    const isPaid = !!fb.paidAt;
+    return { ...fb, expectedPay, isPaid };
+  });
+
+  const unpaid = fbsWithPay.filter((fb) => !fb.isPaid);
+  const paid = fbsWithPay.filter((fb) => fb.isPaid);
+
+  const payRuns = new Map();
+  paid.forEach((fb) => {
+    const key = fb.payStatementNumber || `one-off-${fb.id}`;
+    if (!payRuns.has(key)) {
+      payRuns.set(key, {
+        statementNumber: fb.payStatementNumber,
+        paidAt: fb.paidAt,
+        method: fb.paidMethod,
+        checkNumber: fb.paidCheckNumber,
+        fbs: [],
+        total: 0,
+      });
+    }
+    const run = payRuns.get(key);
+    run.fbs.push(fb);
+    run.total += Number(fb.paidAmount) || 0;
+  });
+  const payRunsList = Array.from(payRuns.values()).sort((a, b) => {
+    const da = a.paidAt ? new Date(a.paidAt).getTime() : 0;
+    const db = b.paidAt ? new Date(b.paidAt).getTime() : 0;
+    return db - da;
+  });
+
+  const totalUnpaid = unpaid.reduce((s, fb) => s + fb.expectedPay, 0);
+  const totalPaidWindow = paid.reduce((s, fb) => s + (Number(fb.paidAmount) || 0), 0);
+
+  const downloadPayStub = (payRun) => {
+    try {
+      generatePortalPayStubPDF({ payRun, contact });
+    } catch (e) {
+      alert(e.message || "Couldn't open PDF — check popup blocker");
+    }
+  };
+
+  return (
+    <div className="fbt-root texture-paper" style={{ minHeight: "100vh", padding: "20px 16px 60px" }}>
+      <GlobalStyles />
+      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "24px", marginBottom: 16, border: "2px solid var(--hazard-deep)" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.15em", marginBottom: 6 }}>▸ PAY PORTAL · LAST {windowDays} DAYS</div>
+          <div className="fbt-display" style={{ fontSize: 24, letterSpacing: "-0.01em" }}>{contact.name}</div>
+          {contact.companyName && contact.companyName !== contact.name && (
+            <div className="fbt-mono" style={{ fontSize: 12, color: "#D6D3D1", marginTop: 4 }}>{contact.companyName}</div>
+          )}
+          <div className="fbt-mono" style={{ fontSize: 10, color: "#A8A29E", marginTop: 10, letterSpacing: "0.1em" }}>
+            {(contact.type === "subcontractor" || contact.type === "sub") ? "SUBCONTRACTOR" : "DRIVER"} · VIEWED {new Date().toLocaleDateString()}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
+          <div className="fbt-card" style={{ padding: 16, borderLeft: "6px solid var(--hazard-deep)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>UNPAID · DUE TO YOU</div>
+            <div className="stat-num" style={{ color: "var(--hazard-deep)", marginTop: 4 }}>{fmt$(totalUnpaid)}</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>{unpaid.length} FB{unpaid.length !== 1 ? "s" : ""}</div>
+          </div>
+          <div className="fbt-card" style={{ padding: 16, borderLeft: "6px solid var(--good)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>PAID · LAST {windowDays} DAYS</div>
+            <div className="stat-num" style={{ color: "var(--good)", marginTop: 4 }}>{fmt$(totalPaidWindow)}</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>{payRunsList.length} PAY RUN{payRunsList.length !== 1 ? "S" : ""}</div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
+          {[{ k: "unpaid", label: `UNPAID (${unpaid.length})` }, { k: "paid", label: `PAID HISTORY (${payRunsList.length})` }].map((t) => (
+            <button
+              key={t.k}
+              onClick={() => setTab(t.k)}
+              style={{ padding: "10px 18px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.08em", background: tab === t.k ? "var(--steel)" : "transparent", color: tab === t.k ? "var(--cream)" : "var(--steel)", border: "2px solid var(--steel)", cursor: "pointer" }}
+            >{t.label}</button>
+          ))}
+        </div>
+
+        {tab === "unpaid" && (
+          unpaid.length === 0 ? (
+            <div className="fbt-card" style={{ padding: 40, textAlign: "center" }}>
+              <CheckCircle2 size={36} style={{ color: "var(--good)", margin: "0 auto 12px", display: "block" }} />
+              <div className="fbt-display" style={{ fontSize: 16, marginBottom: 6 }}>ALL CAUGHT UP</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>NOTHING OUTSTANDING IN THE LAST {windowDays} DAYS.</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {unpaid.map((fb) => (
+                <div key={fb.id} className="fbt-card" style={{ padding: 14, borderLeft: "4px solid var(--hazard-deep)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+                        <span className="chip" style={{ fontSize: 9, padding: "2px 8px", background: fb.status === "approved" ? "var(--good)" : "var(--concrete)", color: "#FFF" }}>{fb.status?.toUpperCase()}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>FB #{fb.freightBillNumber || "—"}</span>
+                      </div>
+                      <div className="fbt-display" style={{ fontSize: 14, margin: "4px 0 2px" }}>{fb.jobName || "—"}</div>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", lineHeight: 1.5 }}>
+                        Order #{fb.dispatchCode} · {fb.submittedAt ? new Date(fb.submittedAt).toLocaleDateString() : "—"}
+                        {fb.truckNumber && <span> · Truck {fb.truckNumber}</span>}
+                        {fb.material && <span> · {fb.material}</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>EXPECTED</div>
+                      <div className="fbt-display" style={{ fontSize: 20, color: "var(--hazard-deep)" }}>{fmt$(fb.expectedPay)}</div>
+                      {fb.status === "pending" && <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2 }}>PENDING REVIEW</div>}
+                    </div>
+                  </div>
+                  {Array.isArray(fb.payingLines) && fb.payingLines.length > 0 && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--concrete)" }}>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 6 }}>▸ PAY BREAKDOWN</div>
+                      {fb.payingLines.map((ln, idx) => (
+                        <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                          <span>{ln.description || ln.code || "Line"} · {Number(ln.qty || 0).toFixed(2)} @ {fmt$(ln.rate || 0)}</span>
+                          <strong>{fmt$(ln.gross || 0)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {tab === "paid" && (
+          payRunsList.length === 0 ? (
+            <div className="fbt-card" style={{ padding: 40, textAlign: "center" }}>
+              <div className="fbt-display" style={{ fontSize: 16, marginBottom: 6 }}>NO PAY HISTORY IN {windowDays} DAYS</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>NEW PAYMENTS WILL APPEAR HERE.</div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {payRunsList.map((run, i) => (
+                <div key={run.statementNumber || i} className="fbt-card" style={{ padding: 14, borderLeft: "4px solid var(--good)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      {run.statementNumber && <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 2 }}>▸ {run.statementNumber}</div>}
+                      <div className="fbt-display" style={{ fontSize: 14 }}>Pay Run · {run.paidAt ? new Date(run.paidAt).toLocaleDateString() : "—"}</div>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
+                        {(run.method || "—").toUpperCase()}{run.checkNumber ? ` · Check #${run.checkNumber}` : ""} · {run.fbs.length} FB{run.fbs.length !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>PAID</div>
+                      <div className="fbt-display" style={{ fontSize: 20, color: "var(--good)" }}>{fmt$(run.total)}</div>
+                    </div>
+                  </div>
+                  <div style={{ paddingTop: 10, borderTop: "1px dashed var(--concrete)", marginBottom: 10 }}>
+                    {run.fbs.map((fb) => (
+                      <div key={fb.id} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", padding: "3px 0", gap: 8 }}>
+                        <span style={{ flex: 1 }}>
+                          FB #{fb.freightBillNumber} · {fb.jobName?.slice(0, 40) || "—"}
+                          {fb.dispatchDate && <span style={{ color: "var(--concrete)" }}> · {new Date(fb.dispatchDate).toLocaleDateString()}</span>}
+                        </span>
+                        <strong>{fmt$(fb.paidAmount || 0)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => downloadPayStub(run)}
+                    className="btn-ghost"
+                    style={{ padding: "6px 12px", fontSize: 11, borderColor: "var(--hazard-deep)", color: "var(--hazard-deep)" }}
+                  >
+                    <FileDown size={12} /> DOWNLOAD PAY STUB PDF
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 24, textAlign: "center", letterSpacing: "0.1em", lineHeight: 1.6 }}>
+          ▸ QUESTIONS ABOUT PAY? CONTACT DISPATCH.<br/>
+          ▸ THIS PORTAL IS PRIVATE — DON'T SHARE YOUR LINK.<br/>
+          ▸ SHOWING LAST {windowDays} DAYS ONLY. OLDER RECORDS AVAILABLE ON REQUEST.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ========== DRIVER / SUB PAY PORTAL (v23 Session Y) ==========
+// Public page at /#/pay/:token. Sub/driver sees their own pay activity only.
+// Privacy: never shows other subs, customer amounts, or company margins.
 const CustomerPortal = ({ token, onBack }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21169,6 +21932,7 @@ export default function App() {
   const trackMatch = route.match(/^#\/track\/([A-Z0-9]+)/i);
   const customerMatch = route.match(/^#\/customer\/([a-f0-9]+)/i);
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]+)/i);
+  const payMatch = route.match(/^#\/pay\/([a-f0-9]+)/i);  // v23 Session Y
 
   if (!loaded) {
     return (
@@ -21263,6 +22027,12 @@ export default function App() {
   if (customerMatch) {
     const token = customerMatch[1];
     return <CustomerPortal token={token} onBack={() => { window.location.hash = ""; }} />;
+  }
+
+  // v23 Session Y: Driver/sub pay portal — token-based, public, view-only
+  if (payMatch) {
+    const token = payMatch[1];
+    return <DriverPayPortalPage token={token} onBack={() => { window.location.hash = ""; }} />;
   }
 
   // Client-wide tracking page — public

@@ -1444,3 +1444,154 @@ export const fetchSubPayByToken = async (token) => {
     windowDays: data.windowDays || 90,
   };
 };
+
+// ========== COMPLIANCE DOCUMENTS (v24 Session AA) ==========
+// Tracks DOT compliance docs with expiry dates + optional file attachments.
+// Types: drug_test, medical_card, mvr_license, coi, additional_insured,
+//        truck_inspection, other (free-form).
+
+// Known document types with human-readable labels
+export const COMPLIANCE_DOC_TYPES = [
+  { key: "drug_test",         label: "Drug Test / Consortium",    appliesTo: "driver" },
+  { key: "medical_card",      label: "Medical Card / DOT Physical", appliesTo: "driver" },
+  { key: "mvr_license",       label: "MVR / Driver License",      appliesTo: "driver" },
+  { key: "coi",               label: "Certificate of Insurance",  appliesTo: "sub" },
+  { key: "additional_insured", label: "Additional Insured",       appliesTo: "sub" },
+  { key: "truck_inspection",  label: "DOT / BIT Inspection",      appliesTo: "truck" },
+  { key: "other",             label: "Other",                      appliesTo: "any" },
+];
+
+// Compute status + days remaining from expiry_date. Called client-side.
+// Returns: { status, daysUntilExpiry, severity }
+//   status:   'expired' | 'critical' | 'warning' | 'upcoming' | 'current' | 'no_date'
+//   severity: 0 (none) to 4 (expired)
+export const getComplianceStatus = (expiryDate) => {
+  if (!expiryDate) return { status: "no_date", daysUntilExpiry: null, severity: 0 };
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const exp = new Date(expiryDate);
+  exp.setHours(0, 0, 0, 0);
+  const days = Math.round((exp - now) / (1000 * 60 * 60 * 24));
+  if (days < 0)  return { status: "expired",  daysUntilExpiry: days, severity: 4 };
+  if (days <= 30) return { status: "critical", daysUntilExpiry: days, severity: 3 };
+  if (days <= 60) return { status: "warning",  daysUntilExpiry: days, severity: 2 };
+  if (days <= 90) return { status: "upcoming", daysUntilExpiry: days, severity: 1 };
+  return { status: "current", daysUntilExpiry: days, severity: 0 };
+};
+
+const complianceFromDB = (row) => ({
+  id: row.id,
+  contactId: row.contact_id,
+  truckUnit: row.truck_unit,
+  docType: row.doc_type,
+  customTypeLabel: row.custom_type_label,
+  issuedDate: row.issued_date,
+  expiryDate: row.expiry_date,
+  filePath: row.file_path,
+  fileName: row.file_name,
+  fileSize: row.file_size,
+  fileMime: row.file_mime,
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  deletedAt: row.deleted_at,
+});
+
+const complianceToDB = (doc) => ({
+  contact_id:         doc.contactId || null,
+  truck_unit:         doc.truckUnit || null,
+  doc_type:           doc.docType,
+  custom_type_label:  doc.customTypeLabel || null,
+  issued_date:        doc.issuedDate || null,
+  expiry_date:        doc.expiryDate,
+  file_path:          doc.filePath || null,
+  file_name:          doc.fileName || null,
+  file_size:          doc.fileSize || null,
+  file_mime:          doc.fileMime || null,
+  notes:              doc.notes || null,
+});
+
+export const fetchComplianceDocs = async () => {
+  const { data, error } = await supabase
+    .from("compliance_documents")
+    .select("*")
+    .is("deleted_at", null)
+    .order("expiry_date", { ascending: true });
+  if (error) { console.error("fetchComplianceDocs:", error); return []; }
+  return (data || []).map(complianceFromDB);
+};
+
+export const insertComplianceDoc = async (doc) => {
+  const { data, error } = await supabase
+    .from("compliance_documents")
+    .insert([complianceToDB(doc)])
+    .select()
+    .single();
+  if (error) { console.error("insertComplianceDoc:", error); throw error; }
+  return complianceFromDB(data);
+};
+
+export const updateComplianceDoc = async (id, doc) => {
+  const { data, error } = await supabase
+    .from("compliance_documents")
+    .update(complianceToDB(doc))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) { console.error("updateComplianceDoc:", error); throw error; }
+  return complianceFromDB(data);
+};
+
+export const deleteComplianceDoc = async (id) => {
+  // Soft delete
+  const { error } = await supabase
+    .from("compliance_documents")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) { console.error("deleteComplianceDoc:", error); throw error; }
+  return true;
+};
+
+// File upload — uploads to 'compliance-docs' bucket. Returns the storage path.
+export const uploadComplianceFile = async (file, docId = null) => {
+  if (!file) return null;
+  // Generate a unique path — include timestamp so file names don't collide
+  const ext = file.name.split(".").pop();
+  const path = `${docId || "tmp"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const { data, error } = await supabase.storage
+    .from("compliance-docs")
+    .upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type,
+    });
+
+  if (error) { console.error("uploadComplianceFile:", error); throw error; }
+  return {
+    filePath: data.path,
+    fileName: file.name,
+    fileSize: file.size,
+    fileMime: file.type,
+  };
+};
+
+// Get a signed URL to view/download the file (expires in 1 hour)
+export const getComplianceFileUrl = async (filePath) => {
+  if (!filePath) return null;
+  const { data, error } = await supabase.storage
+    .from("compliance-docs")
+    .createSignedUrl(filePath, 3600);  // 1 hour
+  if (error) { console.error("getComplianceFileUrl:", error); return null; }
+  return data?.signedUrl || null;
+};
+
+// Delete the actual file from storage (called when a doc is updated with a new file
+// or permanently deleted)
+export const deleteComplianceFile = async (filePath) => {
+  if (!filePath) return;
+  const { error } = await supabase.storage
+    .from("compliance-docs")
+    .remove([filePath]);
+  if (error) console.error("deleteComplianceFile:", error);
+};
