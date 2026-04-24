@@ -260,6 +260,53 @@ const useFormDraft = (key, initialValue, enabled = true) => {
   return [draft, setDraft, wasRestored, clearDraft];
 };
 
+// ---------------------------------------------------------------------------
+// Offline upload queue — drivers in the field often have flaky cell signal,
+// so a freight-bill submission that hits a network error is held in
+// localStorage and replayed once we're back online (see App-level flusher).
+// Queue entry shape: { id, fb, queuedAt, attempts }.
+// localStorage limit (~5MB) comfortably fits a few queued submissions —
+// photos are pre-compressed to ~100-300KB each.
+// ---------------------------------------------------------------------------
+const FB_UPLOAD_QUEUE_KEY = "fbt:fbUploadQueue";
+const readUploadQueue = () => {
+  try { return JSON.parse(localStorage.getItem(FB_UPLOAD_QUEUE_KEY) || "[]"); }
+  catch { return []; }
+};
+const writeUploadQueue = (q) => {
+  try { localStorage.setItem(FB_UPLOAD_QUEUE_KEY, JSON.stringify(q)); }
+  catch (e) { console.warn("upload queue write failed (quota?):", e); }
+};
+const enqueueUpload = (fb) => {
+  const q = readUploadQueue();
+  const entry = { id: "q-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), fb, queuedAt: new Date().toISOString(), attempts: 0 };
+  q.push(entry);
+  writeUploadQueue(q);
+  return entry.id;
+};
+const removeFromUploadQueue = (id) => {
+  writeUploadQueue(readUploadQueue().filter((e) => e.id !== id));
+};
+
+// Reactive online/offline state. `navigator.onLine === false` is the only
+// reliable "definitely offline" signal from the browser; true can lie.
+const useNetworkStatus = () => {
+  const [online, setOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine !== false
+  );
+  useEffect(() => {
+    const onUp = () => setOnline(true);
+    const onDown = () => setOnline(false);
+    window.addEventListener("online", onUp);
+    window.addEventListener("offline", onDown);
+    return () => {
+      window.removeEventListener("online", onUp);
+      window.removeEventListener("offline", onDown);
+    };
+  }, []);
+  return online;
+};
+
 const fireBrowserNotif = (title, body, tag) => {
   try {
     if (!("Notification" in window)) return;
@@ -1250,20 +1297,10 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [photoProgress, setPhotoProgress] = useState({ current: 0, total: 0 });  // v18 Session E: progress for batch photo compression
-  // v18 Session E: track online/offline state so we can warn driver before they lose their form to a failed submit
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, []);
+  // Reactive online/offline state — drives the offline banner and the
+  // "OFFLINE — QUEUING" submit-progress label. handleTruckSubmit also queues
+  // submissions independently if navigator.onLine flips after we read it here.
+  const isOnline = useNetworkStatus();
   const [submitting, setSubmitting] = useState(false);
   const [submitProgress, setSubmitProgress] = useState(""); // stage text
   const [submitted, setSubmitted] = useState(false);
@@ -1338,10 +1375,11 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
       setSubmitError("Freight bill #, driver name, and truck # are required.");
       return;
     }
-    // v18 Session E: block submit when offline so driver knows right away (no silent failure)
+    // No internet? Don't block — handleTruckSubmit will queue the submission to
+    // localStorage and the App-level flusher will replay it once we're back online.
+    // We just clear any prior error so the user gets a clean run.
     if (!isOnline) {
-      setSubmitError("No internet connection. Your form is saved. Reconnect and hit SUBMIT again.");
-      return;
+      setSubmitError("");
     }
     // v20 Session P: spam defenses
     // 1. Honeypot check — bots typically fill every field including hidden ones.
@@ -1380,10 +1418,10 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
       setSubmitProgress("COMPRESSING PHOTOS…");
       await new Promise((r) => setTimeout(r, 100)); // UI tick
 
-      setSubmitProgress("UPLOADING TO DISPATCH…");
+      setSubmitProgress(isOnline ? "UPLOADING TO DISPATCH…" : "OFFLINE — QUEUING FOR LATER…");
       const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
       const submittedAt = new Date().toISOString();
-      await onSubmitTruck({
+      const result = await onSubmitTruck({
         ...form,
         extras: cleanExtras,
         id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
@@ -1391,8 +1429,9 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         photos,
         submittedAt,
       });
+      const wasQueued = result?.status === "queued";
 
-      setSubmitProgress("✓ SENT");
+      setSubmitProgress(wasQueued ? "✓ QUEUED" : "✓ SENT");
       await new Promise((r) => setTimeout(r, 400));
 
       // Save detailed submission summary for confirmation screen
@@ -1410,6 +1449,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         extras: cleanExtras,
         extrasTotal: cleanExtras.reduce((s, x) => s + (Number(x.amount) || 0), 0),
         submittedAt,
+        queued: wasQueued,
       });
       setLastFB(form.freightBillNumber);
       setSubmitted(true);
@@ -1442,13 +1482,18 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
   }
 
   if (submitted) {
+    const wasQueued = !!submissionSummary?.queued;
+    const accentColor = wasQueued ? "var(--hazard-deep)" : "var(--good)";
+    const accentBg = wasQueued ? "#FEF3C7" : "#F0FDF4";
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--cream)" }} className="texture-paper">
         <div className="fbt-card" style={{ padding: 32, textAlign: "center", maxWidth: 520, width: "100%" }}>
-          <div style={{ width: 80, height: 80, background: "var(--good)", borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <CheckCircle2 size={44} color="#FFF" />
+          <div style={{ width: 80, height: 80, background: accentColor, borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {wasQueued ? <Clock size={44} color="#FFF" /> : <CheckCircle2 size={44} color="#FFF" />}
           </div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.15em", marginBottom: 4 }}>▸ SENT TO DISPATCHER</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: accentColor, letterSpacing: "0.15em", marginBottom: 4 }}>
+            ▸ {wasQueued ? "QUEUED — WILL UPLOAD WHEN ONLINE" : "SENT TO DISPATCHER"}
+          </div>
           <h2 className="fbt-display" style={{ fontSize: 28, margin: "0 0 8px" }}>FB #{lastFB}</h2>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 20 }}>
             {submissionSummary?.submittedAt ? new Date(submissionSummary.submittedAt).toLocaleString() : "—"}
@@ -1456,7 +1501,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
 
           {/* Summary block */}
           {submissionSummary && (
-            <div style={{ background: "#F0FDF4", border: "2px solid var(--good)", padding: 16, marginBottom: 20, textAlign: "left" }}>
+            <div style={{ background: accentBg, border: `2px solid ${accentColor}`, padding: 16, marginBottom: 20, textAlign: "left" }}>
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ WHAT YOU SUBMITTED</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
                 <div><strong>DRIVER:</strong> {submissionSummary.driverName}</div>
@@ -1536,14 +1581,15 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         <h1 className="fbt-display" style={{ fontSize: 32, margin: "0 0 8px", lineHeight: 1.1 }}>UPLOAD YOUR FREIGHT BILL</h1>
         <p style={{ color: "var(--concrete)", margin: "0 0 24px", fontSize: 15 }}>One submission per truck. Fill out the freight bill info and attach the scale ticket photos.</p>
 
-        {/* v18 Session E: Offline warning banner */}
+        {/* Offline banner — submitting is fine, the FB is queued locally and
+            uploaded automatically when the connection returns. */}
         {!isOnline && (
-          <div className="fbt-card" style={{ padding: 16, marginBottom: 20, background: "var(--safety)", color: "#FFF", borderLeft: "6px solid #7F1D1D", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div className="fbt-card" style={{ padding: 16, marginBottom: 20, background: "var(--hazard-deep)", color: "#FFF", borderLeft: "6px solid var(--steel)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <AlertCircle size={26} />
             <div style={{ flex: 1, minWidth: 200 }}>
-              <div className="fbt-display" style={{ fontSize: 16 }}>NO INTERNET CONNECTION</div>
+              <div className="fbt-display" style={{ fontSize: 16 }}>OFFLINE — SUBMIT WILL QUEUE</div>
               <div className="fbt-mono" style={{ fontSize: 11, marginTop: 2, opacity: 0.95 }}>
-                YOU CAN FILL OUT THE FORM BUT CAN'T SUBMIT UNTIL YOU'RE BACK ONLINE. YOUR DATA IS KEPT LOCALLY.
+                FILL OUT THE FORM AND HIT SUBMIT — YOUR FB IS SAVED LOCALLY AND UPLOADS AUTOMATICALLY WHEN YOU'RE BACK ONLINE.
               </div>
             </div>
           </div>
@@ -22187,69 +22233,113 @@ export default function App() {
       throw e;
     }
   };
-  // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
-  const handleTruckSubmit = async (fb) => {
-    try {
-      const { id: _drop, ...rest } = fb;
-
-      // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
-      // them in the normal review workflow (instead of a separate yellow panel).
-      // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
-      // PRESERVE qty AND rate from driver input — don't collapse to qty=1, rate=total.
-      const extras = Array.isArray(rest.extras) ? rest.extras : [];
-      const extraBillingLines = extras
-        .filter((x) => Number(x.amount) > 0)
-        .map((x, idx) => {
-          const low = String(x.label || "").toLowerCase();
-          const code = low.includes("toll") ? "TOLL"
-                     : low.includes("dump") ? "DUMP"
-                     : low.includes("fuel") ? "FUEL"
-                     : "OTHER";
-          const item = code === "OTHER" ? (x.label || "Extra") : x.label;
-          const totalAmt = Number(x.amount) || 0;
-
-          // If driver entered qty + rate separately, use those. Otherwise default qty=1.
-          const driverQty = Number(x.qty);
-          const driverRate = Number(x.rate);
-          const qty = driverQty > 0 ? driverQty : 1;
-          const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
-          const gross = Number((qty * rate).toFixed(2));
-
-          return {
-            id: Date.now() + idx + Math.floor(Math.random() * 1000),
-            code,
-            item,
-            qty,
-            rate,
-            gross,
-            brokerable: false,  // tolls/dump/fuel pass-through are not brokered
-            brokeragePct: 0,
-            net: gross,
-            copyToPay: false,
-            isAdjustment: false,
-            sourceExtra: true,  // audit: this line came from driver-submitted extras
-            note: x.note || "",   // preserve any description from driver
-            createdAt: new Date().toISOString(),
-            createdBy: "driver",
-          };
-        });
-
-      // Driver/sub-submitted FBs always start as "pending" — admin must approve.
-      // Preserve any existing billingLines (shouldn't be any on submit), then append extras as lines.
-      const submittedLines = [...(rest.billingLines || []), ...extraBillingLines];
-
-      const newRow = await insertFreightBill({
-        ...rest,
-        status: "pending",
-        billingLines: submittedLines,
+  // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic).
+  // Returns { status: "submitted" | "queued", queueId? } so DriverUploadPage can render
+  // the right confirmation. Falls back to local queue when offline or on network error;
+  // App-level flusher (see useEffect below) replays queued submissions once we're back online.
+  const buildSubmittedFb = (fb) => {
+    const { id: _drop, ...rest } = fb;
+    // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
+    // them in the normal review workflow (instead of a separate yellow panel).
+    // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
+    // PRESERVE qty AND rate from driver input — don't collapse to qty=1, rate=total.
+    const extras = Array.isArray(rest.extras) ? rest.extras : [];
+    const extraBillingLines = extras
+      .filter((x) => Number(x.amount) > 0)
+      .map((x, idx) => {
+        const low = String(x.label || "").toLowerCase();
+        const code = low.includes("toll") ? "TOLL"
+                   : low.includes("dump") ? "DUMP"
+                   : low.includes("fuel") ? "FUEL"
+                   : "OTHER";
+        const item = code === "OTHER" ? (x.label || "Extra") : x.label;
+        const totalAmt = Number(x.amount) || 0;
+        const driverQty = Number(x.qty);
+        const driverRate = Number(x.rate);
+        const qty = driverQty > 0 ? driverQty : 1;
+        const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
+        const gross = Number((qty * rate).toFixed(2));
+        return {
+          id: Date.now() + idx + Math.floor(Math.random() * 1000),
+          code, item, qty, rate, gross,
+          brokerable: false,  // tolls/dump/fuel pass-through are not brokered
+          brokeragePct: 0,
+          net: gross,
+          copyToPay: false,
+          isAdjustment: false,
+          sourceExtra: true,  // audit: this line came from driver-submitted extras
+          note: x.note || "",
+          createdAt: new Date().toISOString(),
+          createdBy: "driver",
+        };
       });
+    // Driver/sub-submitted FBs always start as "pending" — admin must approve.
+    // Preserve any existing billingLines (shouldn't be any on submit), then append extras as lines.
+    const submittedLines = [...(rest.billingLines || []), ...extraBillingLines];
+    return { ...rest, status: "pending", billingLines: submittedLines };
+  };
+
+  const handleTruckSubmit = async (fb) => {
+    const finalFb = buildSubmittedFb(fb);
+    // Definitively offline — don't even try, just queue.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const queueId = enqueueUpload(finalFb);
+      return { status: "queued", queueId };
+    }
+    try {
+      const newRow = await insertFreightBill(finalFb);
       // Realtime subscription will pick this up on dispatcher's devices, but also update our own state
       setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
+      return { status: "submitted", id: newRow.id };
     } catch (e) {
       console.error("handleTruckSubmit failed:", e);
+      // Network-shaped errors → queue for retry. Keep the original throw for
+      // anything else (validation, auth) so the caller still surfaces it.
+      const msg = String(e?.message || e || "").toLowerCase();
+      const looksTransient = msg.includes("network") || msg.includes("fetch")
+        || msg.includes("timeout") || msg.includes("failed to") || e?.name === "TypeError";
+      if (looksTransient) {
+        const queueId = enqueueUpload(finalFb);
+        return { status: "queued", queueId, error: e };
+      }
       throw e;
     }
   };
+
+  // Periodically (and on `online` events) try to flush any queued FB submissions.
+  // Replays them through insertFreightBill in arrival order; stops as soon as one fails.
+  useEffect(() => {
+    let running = false;
+    const flush = async () => {
+      if (running) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      const queue = readUploadQueue();
+      if (queue.length === 0) return;
+      running = true;
+      try {
+        for (const entry of queue) {
+          try {
+            await insertFreightBill(entry.fb);
+            removeFromUploadQueue(entry.id);
+          } catch (err) {
+            console.warn("[upload-queue] retry failed, will try again later:", err);
+            // Stop on first failure — preserve order, retry whole queue next tick.
+            break;
+          }
+        }
+      } finally {
+        running = false;
+      }
+    };
+    flush();  // try immediately on mount in case we have leftovers
+    const onOnline = () => flush();
+    window.addEventListener("online", onOnline);
+    const t = setInterval(flush, 30000);  // periodic retry every 30s as a safety net
+    return () => {
+      window.removeEventListener("online", onOnline);
+      clearInterval(t);
+    };
+  }, []);
 
   // Auth handlers
   const handleLoginSuccess = () => {
