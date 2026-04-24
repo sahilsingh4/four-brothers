@@ -5102,7 +5102,16 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
   // Persist the FB's billingLines to the database. Updates per-line save state so the UI
   // can show "saving…" / "saved ✓". Debounced per-line by 600ms to avoid hammering DB.
+  // CRITICAL: spread the full FB into the patch. `updateFreightBill` → `fbToDB` rebuilds
+  // every column from the patch, so any field missing from the patch is sent as NULL.
+  // Without the spread, edits here would wipe dispatch_id, driver_name, status, etc.
   const persistFbLines = (fbId, updatedLines) => {
+    const currentFb = freightBills.find((f) => f.id === fbId);
+    if (!currentFb) {
+      console.error("persistFbLines: FB not found", fbId);
+      return;
+    }
+
     // Mark every affected line as "saving" immediately
     const key = (lineId) => `${fbId}:${lineId}`;
     setLineSaveState((prev) => {
@@ -5118,7 +5127,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
 
     saveTimersRef.current[fbId] = setTimeout(async () => {
       try {
-        await editFreightBill(fbId, { billingLines: updatedLines });
+        // Send FULL FB with only billingLines replaced. This preserves dispatch_id,
+        // driver_name, status, approved_at, etc. which fbToDB would otherwise null-out.
+        const freshFb = freightBills.find((f) => f.id === fbId) || currentFb;
+        await editFreightBill(fbId, { ...freshFb, billingLines: updatedLines });
         // Mark saved
         setLineSaveState((prev) => {
           const next = { ...prev };
@@ -5157,14 +5169,24 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   const builderAddLine = (fbId, seed = {}) => {
     const fb = freightBills.find((f) => f.id === fbId);
     if (!fb) return;
+    // v18: default brokerage ON for sub FBs (use the sub contact's %).
+    // OFF for drivers + for pass-through codes like TOLL/DUMP/FUEL/OTHER (those are reimbursements, not revenue).
+    const disp = dispatches.find((d) => d.id === fb.dispatchId);
+    const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
+    const isSub = assignment?.kind === "sub";
+    const subContact = isSub && assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+    const isPassThrough = ["TOLL", "DUMP", "FUEL"].includes(seed.code);
+    const brokerableDefault = isSub && !!subContact?.brokerageApplies && !isPassThrough;
+    const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
+
     const newLine = recomputeBuilderLine({
       id: Date.now() + Math.floor(Math.random() * 1000),
       code: seed.code || "OTHER",
       item: seed.item || "",
       qty: seed.qty != null ? Number(seed.qty) : 1,
       rate: seed.rate != null ? Number(seed.rate) : 0,
-      brokerable: false,
-      brokeragePct: 0,
+      brokerable: seed.brokerable != null ? !!seed.brokerable : brokerableDefault,
+      brokeragePct: seed.brokeragePct != null ? Number(seed.brokeragePct) : brokeragePctDefault,
       copyToPay: false,
       isAdjustment: false,
     });
@@ -7942,8 +7964,9 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
     billingLines: Array.isArray(fb.billingLines) && fb.billingLines.length > 0
       ? (() => {
           // BACKFILL FIX: if an existing HOURLY line has qty=0 and times give a real value, update it
+          let lines = fb.billingLines;
           if (seedHours > 0) {
-            return fb.billingLines.map((ln) => {
+            lines = lines.map((ln) => {
               if (ln.code === "H" && (!ln.qty || Number(ln.qty) === 0)) {
                 const rate = Number(ln.rate) || 0;
                 const gross = Number((seedHours * rate).toFixed(2));
@@ -7955,9 +7978,44 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               return ln;
             });
           }
-          return fb.billingLines;
+          // v18: LEGACY EXTRAS MIGRATION — old FBs have extras[] that weren't auto-converted
+          // to billing lines. If we find any, append them so admin sees them in the normal grid.
+          // This is a one-time migration on modal open; the merged lines will be saved when admin saves.
+          const legacyExtras = Array.isArray(fb.extras) ? fb.extras.filter((x) => Number(x.amount) > 0) : [];
+          if (legacyExtras.length > 0) {
+            const alreadyFromExtras = lines.some((ln) => ln.sourceExtra);
+            if (!alreadyFromExtras) {
+              const extraLines = legacyExtras.map((x, idx) => {
+                const low = String(x.label || "").toLowerCase();
+                const code = low.includes("toll") ? "TOLL"
+                           : low.includes("dump") ? "DUMP"
+                           : low.includes("fuel") ? "FUEL"
+                           : "OTHER";
+                const item = code === "OTHER" ? (x.label || "Extra") : x.label;
+                const amt = Number(x.amount) || 0;
+                return {
+                  id: Date.now() + 10000 + idx,
+                  code, item, qty: 1, rate: amt, gross: amt,
+                  brokerable: false, brokeragePct: 0, net: amt,
+                  copyToPay: false, isAdjustment: false,
+                  sourceExtra: true,
+                  createdAt: new Date().toISOString(),
+                  createdBy: "legacy-migration",
+                };
+              });
+              lines = [...lines, ...extraLines];
+            }
+          }
+          return lines;
         })()
       : (() => {
+          // v18: brokerage default for subs — if assignment is to a sub AND contact has brokerage on,
+          // seed the new line with brokerable: true and the contact's pct. For drivers, brokerage stays off.
+          const isSub = assignment?.kind === "sub";
+          const contactForBilling = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+          const brokerableDefault = isSub && !!contactForBilling?.brokerageApplies;
+          const brokeragePctDefault = brokerableDefault ? Number(contactForBilling?.brokeragePercent || 10) : 0;
+
           // Seed one billing line from dispatch rate
           const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
           const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
@@ -7968,18 +8026,47 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
           const qty = method === "hour" ? seedHours
                    : method === "ton" ? Number(fb.tonnage) || 0
                    : Number(fb.loadCount) || 1;
+
+          const baseLines = [];
           if (rate > 0 || qty > 0) {
             const gross = Number((qty * rate).toFixed(2));
-            return [{
+            const net = brokerableDefault
+              ? Number((gross - gross * brokeragePctDefault / 100).toFixed(2))
+              : gross;
+            baseLines.push({
               id: Date.now(),
               code, item, qty, rate, gross,
-              brokerable: false, brokeragePct: 0, net: gross,
+              brokerable: brokerableDefault,
+              brokeragePct: brokeragePctDefault,
+              net,
               copyToPay: false,
               createdAt: new Date().toISOString(),
               createdBy: "system-seed",
-            }];
+            });
           }
-          return [];
+
+          // Legacy extras migration for FBs with no billing lines yet
+          const legacyExtras = Array.isArray(fb.extras) ? fb.extras.filter((x) => Number(x.amount) > 0) : [];
+          const extraLines = legacyExtras.map((x, idx) => {
+            const low = String(x.label || "").toLowerCase();
+            const code = low.includes("toll") ? "TOLL"
+                       : low.includes("dump") ? "DUMP"
+                       : low.includes("fuel") ? "FUEL"
+                       : "OTHER";
+            const item = code === "OTHER" ? (x.label || "Extra") : x.label;
+            const amt = Number(x.amount) || 0;
+            return {
+              id: Date.now() + 10000 + idx,
+              code, item, qty: 1, rate: amt, gross: amt,
+              brokerable: false, brokeragePct: 0, net: amt,
+              copyToPay: false, isAdjustment: false,
+              sourceExtra: true,
+              createdAt: new Date().toISOString(),
+              createdBy: "legacy-migration",
+            };
+          });
+
+          return [...baseLines, ...extraLines];
         })(),
     payingLines: Array.isArray(fb.payingLines) && fb.payingLines.length > 0
       ? (() => {
@@ -8449,6 +8536,109 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 
           {/* Core IDs */}
           <fieldset disabled={!unlocked && (lockedOnInvoice || lockedAsPaid)} style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 14, opacity: (!unlocked && (lockedOnInvoice || lockedAsPaid)) ? 0.65 : 1 }}>
+
+          {/* v18: ASSIGNED TO — contact info from the dispatch, with ability to change assignment */}
+          {dispatch && (() => {
+            const assignments = Array.isArray(dispatch.assignments) ? dispatch.assignments : [];
+            const currentAssignment = assignments.find((a) => a.aid === fb.assignmentId);
+            const currentContact = currentAssignment?.contactId
+              ? contacts.find((c) => c.id === currentAssignment.contactId)
+              : null;
+            const kindColor = currentAssignment?.kind === "sub" ? "#9A3412" : "#0369A1";
+            const kindLabel = currentAssignment?.kind === "sub" ? "SUBCONTRACTOR" : "DRIVER";
+
+            return (
+              <div style={{ padding: 14, background: "#F0F9FF", border: "2px solid " + kindColor }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: kindColor, letterSpacing: "0.1em", fontWeight: 700 }}>
+                    🚚 ASSIGNED TO · {currentAssignment ? kindLabel : "UNASSIGNED"}
+                  </div>
+                  {assignments.length > 1 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>CHANGE ASSIGNMENT:</span>
+                      <select
+                        className="fbt-select"
+                        value={fb.assignmentId || ""}
+                        onChange={(e) => {
+                          const newAid = e.target.value || null;
+                          const newAssignment = assignments.find((a) => a.aid === newAid);
+                          const newContact = newAssignment?.contactId ? contacts.find((c) => c.id === newAssignment.contactId) : null;
+                          setDraft((d) => ({
+                            ...d,
+                            // Update driver name to match new assignment (unless user already overrode it)
+                            driverName: newAssignment?.name || d.driverName,
+                          }));
+                          // Also persist assignmentId change
+                          editFreightBill(fb.id, { ...fb, assignmentId: newAid, driverName: newAssignment?.name || fb.driverName }).catch((err) => {
+                            console.error("Change assignment failed:", err);
+                            onToast("⚠ ASSIGNMENT CHANGE FAILED");
+                          });
+                        }}
+                        style={{ padding: "4px 8px", fontSize: 11, minWidth: 160 }}
+                      >
+                        <option value="">— Unassigned —</option>
+                        {assignments.map((a) => {
+                          const c = a.contactId ? contacts.find((cc) => cc.id === a.contactId) : null;
+                          const label = a.name || c?.contactName || c?.companyName || "Unnamed";
+                          return <option key={a.aid} value={a.aid}>{a.kind === "sub" ? "SUB" : "DRV"} · {label}</option>;
+                        })}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {currentContact ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                    <div>
+                      <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>NAME</div>
+                      <div style={{ fontWeight: 700 }}>{currentContact.contactName || currentAssignment?.name || "—"}</div>
+                    </div>
+                    {currentContact.companyName && (
+                      <div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>COMPANY</div>
+                        <div>{currentContact.companyName}</div>
+                      </div>
+                    )}
+                    {currentContact.phone && (
+                      <div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>PHONE</div>
+                        <a href={`tel:${currentContact.phone}`} style={{ color: kindColor, textDecoration: "none", fontWeight: 600 }}>{currentContact.phone}</a>
+                      </div>
+                    )}
+                    {currentContact.email && (
+                      <div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>EMAIL</div>
+                        <a href={`mailto:${currentContact.email}`} style={{ color: kindColor, textDecoration: "none", fontWeight: 600, fontSize: 11 }}>{currentContact.email}</a>
+                      </div>
+                    )}
+                    {currentAssignment?.kind === "sub" && currentContact.brokerageApplies && (
+                      <div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>BROKERAGE</div>
+                        <div style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{currentContact.brokeragePercent || 10}% applied</div>
+                      </div>
+                    )}
+                    {currentAssignment?.payRate && (
+                      <div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>PAY RATE</div>
+                        <div>${currentAssignment.payRate} / {currentAssignment.payMethod || "hour"}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+                    {currentAssignment
+                      ? `${currentAssignment.name || "Unnamed"} — no contact record linked. Open Contacts to add one.`
+                      : "No assignment linked. Use the dropdown above to pick one, or edit the dispatch."}
+                  </div>
+                )}
+
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.04em" }}>
+                  ▸ Contact info is read from the Contacts tab. To edit name/phone/email, open the contact record there.
+                </div>
+              </div>
+            );
+          })()}
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
             <div>
               <label className="fbt-label">Freight Bill #</label>
@@ -8612,93 +8802,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               ▸ BILLING &amp; PAY LINES (NEW STRUCTURE)
             </div>
 
-            {/* ─── v18 FIX #3: DRIVER-REPORTED EXTRAS ─── */}
-            {/* Shows extras driver/sub added at submission (tolls, dump fees, etc.).
-                Admin can: (a) remove them, (b) push them to billing lines, (c) push them to pay lines.
-                Nothing is auto-added to billing/pay — admin stays in full control. */}
-            {Array.isArray(draft.extras) && draft.extras.length > 0 && (
-              <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard-deep)", marginBottom: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700 }}>
-                    🚚 DRIVER-REPORTED EXTRAS · {draft.extras.length} ITEM{draft.extras.length !== 1 ? "S" : ""}
-                  </div>
-                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>
-                    CONVERT TO BILLING OR PAY LINES BELOW, OR REMOVE IF WRONG
-                  </span>
-                </div>
-                <div style={{ display: "grid", gap: 6 }}>
-                  {draft.extras.map((x, idx) => {
-                    const mapCodeForLabel = (lbl) => {
-                      const low = String(lbl || "").toLowerCase();
-                      if (low.includes("toll")) return { code: "TOLL", item: "Tolls" };
-                      if (low.includes("dump")) return { code: "DUMP", item: "Dump Fees" };
-                      if (low.includes("fuel")) return { code: "FUEL", item: "Fuel Surcharge" };
-                      return { code: "OTHER", item: lbl || "Extra" };
-                    };
-                    const guess = mapCodeForLabel(x.label);
-                    const amt = Number(x.amount) || 0;
-
-                    return (
-                      <div key={idx} style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--hazard)", display: "grid", gridTemplateColumns: "120px 1fr 100px auto", gap: 8, alignItems: "center" }}>
-                        <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>{x.label || "—"}</div>
-                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
-                          {x.reimbursable !== false ? "REIMBURSABLE" : "NOT REIMBURSABLE"}
-                        </div>
-                        <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700, textAlign: "right" }}>${amt.toFixed(2)}</div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              // Add as a billing line
-                              addBillingLine({ code: guess.code, item: guess.item, qty: 1, rate: amt });
-                              // Remove from extras
-                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
-                              onToast(`✓ ${guess.item} → BILLING LINES`);
-                            }}
-                            disabled={billingSnapshotLocked}
-                            title={billingSnapshotLocked ? "Billing is locked (invoiced)" : "Add to billing lines"}
-                            className="btn-ghost"
-                            style={{ padding: "3px 8px", fontSize: 10, borderColor: "#0369A1", color: "#0369A1" }}
-                          >
-                            → BILL
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              // Add as a paying line
-                              addPayingLine({ code: guess.code, item: guess.item, qty: 1, rate: amt });
-                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
-                              onToast(`✓ ${guess.item} → PAYING LINES`);
-                            }}
-                            disabled={paySnapshotLocked}
-                            title={paySnapshotLocked ? "Pay is locked (paid)" : "Add to paying lines"}
-                            className="btn-ghost"
-                            style={{ padding: "3px 8px", fontSize: 10, borderColor: "#C2410C", color: "#C2410C" }}
-                          >
-                            → PAY
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!confirm(`Remove ${x.label || "extra"} ($${amt.toFixed(2)}) from driver-reported list? This will not affect billing/pay lines.`)) return;
-                              setDraft((d) => ({ ...d, extras: d.extras.filter((_, i) => i !== idx) }));
-                            }}
-                            className="btn-ghost"
-                            style={{ padding: "3px 6px", fontSize: 10, borderColor: "var(--safety)", color: "var(--safety)" }}
-                            title="Remove this driver entry"
-                          >
-                            <Trash2 size={10} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, letterSpacing: "0.04em", fontStyle: "italic" }}>
-                  ▸ Click "→ BILL" to charge the customer or "→ PAY" to reimburse the driver/sub. Admin-approved lines below drive invoice and pay statement totals.
-                </div>
-              </div>
-            )}
 
             {/* ─── BILLING LINES ─── */}
             <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "#0369A1"), marginBottom: 12 }}>
@@ -15688,8 +15791,48 @@ export default function App() {
   const handleTruckSubmit = async (fb) => {
     try {
       const { id: _drop, ...rest } = fb;
-      // Driver/sub-submitted FBs always start as "pending" — admin must approve
-      const newRow = await insertFreightBill({ ...rest, status: "pending" });
+
+      // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
+      // them in the normal review workflow (instead of a separate yellow panel).
+      // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
+      const extras = Array.isArray(rest.extras) ? rest.extras : [];
+      const extraBillingLines = extras
+        .filter((x) => Number(x.amount) > 0)
+        .map((x, idx) => {
+          const low = String(x.label || "").toLowerCase();
+          const code = low.includes("toll") ? "TOLL"
+                     : low.includes("dump") ? "DUMP"
+                     : low.includes("fuel") ? "FUEL"
+                     : "OTHER";
+          const item = code === "OTHER" ? (x.label || "Extra") : x.label;
+          const amt = Number(x.amount) || 0;
+          return {
+            id: Date.now() + idx + Math.floor(Math.random() * 1000),
+            code,
+            item,
+            qty: 1,
+            rate: amt,
+            gross: amt,
+            brokerable: false,  // tolls/dump/fuel pass-through are not brokered
+            brokeragePct: 0,
+            net: amt,
+            copyToPay: false,
+            isAdjustment: false,
+            sourceExtra: true,  // audit: this line came from driver-submitted extras
+            createdAt: new Date().toISOString(),
+            createdBy: "driver",
+          };
+        });
+
+      // Driver/sub-submitted FBs always start as "pending" — admin must approve.
+      // Preserve any existing billingLines (shouldn't be any on submit), then append extras as lines.
+      const submittedLines = [...(rest.billingLines || []), ...extraBillingLines];
+
+      const newRow = await insertFreightBill({
+        ...rest,
+        status: "pending",
+        billingLines: submittedLines,
+      });
       // Realtime subscription will pick this up on dispatcher's devices, but also update our own state
       setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
     } catch (e) {
