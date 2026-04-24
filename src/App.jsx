@@ -84,6 +84,13 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+// Pure formatters & validators live in ./utils so they're unit-testable
+// without React/DOM. See src/utils.js + src/utils.test.js.
+import {
+  fmt$, fmtDate, fmtDateTime, formatTime12h, todayISO, randomCode,
+  validatePassword, validateEmail, clientToken, matchesClientToken,
+} from "./utils";
+import { Toast } from "./components/Toast";
 
 const GlobalStyles = () => (
   <style>{`
@@ -158,20 +165,6 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-const fmt$ = (n) => `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtDate = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return iso; } };
-const fmtDateTime = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return iso; } };
-const formatTime12h = (hhmm) => {
-  if (!hhmm || typeof hhmm !== "string") return "";
-  const [h, m] = hhmm.split(":").map(Number);
-  if (isNaN(h)) return hhmm;
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const mm = String(m || 0).padStart(2, "0");
-  return `${h12}:${mm} ${period}`;
-};
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const randomCode = (len = 6) => { const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s = ""; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]; return s; };
 const storageSet = async (key, value, shared = false) => { try { await window.storage?.set(key, JSON.stringify(value), shared); } catch (e) { console.warn("storage set failed", key, e); } };
 const storageGet = async (key, shared = false) => { try { const r = await window.storage?.get(key, shared); return r?.value ? JSON.parse(r.value) : null; } catch { return null; } };
 
@@ -331,30 +324,6 @@ const Logo = ({ size = "md" }) => {
   );
 };
 
-// Toast accepts either a plain string (legacy calls) or
-// { msg, action: { label, onClick }, duration } for interactive toasts (e.g. undo).
-const Toast = ({ msg, onClose }) => {
-  const isObj = msg && typeof msg === "object";
-  const text = isObj ? msg.msg : msg;
-  const action = isObj ? msg.action : null;
-  const duration = isObj && msg.duration ? msg.duration : (action ? 6000 : 2800);
-  useEffect(() => { const t = setTimeout(onClose, duration); return () => clearTimeout(t); }, [onClose, duration]);
-  return (
-    <div className="toast">
-      <CheckCircle2 size={18} /> {text}
-      {action && (
-        <button
-          onClick={() => { action.onClick(); onClose(); }}
-          style={{
-            marginLeft: 10, background: "var(--hazard)", color: "var(--steel)",
-            border: "2px solid var(--hazard)", padding: "4px 10px", cursor: "pointer",
-            fontFamily: "inherit", fontWeight: 700, fontSize: 12, letterSpacing: "0.08em",
-          }}
-        >{action.label}</button>
-      )}
-    </div>
-  );
-};
 
 const Lightbox = ({ src, onClose }) => (
   <div
@@ -374,29 +343,6 @@ const Lightbox = ({ src, onClose }) => (
 // ========== AUTH UTILITIES (SUPABASE) ==========
 // v20 Session Q: Hardened password requirements.
 // NIST-aligned: 12+ chars with mixed complexity. Catches most common attacks (brute force, credential stuffing).
-const validatePassword = (pw) => {
-  if (pw.length < 12) return "Password must be at least 12 characters";
-  if (!/[a-z]/.test(pw)) return "Password must contain at least one lowercase letter";
-  if (!/[A-Z]/.test(pw)) return "Password must contain at least one uppercase letter";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one number";
-  if (!/[^a-zA-Z0-9]/.test(pw)) return "Password must contain at least one special character (e.g. ! @ # $ %)";
-  // Check for common weak patterns
-  const lower = pw.toLowerCase();
-  if (/(.)\1{2,}/.test(pw)) return "Password cannot contain 3+ repeated characters in a row";
-  if (/012345|123456|234567|345678|456789|567890|abcdef|qwerty|asdfgh/.test(lower)) {
-    return "Password cannot contain common sequences (123456, qwerty, etc.)";
-  }
-  if (/password|admin|letmein|welcome|trucking|brothers|4brothers|dispatch|freight/.test(lower)) {
-    return "Password cannot contain common words (including company-related terms)";
-  }
-  return null;
-};
-
-const validateEmail = (e) => {
-  if (!e || !e.includes("@") || !e.includes(".")) return "Please enter a valid email";
-  return null;
-};
-
 // ========== LOGIN (Supabase email/password) ==========
 const LoginScreen = ({ onSuccess, onCancel }) => {
   const [email, setEmail] = useState("");
@@ -994,20 +940,6 @@ const publicField = (label, value, onChange, placeholder = "", type = "text") =>
 
 // ========== CLIENT TOKEN HELPER ==========
 // Deterministic token from client name — same name always → same link
-const clientToken = (name) => {
-  if (!name) return null;
-  const normalized = String(name).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (!normalized) return null;
-  // Simple hash → base32-ish string, 8 chars
-  let h = 0;
-  for (let i = 0; i < normalized.length; i++) { h = ((h << 5) - h + normalized.charCodeAt(i)) | 0; }
-  const abs = Math.abs(h).toString(36).toUpperCase().padStart(6, "0").slice(0, 8);
-  return "C" + abs;
-};
-const matchesClientToken = (dispatch, token) => {
-  if (!token) return false;
-  return clientToken(dispatch.clientName) === token || clientToken(dispatch.subContractor) === token;
-};
 
 // ========== SHARED TRACKING UI ==========
 const TrackingHeader = ({ company }) => (
