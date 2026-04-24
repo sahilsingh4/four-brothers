@@ -95,14 +95,23 @@ export const insertDispatch = async (d) => {
   return dispatchFromDB(data);
 };
 
-export const updateDispatch = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("dispatches")
-    .update({ ...dispatchToDB(patch), updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
+export const updateDispatch = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session M: optimistic locking via updated_at guard.
+  // The .eq("updated_at", X) filter matches on the PRE-update value; the .update() sets a NEW value.
+  // If another writer has changed the row since expectedUpdatedAt was captured, the filter
+  // matches 0 rows and maybeSingle returns null → ConcurrentEditError.
+  const dbPatch = { ...dispatchToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("dispatches").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateDispatch:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("dispatches").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("dispatches", id);
+    }
+    throw new Error(`updateDispatch: row ${id} not found`);
+  }
   return dispatchFromDB(data);
 };
 
@@ -347,7 +356,19 @@ export const insertFreightBill = async (fb) => {
   return fbFromDB(data);
 };
 
-export const updateFreightBill = async (id, patch) => {
+// v19c Session L: ConcurrentEditError — thrown when an update fails the optimistic-lock check.
+// Caller can detect by checking `err.code === "CONCURRENT_EDIT"` and show a reload dialog.
+export class ConcurrentEditError extends Error {
+  constructor(table, id) {
+    super(`Concurrent edit detected on ${table}:${id}`);
+    this.name = "ConcurrentEditError";
+    this.code = "CONCURRENT_EDIT";
+    this.table = table;
+    this.rowId = id;
+  }
+}
+
+export const updateFreightBill = async (id, patch, expectedUpdatedAt = null) => {
   // v18 SAFETY: use fbPatchToDB (only includes fields in the patch) instead of fbToDB
   // (which builds every column and sends NULL for missing fields). This prevents data loss
   // when a caller passes a partial patch like {billingLines: [...]} without spreading the full FB.
@@ -356,13 +377,24 @@ export const updateFreightBill = async (id, patch) => {
     console.warn("updateFreightBill: empty patch, nothing to update");
     return null;
   }
-  const { data, error } = await supabase
-    .from("freight_bills")
-    .update(dbPatch)
-    .eq("id", id)
-    .select()
-    .single();
+  // v19c Session L: Optimistic locking. Always stamp a NEW updated_at so concurrent
+  // same-value updates still change the column (otherwise two writers with same expectedUpdatedAt
+  // could both succeed in certain orderings).
+  dbPatch.updated_at = new Date().toISOString();
+  let query = supabase.from("freight_bills").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateFreightBill:", error); throw error; }
+  // When maybeSingle() finds nothing, it returns null (no error). That means
+  // the row either (a) doesn't exist or (b) updated_at didn't match → concurrent edit.
+  if (!data) {
+    if (expectedUpdatedAt) {
+      // Confirm the row exists before declaring a conflict
+      const { data: currentRow } = await supabase.from("freight_bills").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("freight_bills", id);
+    }
+    throw new Error(`updateFreightBill: row ${id} not found`);
+  }
   return fbFromDB(data);
 };
 
@@ -465,14 +497,20 @@ export const insertContact = async (c) => {
   return contactFromDB(data);
 };
 
-export const updateContact = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("contacts")
-    .update({ ...contactToDB(patch), updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
+export const updateContact = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session N: optimistic locking
+  const dbPatch = { ...contactToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("contacts").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateContact:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("contacts").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("contacts", id);
+    }
+    throw new Error(`updateContact: row ${id} not found`);
+  }
   return contactFromDB(data);
 };
 
@@ -571,14 +609,20 @@ export const insertQuarry = async (q) => {
   return quarryFromDB(data);
 };
 
-export const updateQuarry = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("quarries")
-    .update({ ...quarryToDB(patch), updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
+export const updateQuarry = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session N: optimistic locking
+  const dbPatch = { ...quarryToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("quarries").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateQuarry:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("quarries").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("quarries", id);
+    }
+    throw new Error(`updateQuarry: row ${id} not found`);
+  }
   return quarryFromDB(data);
 };
 
@@ -650,14 +694,20 @@ const invoiceToDB = (i) => ({
   status_override: i.statusOverride || null,
 });
 
-export const updateInvoice = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("invoices")
-    .update(invoiceToDB(patch))
-    .eq("id", id)
-    .select()
-    .single();
+export const updateInvoice = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session M: optimistic locking
+  const dbPatch = { ...invoiceToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("invoices").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateInvoice:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("invoices").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("invoices", id);
+    }
+    throw new Error(`updateInvoice: row ${id} not found`);
+  }
   return invoiceFromDB(data);
 };
 
@@ -785,6 +835,13 @@ const projectFromDB = (row) => ({
   notes: row.notes || "",
   defaultRate: row.default_rate !== null && row.default_rate !== undefined ? Number(row.default_rate) : null,
   minimumHours: row.minimum_hours !== null && row.minimum_hours !== undefined ? Number(row.minimum_hours) : null,
+  // v21 Session S: Public portfolio fields
+  showOnWebsite: !!row.show_on_website,
+  publicDescription: row.public_description || "",
+  publicPhotos: Array.isArray(row.public_photos) ? row.public_photos : [],
+  publicOrder: Number(row.public_order) || 0,
+  completionYear: row.completion_year || null,
+  publicCustomer: row.public_customer || "",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -808,11 +865,31 @@ const projectToDB = (p) => ({
   notes: p.notes || null,
   default_rate: p.defaultRate !== null && p.defaultRate !== undefined && p.defaultRate !== "" ? Number(p.defaultRate) : null,
   minimum_hours: p.minimumHours !== null && p.minimumHours !== undefined && p.minimumHours !== "" ? Number(p.minimumHours) : null,
+  // v21 Session S: Public portfolio fields
+  show_on_website: !!p.showOnWebsite,
+  public_description: p.publicDescription || null,
+  public_photos: Array.isArray(p.publicPhotos) ? p.publicPhotos : [],
+  public_order: Number(p.publicOrder) || 0,
+  completion_year: p.completionYear ? Number(p.completionYear) : null,
+  public_customer: p.publicCustomer || null,
 });
 
 export const fetchProjects = async () => {
   const { data, error } = await supabase.from("projects").select("*").order("name", { ascending: true });
   if (error) { console.error("fetchProjects:", error); return []; }
+  return (data || []).map(projectFromDB);
+};
+
+// v21 Session S: Public portfolio fetcher — used by public site (anon).
+// Returns only projects where show_on_website=true, ordered by publicOrder.
+export const fetchPublicProjects = async () => {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("show_on_website", true)
+    .order("public_order", { ascending: true })
+    .order("completion_year", { ascending: false });
+  if (error) { console.error("fetchPublicProjects:", error); return []; }
   return (data || []).map(projectFromDB);
 };
 
@@ -822,14 +899,20 @@ export const insertProject = async (p) => {
   return projectFromDB(data);
 };
 
-export const updateProject = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("projects")
-    .update({ ...projectToDB(patch), updated_at: new Date().toISOString() })
-    .eq("id", id)
-    .select()
-    .single();
+export const updateProject = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session N: optimistic locking
+  const dbPatch = { ...projectToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("projects").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateProject:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("projects").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("projects", id);
+    }
+    throw new Error(`updateProject: row ${id} not found`);
+  }
   return projectFromDB(data);
 };
 
@@ -977,14 +1060,21 @@ export const insertQuote = async (q) => {
   };
 };
 
-export const updateQuote = async (id, patch) => {
-  const { data, error } = await supabase
-    .from("quotes")
-    .update(quoteToDB(patch))
-    .eq("id", id)
-    .select()
-    .single();
+export const updateQuote = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session N: optimistic locking. Quotes don't currently auto-stamp updated_at
+  // in quoteToDB; add it here so every update bumps the column.
+  const dbPatch = { ...quoteToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("quotes").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
   if (error) { console.error("updateQuote:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("quotes").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("quotes", id);
+    }
+    throw new Error(`updateQuote: row ${id} not found`);
+  }
   return quoteFromDB(data);
 };
 
@@ -1020,4 +1110,337 @@ export const subscribeToQuotes = (callback) => {
     .on("postgres_changes", { event: "*", schema: "public", table: "quotes" }, callback)
     .subscribe();
   return () => supabase.removeChannel(channel);
+};
+
+// ========== BIDS (v19) ==========
+// RFP/bid tracker — pursues public works opportunities from discovery to outcome.
+const bidFromDB = (row) => ({
+  id: row.id,
+  rfbNumber: row.rfb_number || "",
+  title: row.title || "",
+  agency: row.agency || "",
+  agencyContactName: row.agency_contact_name || "",
+  agencyContactEmail: row.agency_contact_email || "",
+  agencyContactPhone: row.agency_contact_phone || "",
+  sourceUrl: row.source_url || "",
+  portal: row.portal || "",
+  discoveredAt: row.discovered_at,
+  preBidMeetingAt: row.pre_bid_meeting_at,
+  questionsDueAt: row.questions_due_at,
+  submissionDueAt: row.submission_due_at,
+  awardDecisionExpected: row.award_decision_expected,
+  ourSubmittedAt: row.our_submitted_at,
+  estimatedValue: row.estimated_value,
+  ourBidAmount: row.our_bid_amount,
+  bondRequired: row.bond_required || false,
+  bondAmount: row.bond_amount,
+  bondType: row.bond_type || "",
+  ourCostEstimate: row.our_cost_estimate,
+  status: row.status || "discovered",
+  priority: row.priority || "medium",
+  outcomeAt: row.outcome_at,
+  winningBidder: row.winning_bidder || "",
+  winningBidAmount: row.winning_bid_amount,
+  rejectionReason: row.rejection_reason || "",
+  lessonsLearned: row.lessons_learned || "",
+  notes: row.notes || "",
+  tags: row.tags || [],
+  checklistItems: row.checklist_items || [],  // v19a: document checklist
+  deletedAt: row.deleted_at || null,
+  deletedBy: row.deleted_by || null,
+  deleteReason: row.delete_reason || null,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const bidToDB = (bid) => ({
+  rfb_number: bid.rfbNumber || null,
+  title: bid.title,
+  agency: bid.agency || null,
+  agency_contact_name: bid.agencyContactName || null,
+  agency_contact_email: bid.agencyContactEmail || null,
+  agency_contact_phone: bid.agencyContactPhone || null,
+  source_url: bid.sourceUrl || null,
+  portal: bid.portal || null,
+  pre_bid_meeting_at: bid.preBidMeetingAt || null,
+  questions_due_at: bid.questionsDueAt || null,
+  submission_due_at: bid.submissionDueAt || null,
+  award_decision_expected: bid.awardDecisionExpected || null,
+  our_submitted_at: bid.ourSubmittedAt || null,
+  estimated_value: bid.estimatedValue != null ? Number(bid.estimatedValue) : null,
+  our_bid_amount: bid.ourBidAmount != null ? Number(bid.ourBidAmount) : null,
+  bond_required: !!bid.bondRequired,
+  bond_amount: bid.bondAmount != null ? Number(bid.bondAmount) : null,
+  bond_type: bid.bondType || null,
+  our_cost_estimate: bid.ourCostEstimate != null ? Number(bid.ourCostEstimate) : null,
+  status: bid.status || "discovered",
+  priority: bid.priority || "medium",
+  outcome_at: bid.outcomeAt || null,
+  winning_bidder: bid.winningBidder || null,
+  winning_bid_amount: bid.winningBidAmount != null ? Number(bid.winningBidAmount) : null,
+  rejection_reason: bid.rejectionReason || null,
+  lessons_learned: bid.lessonsLearned || null,
+  notes: bid.notes || null,
+  tags: bid.tags || [],
+  checklist_items: bid.checklistItems || [],  // v19a: document checklist
+});
+
+export const fetchBids = async () => {
+  const { data, error } = await supabase
+    .from("bids")
+    .select("*")
+    .is("deleted_at", null)
+    .order("submission_due_at", { ascending: true, nullsFirst: false });
+  if (error) { console.error("fetchBids:", error); return []; }
+  return (data || []).map(bidFromDB);
+};
+
+export const fetchDeletedBids = async () => {
+  const { data, error } = await supabase
+    .from("bids")
+    .select("*")
+    .not("deleted_at", "is", null)
+    .order("deleted_at", { ascending: false });
+  if (error) { console.error("fetchDeletedBids:", error); return []; }
+  return (data || []).map(bidFromDB);
+};
+
+export const insertBid = async (bid) => {
+  const { data, error } = await supabase
+    .from("bids")
+    .insert([bidToDB(bid)])
+    .select()
+    .single();
+  if (error) { console.error("insertBid:", error); throw error; }
+  return bidFromDB(data);
+};
+
+export const updateBid = async (id, patch, expectedUpdatedAt = null) => {
+  // v19c Session N: optimistic locking.
+  // Bids already have a DB trigger (touch_bids_updated_at) that auto-stamps updated_at on UPDATE,
+  // but we also set it explicitly to be resilient if the trigger doesn't exist.
+  const dbPatch = { ...bidToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("bids").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
+  if (error) { console.error("updateBid:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("bids").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("bids", id);
+    }
+    throw new Error(`updateBid: row ${id} not found`);
+  }
+  return bidFromDB(data);
+};
+
+export const deleteBid = async (id, { deletedBy = "admin", reason = "" } = {}) => {
+  const { error } = await supabase
+    .from("bids")
+    .update({
+      deleted_at: new Date().toISOString(),
+      deleted_by: deletedBy,
+      delete_reason: reason || null,
+    })
+    .eq("id", id);
+  if (error) { console.error("deleteBid (soft):", error); throw error; }
+};
+
+export const recoverBid = async (id) => {
+  const { error } = await supabase
+    .from("bids")
+    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
+    .eq("id", id);
+  if (error) { console.error("recoverBid:", error); throw error; }
+};
+
+export const hardDeleteBid = async (id) => {
+  const { error } = await supabase.from("bids").delete().eq("id", id);
+  if (error) { console.error("hardDeleteBid:", error); throw error; }
+};
+
+export const subscribeToBids = (callback) => {
+  const channel = supabase
+    .channel("bids-changes")
+    .on("postgres_changes", { event: "*", schema: "public", table: "bids" }, callback)
+    .subscribe();
+  return () => supabase.removeChannel(channel);
+};
+
+// ========== AUDIT LOG (v20 Session O) ==========
+// Records high-value actions for dispute/investigation purposes. 90-day retention.
+//
+// Action type catalog:
+//   fb.approve, fb.reject, fb.paid, fb.unpaid, fb.soft_delete, fb.recover
+//   invoice.create, invoice.payment_recorded, invoice.payment_deleted, invoice.delete
+//   dispatch.status_toggle, dispatch.soft_delete, dispatch.recover
+//   bid.status_change, bid.soft_delete, bid.recover
+//   quote.status_change, quote.convert, quote.soft_delete
+//
+// Usage: logAudit({ actionType, entityType, entityId, entityLabel, actor, metadata, before, after })
+
+const auditFromDB = (row) => ({
+  id: row.id,
+  actionType: row.action_type,
+  entityType: row.entity_type,
+  entityId: row.entity_id,
+  entityLabel: row.entity_label || "",
+  actor: row.actor || "admin",
+  happenedAt: row.happened_at,
+  metadata: row.metadata || {},
+  before: row.before_value,
+  after: row.after_value,
+  createdAt: row.created_at,
+});
+
+export const logAudit = async ({
+  actionType,
+  entityType,
+  entityId,
+  entityLabel = "",
+  actor = "admin",
+  metadata = {},
+  before = null,
+  after = null,
+}) => {
+  // Audit logging is fire-and-forget — failures are logged but don't block the calling action.
+  // Returns void. If the insert fails, we don't want the user-facing action to fail because of it.
+  try {
+    const { error } = await supabase.from("audit_log").insert([{
+      action_type: actionType,
+      entity_type: entityType,
+      entity_id: entityId,
+      entity_label: entityLabel || null,
+      actor,
+      metadata: metadata || {},
+      before_value: before,
+      after_value: after,
+    }]);
+    if (error) {
+      // Log but don't throw — audit is non-critical for UX.
+      // Most likely cause: table doesn't exist yet (migration not run).
+      console.warn("logAudit:", error.message);
+    }
+  } catch (e) {
+    console.warn("logAudit threw:", e?.message);
+  }
+};
+
+export const fetchAuditLog = async ({ entityId = null, actionType = null, limit = 200, from = null, to = null } = {}) => {
+  let q = supabase.from("audit_log").select("*").order("happened_at", { ascending: false }).limit(limit);
+  if (entityId) q = q.eq("entity_id", entityId);
+  if (actionType) q = q.eq("action_type", actionType);
+  if (from) q = q.gte("happened_at", from);
+  if (to) q = q.lte("happened_at", to);
+  const { data, error } = await q;
+  if (error) { console.error("fetchAuditLog:", error); return []; }
+  return (data || []).map(auditFromDB);
+};
+
+// Optionally call on app boot to purge logs older than 90 days
+export const purgeOldAuditLogs = async () => {
+  try {
+    const { error } = await supabase.rpc("purge_old_audit_logs");
+    if (error) { console.warn("purgeOldAuditLogs:", error.message); return 0; }
+    return 1;
+  } catch (e) { console.warn("purgeOldAuditLogs threw:", e?.message); return 0; }
+};
+
+// ========== TESTIMONIALS (v22 Session T) ==========
+// Customer/partner quotes for public site. Admin-managed.
+
+const testimonialFromDB = (row) => ({
+  id: row.id,
+  quoteText: row.quote_text || "",
+  authorName: row.author_name || "",
+  authorCompany: row.author_company || "",
+  authorRole: row.author_role || "",
+  rating: row.rating !== null && row.rating !== undefined ? Number(row.rating) : null,
+  showOnWebsite: !!row.show_on_website,
+  displayOrder: Number(row.display_order) || 0,
+  source: row.source || "",
+  collectedAt: row.collected_at || null,
+  notes: row.notes || "",
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const testimonialToDB = (t) => ({
+  quote_text: t.quoteText || "",
+  author_name: t.authorName || "",
+  author_company: t.authorCompany || null,
+  author_role: t.authorRole || null,
+  rating: t.rating !== null && t.rating !== undefined && t.rating !== "" ? Number(t.rating) : null,
+  show_on_website: !!t.showOnWebsite,
+  display_order: Number(t.displayOrder) || 0,
+  source: t.source || null,
+  collected_at: t.collectedAt || null,
+  notes: t.notes || null,
+});
+
+export const fetchTestimonials = async () => {
+  const { data, error } = await supabase.from("testimonials").select("*").order("display_order", { ascending: true });
+  if (error) { console.error("fetchTestimonials:", error); return []; }
+  return (data || []).map(testimonialFromDB);
+};
+
+export const fetchPublicTestimonials = async () => {
+  const { data, error } = await supabase
+    .from("testimonials")
+    .select("*")
+    .eq("show_on_website", true)
+    .order("display_order", { ascending: true });
+  if (error) { console.error("fetchPublicTestimonials:", error); return []; }
+  return (data || []).map(testimonialFromDB);
+};
+
+export const insertTestimonial = async (t) => {
+  const { data, error } = await supabase.from("testimonials").insert(testimonialToDB(t)).select().single();
+  if (error) { console.error("insertTestimonial:", error); throw error; }
+  return testimonialFromDB(data);
+};
+
+export const updateTestimonial = async (id, patch, expectedUpdatedAt = null) => {
+  const dbPatch = { ...testimonialToDB(patch), updated_at: new Date().toISOString() };
+  let query = supabase.from("testimonials").update(dbPatch).eq("id", id);
+  if (expectedUpdatedAt) query = query.eq("updated_at", expectedUpdatedAt);
+  const { data, error } = await query.select().maybeSingle();
+  if (error) { console.error("updateTestimonial:", error); throw error; }
+  if (!data) {
+    if (expectedUpdatedAt) {
+      const { data: currentRow } = await supabase.from("testimonials").select("updated_at").eq("id", id).maybeSingle();
+      if (currentRow) throw new ConcurrentEditError("testimonials", id);
+    }
+    throw new Error(`updateTestimonial: row ${id} not found`);
+  }
+  return testimonialFromDB(data);
+};
+
+export const deleteTestimonial = async (id) => {
+  const { error } = await supabase.from("testimonials").delete().eq("id", id);
+  if (error) { console.error("deleteTestimonial:", error); throw error; }
+};
+
+// ========== DRIVER/SUB PAY PORTAL (v23 Session Y) ==========
+// Public fetcher — called by /#/pay/:token page.
+// Uses Postgres function get_sub_pay_by_token which enforces token auth
+// and returns only FBs assigned to this sub/driver within last 90 days.
+export const fetchSubPayByToken = async (token) => {
+  if (!token) return null;
+  const { data, error } = await supabase.rpc("get_sub_pay_by_token", { p_token: token });
+  if (error) { console.error("fetchSubPayByToken:", error); return null; }
+  if (!data) return null;
+  const fbs = (data.freightBills || []).map((row) => ({
+    ...fbFromDB(row),
+    dispatchCode: row.dispatch_code,
+    dispatchDate: row.dispatch_date,
+    jobName: row.job_name,
+    pickupLocation: row.pickup_location,
+    dropoffLocation: row.dropoff_location,
+  }));
+  return {
+    contact: data.contact,
+    freightBills: fbs,
+    windowDays: data.windowDays || 90,
+  };
 };
