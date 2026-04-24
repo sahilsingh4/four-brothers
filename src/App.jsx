@@ -123,6 +123,42 @@ const compressImage = (file, maxDim = 1600, quality = 0.7) => new Promise((resol
   reader.readAsDataURL(file);
 });
 
+// Short "ding" via WebAudio so no asset is required.
+const playDing = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.26);
+    osc.onended = () => { try { ctx.close(); } catch { /* noop */ } };
+  } catch { /* noop */ }
+};
+
+const requestBrowserNotif = async () => {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  if (Notification.permission === "granted" || Notification.permission === "denied") return Notification.permission;
+  try { return await Notification.requestPermission(); } catch { return "denied"; }
+};
+
+const fireBrowserNotif = (title, body, tag) => {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const n = new Notification(title, { body, tag, silent: true });
+    setTimeout(() => { try { n.close(); } catch { /* noop */ } }, 8000);
+  } catch { /* noop */ }
+};
+
 const Logo = ({ size = "md" }) => {
   const scale = size === "lg" ? 1.4 : size === "sm" ? 0.75 : 1;
   return (
@@ -1650,7 +1686,6 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
               <label
                 htmlFor="big-camera-input"
                 style={{
-                  display: "block",
                   cursor: "pointer",
                   padding: "32px 20px",
                   background: photos.length > 0 ? "var(--good)" : "var(--hazard)",
@@ -14533,7 +14568,7 @@ const downloadReportCSV = (report) => {
 
 // ========== REPORTS TAB ==========
 // ========== FREIGHT BILL SEARCH PANEL ==========
-const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, projects, editFreightBill, onToast, company }) => {
+const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, projects, editFreightBill, invoices = [], onToast, company }) => {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -15590,7 +15625,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
       localStorage.setItem(FB_ARCHIVE_LS_KEY, JSON.stringify({
         fromDate, toDate, customerId, projectId, statusFilter, fieldsInclude,
       }));
-    } catch {}
+    } catch { /* noop: localStorage can fail in private mode */ }
   };
 
   const handleGenerate = async () => {
@@ -19079,6 +19114,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
         contacts={contacts}
         projects={projects}
         editFreightBill={editFreightBill}
+        invoices={invoices}
         onToast={onToast}
         company={company}
       />
@@ -20078,6 +20114,29 @@ const CustomerPortal = ({ token, onBack }) => {
     })();
   }, [token]);
 
+  // Filter orders — must run on every render (hooks rules), so compute from data?.orders
+  // and gate rendering below.
+  const filteredOrders = useMemo(() => {
+    const orders = data?.orders || [];
+    const freightBills = data?.freightBills || [];
+    let list = orders;
+    if (orderFilter !== "all") list = list.filter((o) => {
+      if (orderFilter === "open") return o.status === "open";
+      if (orderFilter === "closed") return o.status === "closed";
+      if (orderFilter !== "all") return o.projectId === Number(orderFilter);
+      return true;
+    });
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter((o) => {
+        const fbs = freightBills.filter((fb) => fb.dispatchId === o.id);
+        const hay = `${o.jobName} ${o.code} ${fbs.map((fb) => `${fb.freightBillNumber} ${fb.driverName}`).join(" ")}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [data, orderFilter, search]);
+
   if (loading) {
     return (
       <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
@@ -20103,26 +20162,6 @@ const CustomerPortal = ({ token, onBack }) => {
   }
 
   const { customer, orders, freightBills, projects } = data;
-
-  // Filter orders
-  const filteredOrders = useMemo(() => {
-    let list = orders;
-    if (orderFilter !== "all") list = list.filter((o) => {
-      if (orderFilter === "open") return o.status === "open";
-      if (orderFilter === "closed") return o.status === "closed";
-      if (orderFilter !== "all") return o.projectId === Number(orderFilter);
-      return true;
-    });
-    if (search.trim()) {
-      const s = search.trim().toLowerCase();
-      list = list.filter((o) => {
-        const fbs = freightBills.filter((fb) => fb.dispatchId === o.id);
-        const hay = `${o.jobName} ${o.code} ${fbs.map((fb) => `${fb.freightBillNumber} ${fb.driverName}`).join(" ")}`.toLowerCase();
-        return hay.includes(s);
-      });
-    }
-    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [orders, orderFilter, search, freightBills]);
 
   // Metrics
   const totalTons = freightBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
@@ -22035,12 +22074,11 @@ export default function App() {
   };
 
   // v20 Session Q: Idle warning countdown
-  // When warning is shown, count down 60 seconds. If it hits 0, force logout.
+  // When warning appears, seed countdown and tick it down. If it hits 0, force logout.
+  // The non-warning reset is handled wherever we call setIdleWarning(false), so this
+  // effect only runs its interval while the warning is active.
   useEffect(() => {
-    if (!idleWarning) {
-      setIdleCountdown(IDLE_WARNING_SEC);
-      return;
-    }
+    if (!idleWarning) return;
     const countdownInterval = setInterval(() => {
       setIdleCountdown((s) => {
         if (s <= 1) {

@@ -116,7 +116,7 @@ export const invoiceSubtotalFromFbs = (fbs, legacyCalcFn = () => 0) => {
  * Compute pay stub totals from an array of fbRows (where each has .calc.payingLines or legacy).
  * Returns { gross, brokerageAmt, netPay, allHaveLines }.
  */
-export const payStubTotalsFromFbs = (fbs, brokerageApplies = false, brokeragePct = 0) => {
+export const payStubTotalsFromFbs = (fbs) => {
   if (!Array.isArray(fbs)) fbs = [];
 
   const allHaveLines = fbs.length > 0 && fbs.every((fb) =>
