@@ -7892,7 +7892,7 @@ const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
 };
 
 // ========== FREIGHT BILL EDIT / APPROVE MODAL ==========
-const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, invoices = [], onClose, onToast, currentUser }) => {
+const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, setDispatches, invoices = [], onClose, onToast, currentUser }) => {
   const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
   const project = dispatch ? projects.find((p) => p.id === dispatch.projectId) : null;
   const assignment = dispatch ? (dispatch.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
@@ -8537,7 +8537,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
           {/* Core IDs */}
           <fieldset disabled={!unlocked && (lockedOnInvoice || lockedAsPaid)} style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 14, opacity: (!unlocked && (lockedOnInvoice || lockedAsPaid)) ? 0.65 : 1 }}>
 
-          {/* v18: ASSIGNED TO — contact info from the dispatch, with ability to change assignment */}
+          {/* v18: ASSIGNED TO — contact info from the dispatch, with cascading Kind + Contact pickers */}
           {dispatch && (() => {
             const assignments = Array.isArray(dispatch.assignments) ? dispatch.assignments : [];
             const currentAssignment = assignments.find((a) => a.aid === fb.assignmentId);
@@ -8547,44 +8547,123 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
             const kindColor = currentAssignment?.kind === "sub" ? "#9A3412" : "#0369A1";
             const kindLabel = currentAssignment?.kind === "sub" ? "SUBCONTRACTOR" : "DRIVER";
 
+            // When admin picks a new contact, create a new assignment on the dispatch + repoint FB.
+            const reassign = async (kind, contactId) => {
+              if (!kind || !contactId) return;
+              const contact = contacts.find((c) => c.id === contactId);
+              if (!contact) { onToast("CONTACT NOT FOUND"); return; }
+              if (!setDispatches) { onToast("⚠ CANNOT REASSIGN — DISPATCH UPDATE NOT AVAILABLE"); return; }
+
+              // Check if an assignment for this contact already exists on this dispatch — reuse it if so
+              const existing = assignments.find((a) => a.kind === kind && a.contactId === contactId);
+              let targetAid;
+              if (existing) {
+                targetAid = existing.aid;
+              } else {
+                // Create new assignment
+                targetAid = "a-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+                const newAssignment = {
+                  aid: targetAid,
+                  kind,
+                  contactId,
+                  name: contact.contactName || contact.companyName || "",
+                  trucks: 1,
+                  payMethod: contact.defaultPayMethod || "hour",
+                  payRate: contact.defaultPayRate ? String(contact.defaultPayRate) : "",
+                };
+                const updatedDispatch = {
+                  ...dispatch,
+                  assignments: [...assignments, newAssignment],
+                };
+                try {
+                  await setDispatches(dispatches.map((d) => d.id === dispatch.id ? updatedDispatch : d));
+                } catch (err) {
+                  console.error("Add assignment to dispatch failed:", err);
+                  onToast("⚠ DISPATCH UPDATE FAILED");
+                  return;
+                }
+              }
+
+              // Now repoint the FB
+              try {
+                await editFreightBill(fb.id, {
+                  ...fb,
+                  assignmentId: targetAid,
+                  driverName: contact.contactName || contact.companyName || fb.driverName,
+                });
+                setDraft((d) => ({
+                  ...d,
+                  driverName: contact.contactName || contact.companyName || d.driverName,
+                }));
+                onToast(`✓ REASSIGNED TO ${contact.contactName || contact.companyName}`);
+              } catch (err) {
+                console.error("Reassign FB failed:", err);
+                onToast("⚠ FB REASSIGN FAILED");
+              }
+            };
+
             return (
               <div style={{ padding: 14, background: "#F0F9FF", border: "2px solid " + kindColor }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                   <div className="fbt-mono" style={{ fontSize: 11, color: kindColor, letterSpacing: "0.1em", fontWeight: 700 }}>
                     🚚 ASSIGNED TO · {currentAssignment ? kindLabel : "UNASSIGNED"}
                   </div>
-                  {assignments.length > 1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>CHANGE ASSIGNMENT:</span>
-                      <select
-                        className="fbt-select"
-                        value={fb.assignmentId || ""}
-                        onChange={(e) => {
-                          const newAid = e.target.value || null;
-                          const newAssignment = assignments.find((a) => a.aid === newAid);
-                          const newContact = newAssignment?.contactId ? contacts.find((c) => c.id === newAssignment.contactId) : null;
-                          setDraft((d) => ({
-                            ...d,
-                            // Update driver name to match new assignment (unless user already overrode it)
-                            driverName: newAssignment?.name || d.driverName,
-                          }));
-                          // Also persist assignmentId change
-                          editFreightBill(fb.id, { ...fb, assignmentId: newAid, driverName: newAssignment?.name || fb.driverName }).catch((err) => {
-                            console.error("Change assignment failed:", err);
-                            onToast("⚠ ASSIGNMENT CHANGE FAILED");
-                          });
-                        }}
-                        style={{ padding: "4px 8px", fontSize: 11, minWidth: 160 }}
-                      >
-                        <option value="">— Unassigned —</option>
-                        {assignments.map((a) => {
-                          const c = a.contactId ? contacts.find((cc) => cc.id === a.contactId) : null;
-                          const label = a.name || c?.contactName || c?.companyName || "Unnamed";
-                          return <option key={a.aid} value={a.aid}>{a.kind === "sub" ? "SUB" : "DRV"} · {label}</option>;
-                        })}
-                      </select>
-                    </div>
-                  )}
+                </div>
+
+                {/* v18: cascading Kind → Contact pickers */}
+                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, marginBottom: 12, padding: 10, background: "#FFF", border: "1.5px dashed " + kindColor }}>
+                  <div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>1. KIND</div>
+                    <select
+                      className="fbt-select"
+                      value={currentAssignment?.kind || ""}
+                      onChange={(e) => {
+                        const newKind = e.target.value;
+                        if (!newKind) return;
+                        // If the current contact is the same kind, keep the picker open but require a new pick
+                        // by not auto-triggering reassign. Admin must then choose a contact below.
+                        // Just update the local UI state via a one-off trick: set a stub draft flag.
+                        // Actually simpler: store pending kind in draft and let the contact picker filter on it.
+                        setDraft((d) => ({ ...d, _pendingKind: newKind }));
+                      }}
+                      style={{ padding: "6px 8px", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}
+                    >
+                      <option value="">— Choose —</option>
+                      <option value="driver">DRIVER</option>
+                      <option value="sub">SUBCONTRACTOR</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>2. CONTACT</div>
+                    {(() => {
+                      const kindInPicker = draft._pendingKind || currentAssignment?.kind || "";
+                      const filteredContacts = contacts.filter((c) => c.type === kindInPicker);
+                      return (
+                        <select
+                          className="fbt-select"
+                          disabled={!kindInPicker}
+                          value={currentAssignment?.contactId || ""}
+                          onChange={(e) => {
+                            const newContactId = Number(e.target.value);
+                            if (!newContactId) return;
+                            reassign(kindInPicker, newContactId);
+                            setDraft((d) => { const { _pendingKind, ...rest } = d; return rest; });
+                          }}
+                          style={{ padding: "6px 8px", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}
+                        >
+                          <option value="">{kindInPicker ? `— Pick a ${kindInPicker === "sub" ? "subcontractor" : "driver"} —` : "— Pick kind first —"}</option>
+                          {filteredContacts.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
+                              {c.contactName && c.companyName ? ` (${c.contactName})` : ""}
+                              {c.brokerageApplies ? ` · ${c.brokeragePercent || 10}% brok` : ""}
+                              {c.defaultPayRate ? ` · $${c.defaultPayRate}/${c.defaultPayMethod || "hr"}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {currentContact ? (
@@ -8627,13 +8706,13 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                 ) : (
                   <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
                     {currentAssignment
-                      ? `${currentAssignment.name || "Unnamed"} — no contact record linked. Open Contacts to add one.`
-                      : "No assignment linked. Use the dropdown above to pick one, or edit the dispatch."}
+                      ? `${currentAssignment.name || "Unnamed"} — no contact record linked.`
+                      : "No assignment linked. Use the dropdowns above to pick one."}
                   </div>
                 )}
 
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.04em" }}>
-                  ▸ Contact info is read from the Contacts tab. To edit name/phone/email, open the contact record there.
+                  ▸ Picking a new contact creates a new assignment on this order and reassigns this FB to it. Pay rate pulls from the contact's default rate.
                 </div>
               </div>
             );
@@ -9226,7 +9305,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 };
 
 // ========== REVIEW TAB (End-of-day approval screen) ==========
-const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
+const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, projects = [], editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -9291,6 +9370,7 @@ const ReviewTab = ({ freightBills, dispatches, contacts, projects = [], editFrei
         <FBEditModal
           fb={editing}
           dispatches={dispatches}
+          setDispatches={setDispatches}
           contacts={contacts}
           editFreightBill={editFreightBill}
           invoices={invoices}
@@ -10511,7 +10591,7 @@ const PayStatementModal = ({
 };
 
 // ========== PAYROLL TAB ==========
-const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [], editFreightBill, company, pendingPaySubId, clearPendingPaySubId, onJumpToInvoice, onToast }) => {
+const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, projects, invoices = [], editFreightBill, company, pendingPaySubId, clearPendingPaySubId, onJumpToInvoice, onToast }) => {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [paidFilter, setPaidFilter] = useState("unpaid"); // unpaid | paid | all
@@ -10972,6 +11052,7 @@ const PayrollTab = ({ freightBills, dispatches, contacts, projects, invoices = [
         <FBEditModal
           fb={editingFB}
           dispatches={dispatches}
+          setDispatches={setDispatches}
           contacts={contacts}
           projects={projects}
           editFreightBill={editFreightBill}
@@ -12423,7 +12504,7 @@ const downloadReportCSV = (report) => {
 
 // ========== REPORTS TAB ==========
 // ========== FREIGHT BILL SEARCH PANEL ==========
-const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreightBill, onToast, company }) => {
+const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, projects, editFreightBill, onToast, company }) => {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -12802,6 +12883,7 @@ const FBSearchPanel = ({ freightBills, dispatches, contacts, projects, editFreig
         <FBEditModal
           fb={editing}
           dispatches={dispatches}
+          setDispatches={setDispatches}
           contacts={contacts}
           projects={projects}
           editFreightBill={editFreightBill}
@@ -13607,7 +13689,7 @@ const RecoveryTab = ({ onToast }) => {
   );
 };
 
-const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
+const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -13686,6 +13768,7 @@ const ReportsTab = ({ dispatches, freightBills, logs, invoices, quotes, quarries
       <FBSearchPanel
         freightBills={freightBills}
         dispatches={dispatches}
+        setDispatches={setDispatches}
         contacts={contacts}
         projects={projects}
         editFreightBill={editFreightBill}
@@ -15291,8 +15374,8 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         }} onToast={onToast} />}
         {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onToast={onToast} />}
-        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
-        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
+        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
+        {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} company={company} onToast={onToast} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
@@ -15300,7 +15383,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onToast={onToast} />}
         {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
-        {tab === "reports" && <ReportsTab dispatches={dispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
+        {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "recovery" && <RecoveryTab onToast={onToast} />}
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
       </div>
