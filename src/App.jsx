@@ -8489,14 +8489,22 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         paidRate:  paySnapshotLocked && fb.paidRate  != null ? fb.paidRate  : (draft.paidRate  !== "" ? Number(draft.paidRate)  : null),
         paidMethodSnapshot: paySnapshotLocked && fb.paidMethodSnapshot ? fb.paidMethodSnapshot : (draft.paidMethodSnapshot || null),
 
-        // Persist line-item arrays (v16 master data)
-        // If billing is locked, don't overwrite existing lines. Otherwise save what's in draft.
-        billingLines: billingSnapshotLocked && Array.isArray(fb.billingLines) && fb.billingLines.length > 0
-          ? fb.billingLines
-          : (draft.billingLines || []),
-        payingLines: paySnapshotLocked && Array.isArray(fb.payingLines) && fb.payingLines.length > 0
-          ? fb.payingLines
-          : (draft.payingLines || []),
+        // Persist line-item arrays (v16 master data).
+        // v18 Part B fix: when locked, keep ORIGINAL (non-adjustment) lines intact
+        // AND merge in any post-lock adjustment lines the admin added in draft.
+        // Previously we discarded the entire draft — wiping any adjustments.
+        billingLines: (() => {
+          if (!billingSnapshotLocked) return draft.billingLines || [];
+          const origLines = Array.isArray(fb.billingLines) ? fb.billingLines.filter((ln) => !ln.isAdjustment) : [];
+          const adjLines = Array.isArray(draft.billingLines) ? draft.billingLines.filter((ln) => ln.isAdjustment) : [];
+          return [...origLines, ...adjLines];
+        })(),
+        payingLines: (() => {
+          if (!paySnapshotLocked) return draft.payingLines || [];
+          const origLines = Array.isArray(fb.payingLines) ? fb.payingLines.filter((ln) => !ln.isAdjustment) : [];
+          const adjLines = Array.isArray(draft.payingLines) ? draft.payingLines.filter((ln) => ln.isAdjustment) : [];
+          return [...origLines, ...adjLines];
+        })(),
       };
 
       // If admin confirmed min-hours, stamp audit
@@ -8660,7 +8668,10 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
           )}
 
           {/* Core IDs */}
-          <fieldset disabled={!unlocked && (lockedOnInvoice || lockedAsPaid)} style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 14, opacity: (!unlocked && (lockedOnInvoice || lockedAsPaid)) ? 0.65 : 1 }}>
+          {/* v18 Part B: fieldset no longer disabled by either lock.
+              Billing and pay sections now enforce their OWN lock independently,
+              and post-lock adjustment lines are allowed on both sides. */}
+          <fieldset style={{ border: "none", padding: 0, margin: 0, display: "grid", gap: 14 }}>
 
           {/* v18: ASSIGNED TO — contact info from the dispatch, with cascading Kind + Contact pickers */}
           {dispatch && (() => {
@@ -10733,7 +10744,7 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
   // ══════════════════════════════════════════════════════════════════
   // v18 SESSION 1 (Pay Builder scaffolding): two separate builders for DRIVERS and SUBS.
   // Each has its own contact picker + date range + FB list.
-  // Editing inline + per-FB save comes in Session 2.
+  // v18 SESSION 2: pay lines editable inline with per-FB SAVE (same pattern as invoice builder).
   // ══════════════════════════════════════════════════════════════════
   const [drvContactId, setDrvContactId] = useState("");
   const [drvFromDate, setDrvFromDate] = useState("");
@@ -10744,6 +10755,102 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
   const [subFromDate, setSubFromDate] = useState("");
   const [subToDate, setSubToDate] = useState("");
   const [subExpandedFbIds, setSubExpandedFbIds] = useState(new Set());
+
+  // v18 Session 2: per-FB draft state for pay lines. Shared across drivers/subs builders.
+  // Shape: { [fbId]: [...payingLines] }. Presence = dirty.
+  const [payLineDrafts, setPayLineDrafts] = useState({});
+  const [fbPaySaveStatus, setFbPaySaveStatus] = useState({});
+
+  const getPayLines = (fbId) => {
+    if (payLineDrafts[fbId] !== undefined) return payLineDrafts[fbId];
+    const fb = freightBills.find((f) => f.id === fbId);
+    return Array.isArray(fb?.payingLines) ? fb.payingLines : [];
+  };
+  const isPayDirty = (fbId) => {
+    if (payLineDrafts[fbId] === undefined) return false;
+    const fb = freightBills.find((f) => f.id === fbId);
+    const saved = Array.isArray(fb?.payingLines) ? fb.payingLines : [];
+    return JSON.stringify(saved) !== JSON.stringify(payLineDrafts[fbId]);
+  };
+  const recomputePayLine = (ln) => {
+    const qty = Number(ln.qty) || 0;
+    const rate = Number(ln.rate) || 0;
+    const gross = Number((qty * rate).toFixed(2));
+    const pct = Number(ln.brokeragePct) || 0;
+    const net = ln.brokerable ? Number((gross - gross * pct / 100).toFixed(2)) : gross;
+    return { ...ln, qty, rate, gross, net };
+  };
+  const updatePayLineLocal = (fbId, lineId, patch) => {
+    const currentLines = getPayLines(fbId);
+    const next = currentLines.map((ln) => ln.id === lineId ? recomputePayLine({ ...ln, ...patch }) : ln);
+    setPayLineDrafts((prev) => ({ ...prev, [fbId]: next }));
+    setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
+  };
+  const addPayLineLocal = (fbId, seed = {}) => {
+    const fb = freightBills.find((f) => f.id === fbId);
+    if (!fb) return;
+    const disp = dispatches.find((d) => d.id === fb.dispatchId);
+    const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
+    const isSub = assignment?.kind === "sub";
+    const subContact = isSub && assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+    const isPassThrough = ["TOLL", "DUMP", "FUEL"].includes(seed.code);
+    const brokerableDefault = isSub && !!subContact?.brokerageApplies && !isPassThrough;
+    const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
+
+    const newLine = recomputePayLine({
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      code: seed.code || "OTHER",
+      item: seed.item || "",
+      qty: seed.qty != null ? Number(seed.qty) : 1,
+      rate: seed.rate != null ? Number(seed.rate) : Number(assignment?.payRate) || 0,
+      brokerable: seed.brokerable != null ? !!seed.brokerable : brokerableDefault,
+      brokeragePct: seed.brokeragePct != null ? Number(seed.brokeragePct) : brokeragePctDefault,
+    });
+    const currentLines = getPayLines(fbId);
+    setPayLineDrafts((prev) => ({ ...prev, [fbId]: [...currentLines, newLine] }));
+    setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
+  };
+  const deletePayLineLocal = (fbId, lineId) => {
+    const currentLines = getPayLines(fbId);
+    const next = currentLines.filter((ln) => ln.id !== lineId);
+    setPayLineDrafts((prev) => ({ ...prev, [fbId]: next }));
+    setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
+  };
+  const savePayLines = async (fbId) => {
+    const currentFb = freightBills.find((f) => f.id === fbId);
+    if (!currentFb) { onToast("⚠ FB NOT FOUND"); return; }
+    const draft = payLineDrafts[fbId];
+    if (draft === undefined) return;
+
+    setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "saving" }));
+    try {
+      // Full-FB spread to avoid partial-patch data loss
+      await editFreightBill(fbId, { ...currentFb, payingLines: draft });
+      setPayLineDrafts((prev) => {
+        const next = { ...prev }; delete next[fbId]; return next;
+      });
+      setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "saved" }));
+      onToast(`✓ FB#${currentFb.freightBillNumber || fbId} PAY SAVED`);
+      setTimeout(() => {
+        setFbPaySaveStatus((prev) => {
+          if (prev[fbId] !== "saved") return prev;
+          const next = { ...prev }; delete next[fbId]; return next;
+        });
+      }, 2000);
+    } catch (e) {
+      console.error("savePayLines failed:", e);
+      setFbPaySaveStatus((prev) => ({ ...prev, [fbId]: "error" }));
+      onToast("⚠ PAY SAVE FAILED — CHECK CONNECTION");
+    }
+  };
+  const discardPayDraft = (fbId) => {
+    setPayLineDrafts((prev) => {
+      const next = { ...prev }; delete next[fbId]; return next;
+    });
+    setFbPaySaveStatus((prev) => {
+      const next = { ...prev }; delete next[fbId]; return next;
+    });
+  };
 
   // Contact lists filtered by type
   const driverContacts = useMemo(() => (contacts || []).filter((c) => c.type === "driver"), [contacts]);
@@ -11166,6 +11273,129 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
   const subContactOptions = contacts.filter((c) => c.type === "sub" || c.type === "driver");
   const methodLabel = { check: "Check", ach: "ACH", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
 
+  // v18 Session 2: editable pay-lines panel shared by both drivers/subs builders.
+  // Renders the RIGHT side of the side-by-side expand view. Uses local drafts; persists on SAVE click.
+  const renderPayLinesEditor = (fb, kindColor) => {
+    const lines = getPayLines(fb.id);
+    const dirty = isPayDirty(fb.id);
+    const status = fbPaySaveStatus[fb.id] || "idle";
+    const locked = !!fb.payStatementLockedAt || !!fb.paidAt;
+
+    return (
+      <div style={{ padding: 8, background: "#FFF", border: "1.5px solid " + kindColor, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="fbt-mono" style={{ fontSize: 9, color: kindColor, letterSpacing: "0.1em", fontWeight: 700, marginBottom: 2 }}>
+          🚚 PAYING · EDITABLE
+          {locked && <span style={{ marginLeft: 6, color: "var(--concrete)", fontWeight: 400 }}>⚑ locked</span>}
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 60px 70px 50px 70px 22px", gap: 4, alignItems: "center", fontSize: 9, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", letterSpacing: "0.05em" }}>
+          <div>CODE</div><div>ITEM</div><div style={{ textAlign: "right" }}>QTY</div>
+          <div style={{ textAlign: "right" }}>RATE</div><div style={{ textAlign: "center" }}>BR?</div>
+          <div style={{ textAlign: "right" }}>NET</div><div></div>
+        </div>
+
+        {lines.length === 0 && (
+          <div style={{ padding: 8, fontSize: 10, color: "var(--concrete)", fontStyle: "italic", textAlign: "center" }}>
+            No pay lines — use quick-add below
+          </div>
+        )}
+
+        {lines.map((ln) => {
+          const rowLocked = locked && !ln.isAdjustment;
+          const rowBg = ln.isAdjustment ? "#FEF3C7" : "transparent";
+          const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
+          const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
+          const net = Number(ln.net) || (gross - brokAmt);
+          return (
+            <div key={ln.id} onClick={(e) => e.stopPropagation()}
+              style={{ display: "grid", gridTemplateColumns: "50px 1fr 60px 70px 50px 70px 22px", gap: 4, alignItems: "center", padding: "3px 0", borderBottom: "1px dotted var(--concrete)", background: rowBg }}>
+              <select disabled={rowLocked} value={ln.code || "OTHER"}
+                onChange={(e) => updatePayLineLocal(fb.id, ln.id, { code: e.target.value, item: (
+                  e.target.value === "H" ? "HOURLY" : e.target.value === "T" ? "TONS" : e.target.value === "L" ? "LOAD" :
+                  e.target.value === "TOLL" ? "Tolls" : e.target.value === "DUMP" ? "Dump" : e.target.value === "FUEL" ? "Fuel" : (ln.item || "")
+                ) })}
+                style={{ padding: "2px 3px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }}
+              >
+                <option value="H">H</option><option value="T">T</option><option value="L">L</option>
+                <option value="TOLL">TOLL</option><option value="DUMP">DUMP</option><option value="FUEL">FUEL</option><option value="OTHER">OTHER</option>
+              </select>
+              <input disabled={rowLocked} type="text" value={ln.item || ""}
+                onChange={(e) => updatePayLineLocal(fb.id, ln.id, { item: e.target.value })}
+                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }} />
+              <input disabled={rowLocked} type="number" step="0.01" value={ln.qty ?? ""}
+                onChange={(e) => updatePayLineLocal(fb.id, ln.id, { qty: e.target.value })}
+                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
+              <input disabled={rowLocked} type="number" step="0.01" value={ln.rate ?? ""}
+                onChange={(e) => updatePayLineLocal(fb.id, ln.id, { rate: e.target.value })}
+                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 1, justifyContent: "center" }}>
+                <input type="checkbox" disabled={rowLocked} checked={!!ln.brokerable}
+                  onChange={(e) => updatePayLineLocal(fb.id, ln.id, { brokerable: e.target.checked, brokeragePct: e.target.checked ? (ln.brokeragePct || 10) : 0 })}
+                  style={{ width: 12, height: 12 }} />
+                {ln.brokerable && (
+                  <input disabled={rowLocked} type="number" step="1" value={ln.brokeragePct ?? ""}
+                    onChange={(e) => updatePayLineLocal(fb.id, ln.id, { brokeragePct: e.target.value })}
+                    style={{ padding: "1px 2px", fontSize: 9, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: 28, textAlign: "right" }} />
+                )}
+              </div>
+              <div style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: kindColor, textAlign: "right" }}>
+                ${net.toFixed(2)}
+              </div>
+              <button type="button" disabled={rowLocked}
+                onClick={(e) => { e.stopPropagation(); if (confirm(`Delete ${ln.code} line?`)) deletePayLineLocal(fb.id, ln.id); }}
+                style={{ padding: "1px 3px", background: "transparent", border: "1px solid var(--safety)", color: "var(--safety)", cursor: rowLocked ? "not-allowed" : "pointer", fontSize: 9, opacity: rowLocked ? 0.4 : 1 }}
+                title={rowLocked ? "Pay is locked" : "Delete line"}>
+                <Trash2 size={8} />
+              </button>
+            </div>
+          );
+        })}
+
+        {/* Quick-add */}
+        <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 4 }}>
+          <button type="button" onClick={(e) => { e.stopPropagation(); addPayLineLocal(fb.id, { code: "H", item: locked ? "HOURLY (adj)" : "HOURLY" }); }}
+            className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>+ HR</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); addPayLineLocal(fb.id, { code: "TOLL", item: "Tolls" }); }}
+            className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>+ TOLL</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); addPayLineLocal(fb.id, { code: "DUMP", item: "Dump" }); }}
+            className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>+ DUMP</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); addPayLineLocal(fb.id, { code: "FUEL", item: "Fuel" }); }}
+            className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>+ FUEL</button>
+          <button type="button" onClick={(e) => { e.stopPropagation(); addPayLineLocal(fb.id, { code: "OTHER", item: "" }); }}
+            className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>+ OTHER</button>
+        </div>
+
+        {/* Save/Discard banner */}
+        {(dirty || status === "saving" || status === "saved" || status === "error") && (
+          <div style={{
+            display: "flex", gap: 6, alignItems: "center", marginTop: 4, padding: "4px 8px",
+            background: dirty ? "#FEF3C7" : status === "saved" ? "#D1FAE5" : status === "error" ? "#FEE2E2" : "#F5F5F4",
+            border: `1px solid ${dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)"}`,
+            flexWrap: "wrap",
+          }}>
+            <span className="fbt-mono" style={{ fontSize: 9, letterSpacing: "0.08em", fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
+              {status === "saving" ? "SAVING…" :
+               status === "saved" ? "SAVED ✓" :
+               status === "error" ? "ERROR" :
+               dirty ? "UNSAVED" : ""}
+            </span>
+            {dirty && (
+              <>
+                <button type="button" disabled={status === "saving"}
+                  onClick={(e) => { e.stopPropagation(); savePayLines(fb.id); }}
+                  className="btn-primary" style={{ padding: "3px 10px", fontSize: 10, marginLeft: "auto" }}>SAVE</button>
+                <button type="button" disabled={status === "saving"}
+                  onClick={(e) => { e.stopPropagation(); if (confirm("Discard unsaved pay edits?")) discardPayDraft(fb.id); }}
+                  className="btn-ghost" style={{ padding: "3px 7px", fontSize: 9 }}>DISCARD</button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div style={{ display: "grid", gap: 20 }}>
       {/* v18 Session 1: two pay statement builders side-by-side — DRIVERS + SUBS.
@@ -11223,12 +11453,13 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                   {drvFbs.map((fb) => {
                     const expanded = drvExpandedFbIds.has(fb.id);
                     const disp = dispatches.find((d) => d.id === fb.dispatchId);
-                    const payLines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+                    const payLines = getPayLines(fb.id);  // v18 Session 2: draft-aware
                     const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                     const billLines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
                     const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    const dirty = isPayDirty(fb.id);
                     return (
-                      <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                      <div key={fb.id} style={{ background: dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${dirty ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
                         <div
                           onClick={() => {
                             const next = new Set(drvExpandedFbIds);
@@ -11237,7 +11468,10 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                           }}
                           style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
                         >
-                          <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                          <span style={{ fontWeight: 700 }}>
+                            FB#{fb.freightBillNumber || "—"}
+                            {dirty && <span title="Unsaved pay edits" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
+                          </span>
                           <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
                           <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
@@ -11270,35 +11504,29 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                               </div>
                             </div>
 
-                            {/* RIGHT: Paying to driver */}
-                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid #0369A1" }}>
-                              <div className="fbt-mono" style={{ fontSize: 9, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
-                                🚚 PAYING TO DRIVER (EDITING NEXT SESSION)
-                              </div>
-                              {payLines.length === 0 ? (
-                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No pay lines — will be editable next session</div>
-                              ) : (
-                                payLines.map((ln) => (
-                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
-                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
-                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
-                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
-                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
-                                  </div>
-                                ))
-                              )}
-                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid #0369A1", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
-                                <span>PAY TOTAL</span>
-                                <span style={{ color: "#0369A1" }}>${payTotal.toFixed(2)}</span>
-                              </div>
-                              {billTotal > 0 && payTotal > 0 && (
-                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
-                                  <span style={{ fontWeight: 700 }}>MARGIN</span>
-                                  <span style={{ fontWeight: 700, color: "var(--good)" }}>
-                                    ${(billTotal - payTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - payTotal) / billTotal * 100).toFixed(0) : "0"}%)
-                                  </span>
-                                </div>
-                              )}
+                            {/* RIGHT: Paying to driver — editable */}
+                            <div>
+                              {renderPayLinesEditor(fb, "#0369A1")}
+                              {(() => {
+                                const livePayLines = getPayLines(fb.id);
+                                const livePayTotal = livePayLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                                return (
+                                  <>
+                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #0369A1", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, background: "#FFF" }}>
+                                      <span>PAY TOTAL</span>
+                                      <span style={{ color: "#0369A1" }}>${livePayTotal.toFixed(2)}</span>
+                                    </div>
+                                    {billTotal > 0 && livePayTotal > 0 && (
+                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                        <span style={{ fontWeight: 700 }}>MARGIN</span>
+                                        <span style={{ fontWeight: 700, color: "var(--good)" }}>
+                                          ${(billTotal - livePayTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - livePayTotal) / billTotal * 100).toFixed(0) : "0"}%)
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
@@ -11369,12 +11597,13 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                   {subFbs.map((fb) => {
                     const expanded = subExpandedFbIds.has(fb.id);
                     const disp = dispatches.find((d) => d.id === fb.dispatchId);
-                    const payLines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+                    const payLines = getPayLines(fb.id);  // v18 Session 2: draft-aware
                     const payTotal = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                     const billLines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
                     const billTotal = billLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                    const dirty = isPayDirty(fb.id);
                     return (
-                      <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                      <div key={fb.id} style={{ background: dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${dirty ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
                         <div
                           onClick={() => {
                             const next = new Set(subExpandedFbIds);
@@ -11383,7 +11612,10 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                           }}
                           style={{ padding: "8px 10px", cursor: "pointer", display: "grid", gridTemplateColumns: "auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
                         >
-                          <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                          <span style={{ fontWeight: 700 }}>
+                            FB#{fb.freightBillNumber || "—"}
+                            {dirty && <span title="Unsaved pay edits" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
+                          </span>
                           <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
                           <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {disp?.jobName || "—"} · T{fb.truckNumber || "—"}
@@ -11416,35 +11648,29 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                               </div>
                             </div>
 
-                            {/* RIGHT: Paying to sub */}
-                            <div style={{ padding: 8, background: "#FFF", border: "1.5px solid #9A3412" }}>
-                              <div className="fbt-mono" style={{ fontSize: 9, color: "#9A3412", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
-                                🚚 PAYING TO SUB (EDITING NEXT SESSION)
-                              </div>
-                              {payLines.length === 0 ? (
-                                <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No pay lines — will be editable next session</div>
-                              ) : (
-                                payLines.map((ln) => (
-                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
-                                    <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
-                                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
-                                    <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
-                                    <span style={{ fontWeight: 700 }}>${Number(ln.net || 0).toFixed(2)}</span>
-                                  </div>
-                                ))
-                              )}
-                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid #9A3412", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
-                                <span>PAY TOTAL</span>
-                                <span style={{ color: "#9A3412" }}>${payTotal.toFixed(2)}</span>
-                              </div>
-                              {billTotal > 0 && payTotal > 0 && (
-                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
-                                  <span style={{ fontWeight: 700 }}>MARGIN</span>
-                                  <span style={{ fontWeight: 700, color: "var(--good)" }}>
-                                    ${(billTotal - payTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - payTotal) / billTotal * 100).toFixed(0) : "0"}%)
-                                  </span>
-                                </div>
-                              )}
+                            {/* RIGHT: Paying to sub — editable */}
+                            <div>
+                              {renderPayLinesEditor(fb, "#9A3412")}
+                              {(() => {
+                                const livePayLines = getPayLines(fb.id);
+                                const livePayTotal = livePayLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                                return (
+                                  <>
+                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #9A3412", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, background: "#FFF" }}>
+                                      <span>PAY TOTAL</span>
+                                      <span style={{ color: "#9A3412" }}>${livePayTotal.toFixed(2)}</span>
+                                    </div>
+                                    {billTotal > 0 && livePayTotal > 0 && (
+                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                        <span style={{ fontWeight: 700 }}>MARGIN</span>
+                                        <span style={{ fontWeight: 700, color: "var(--good)" }}>
+                                          ${(billTotal - livePayTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - livePayTotal) / billTotal * 100).toFixed(0) : "0"}%)
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
+                                );
+                              })()}
                             </div>
                           </div>
                         )}
