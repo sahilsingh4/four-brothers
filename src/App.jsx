@@ -93,6 +93,9 @@ import {
 import { Toast } from "./components/Toast";
 import { Logo } from "./components/Logo";
 import { Lightbox } from "./components/Lightbox";
+import { useFormDraft } from "./hooks/useFormDraft";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
+import { readUploadQueue, enqueueUpload, removeFromUploadQueue } from "./hooks/uploadQueue";
 
 const GlobalStyles = () => (
   <style>{`
@@ -216,90 +219,6 @@ const requestBrowserNotif = async () => {
   if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
   if (Notification.permission === "granted" || Notification.permission === "denied") return Notification.permission;
   try { return await Notification.requestPermission(); } catch { return "denied"; }
-};
-
-// Persist an in-progress form draft to localStorage so refreshing,
-// accidental close, or idle logout doesn't wipe unsaved work.
-// Returns [draft, setDraft, wasRestored, clearDraft].
-// `enabled` lets callers skip persistence (e.g. when editing an existing
-// record, since the server has the source of truth there).
-const FORM_DRAFT_PREFIX = "fbt:draft:";
-const useFormDraft = (key, initialValue, enabled = true) => {
-  const storageKey = FORM_DRAFT_PREFIX + key;
-  const [wasRestored, setWasRestored] = useState(false);
-  const [draft, setDraft] = useState(() => {
-    if (!enabled) return initialValue;
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // flip wasRestored after render so effects can react
-        queueMicrotask(() => setWasRestored(true));
-        return parsed;
-      }
-    } catch { /* noop: private mode / quota exceeded */ }
-    return initialValue;
-  });
-  useEffect(() => {
-    if (!enabled) return;
-    const t = setTimeout(() => {
-      try { localStorage.setItem(storageKey, JSON.stringify(draft)); }
-      catch { /* noop */ }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [draft, enabled, storageKey]);
-  const clearDraft = () => {
-    try { localStorage.removeItem(storageKey); } catch { /* noop */ }
-    setWasRestored(false);
-  };
-  return [draft, setDraft, wasRestored, clearDraft];
-};
-
-// ---------------------------------------------------------------------------
-// Offline upload queue — drivers in the field often have flaky cell signal,
-// so a freight-bill submission that hits a network error is held in
-// localStorage and replayed once we're back online (see App-level flusher).
-// Queue entry shape: { id, fb, queuedAt, attempts }.
-// localStorage limit (~5MB) comfortably fits a few queued submissions —
-// photos are pre-compressed to ~100-300KB each.
-// ---------------------------------------------------------------------------
-const FB_UPLOAD_QUEUE_KEY = "fbt:fbUploadQueue";
-const readUploadQueue = () => {
-  try { return JSON.parse(localStorage.getItem(FB_UPLOAD_QUEUE_KEY) || "[]"); }
-  catch { return []; }
-};
-const writeUploadQueue = (q) => {
-  try { localStorage.setItem(FB_UPLOAD_QUEUE_KEY, JSON.stringify(q)); }
-  catch (e) { console.warn("upload queue write failed (quota?):", e); }
-};
-const enqueueUpload = (fb) => {
-  const q = readUploadQueue();
-  const entry = { id: "q-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), fb, queuedAt: new Date().toISOString(), attempts: 0 };
-  q.push(entry);
-  writeUploadQueue(q);
-  return entry.id;
-};
-const removeFromUploadQueue = (id) => {
-  writeUploadQueue(readUploadQueue().filter((e) => e.id !== id));
-};
-
-// Reactive online/offline state. `navigator.onLine === false` is the only
-// reliable "definitely offline" signal from the browser; true can lie.
-const useNetworkStatus = () => {
-  const [online, setOnline] = useState(() =>
-    typeof navigator === "undefined" ? true : navigator.onLine !== false
-  );
-  useEffect(() => {
-    const onUp = () => setOnline(true);
-    const onDown = () => setOnline(false);
-    window.addEventListener("online", onUp);
-    window.addEventListener("offline", onDown);
-    return () => {
-      window.removeEventListener("online", onUp);
-      window.removeEventListener("offline", onDown);
-    };
-  }, []);
-  return online;
 };
 
 const fireBrowserNotif = (title, body, tag) => {
