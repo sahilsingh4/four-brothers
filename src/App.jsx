@@ -1,21 +1,108 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
-import { fetchDispatches, insertDispatch, updateDispatch, deleteDispatch, fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill, subscribeToDispatches, subscribeToFreightBills, fetchContacts, insertContact, updateContact, deleteContact, fetchQuarries, insertQuarry, updateQuarry, deleteQuarry, fetchInvoices, insertInvoice, updateInvoice, deleteInvoice, subscribeToContacts, subscribeToQuarries, subscribeToInvoices, fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects, fetchPublicProjects, fetchCustomerByToken, fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices, recoverDispatch, recoverFreightBill, recoverInvoice, hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice, autoPurgeDeleted, fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes, fetchDeletedQuotes, recoverQuote, hardDeleteQuote, fetchBids, insertBid, updateBid, deleteBid, subscribeToBids, fetchDeletedBids, recoverBid, hardDeleteBid, logAudit, fetchAuditLog, fetchTestimonials, fetchPublicTestimonials, insertTestimonial, updateTestimonial, deleteTestimonial, fetchSubPayByToken, COMPLIANCE_DOC_TYPES, getComplianceStatus, fetchComplianceDocs, insertComplianceDoc, updateComplianceDoc, deleteComplianceDoc, uploadComplianceFile, getComplianceFileUrl, deleteComplianceFile } from "./db";
 import {
-  hoursFromTimes as mathHoursFromTimes,
-  computeLineNet as mathComputeLineNet,
-  recomputeLine as mathRecomputeLine,
-  totalLines as mathTotalLines,
-  seedHoursForFb as mathSeedHoursForFb,
-  billableHoursForInvoice as mathBillableHoursForInvoice,
-  contactBrokeragePct as mathContactBrokeragePct,
-} from "./math";
-import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2, Download, CheckCircle2, AlertCircle, AlertTriangle, ArrowRight, Wrench, FileText, Search, Link2, Camera, Upload, X, Eye, EyeOff, Share2, Lock, LogOut, Settings, KeyRound, Building2, Printer, FileDown, Database, HardDrive, RefreshCw, Users, User, Star, MessageSquare, UserPlus, Edit2, ChevronDown, Bell, BellOff, Volume2, VolumeX, Activity, Package, Mountain, BarChart3, History, Calendar, DollarSign, Banknote, Award, Briefcase, ShieldCheck, Clock, Save, Send } from "lucide-react";
+  fetchDispatches, insertDispatch, updateDispatch, deleteDispatch,
+  fetchFreightBills, insertFreightBill, updateFreightBill, deleteFreightBill,
+  subscribeToDispatches, subscribeToFreightBills,
+  fetchContacts, insertContact, updateContact, deleteContact,
+  fetchQuarries, insertQuarry, updateQuarry, deleteQuarry,
+  fetchInvoices, insertInvoice, updateInvoice, deleteInvoice,
+  subscribeToContacts, subscribeToQuarries, subscribeToInvoices,
+  fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects,
+  fetchPublicProjects, fetchCustomerByToken,
+  fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices,
+  recoverDispatch, recoverFreightBill, recoverInvoice,
+  hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice,
+  autoPurgeDeleted,
+  fetchQuotes, insertQuote, updateQuote, deleteQuote, subscribeToQuotes,
+  fetchDeletedQuotes, recoverQuote, hardDeleteQuote,
+  fetchBids, insertBid, updateBid, deleteBid, subscribeToBids,
+  logAudit, fetchAuditLog,
+  fetchTestimonials, fetchPublicTestimonials,
+  insertTestimonial, updateTestimonial, deleteTestimonial,
+  fetchSubPayByToken,
+  COMPLIANCE_DOC_TYPES,
+} from "./db";
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  ArrowRight,
+  Award,
+  Banknote,
+  BarChart3,
+  Bell,
+  BellOff,
+  Briefcase,
+  Building2,
+  Calendar,
+  Camera,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardList,
+  Clock,
+  Database,
+  DollarSign,
+  Download,
+  Edit2,
+  Eye,
+  EyeOff,
+  FileDown,
+  FileText,
+  Fuel,
+  HardDrive,
+  History,
+  KeyRound,
+  Link2,
+  Lock,
+  LogOut,
+  Mail,
+  MapPin,
+  MessageSquare,
+  Mountain,
+  Package,
+  Phone,
+  Plus,
+  Printer,
+  RefreshCw,
+  Receipt,
+  Save,
+  Search,
+  Send,
+  Settings,
+  Share2,
+  ShieldCheck,
+  Star,
+  Trash2,
+  Truck,
+  Upload,
+  User,
+  UserPlus,
+  Users,
+  Volume2,
+  VolumeX,
+  Wrench,
+  X,
+} from "lucide-react";
+// Pure formatters & validators live in ./utils so they're unit-testable
+// without React/DOM. See src/utils.js + src/utils.test.js.
+import {
+  fmt$, fmtDate, fmtDateTime, formatTime12h, todayISO, randomCode,
+  clientToken, matchesClientToken,
+} from "./utils";
+import { Toast } from "./components/Toast";
+import { Logo } from "./components/Logo";
+import { Lightbox } from "./components/Lightbox";
+import { LoginScreen } from "./components/LoginScreen";
+import { ChangePasswordModal } from "./components/ChangePasswordModal";
+import { useFormDraft } from "./hooks/useFormDraft";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
+import { readUploadQueue, enqueueUpload, removeFromUploadQueue } from "./hooks/uploadQueue";
 
 const GlobalStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap');
-    :root { --hazard:#F59E0B; --hazard-deep:#D97706; --steel:#1C1917; --concrete:#44403C; --cream:#FAFAF9; --rust:#9A3412; --safety:#EF4444; --good:#65A30D; }
+    :root { --hazard:#F59E0B; --hazard-deep:#D97706; --steel:#44403C; --concrete:#78716C; --cream:#FAFAF9; --rust:#9A3412; --safety:#EF4444; --good:#65A30D; --line:#D6D3D1; }
     * { box-sizing: border-box; }
     body { margin: 0; }
     .fbt-root { font-family: 'Oswald', sans-serif; color: var(--steel); background: var(--cream); min-height: 100vh; }
@@ -58,7 +145,7 @@ const GlobalStyles = () => (
     .corner-mark.tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
     .corner-mark.bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
     .corner-mark.br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
-    .modal-bg { position: fixed; inset: 0; background: rgba(28,25,23,0.85); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(28,25,23,0.6); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
     .modal-body { background: var(--cream); border: 3px solid var(--hazard); box-shadow: 10px 10px 0 var(--steel); max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
     .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1.5px solid var(--steel); font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
     .thumb { width: 80px; height: 80px; object-fit: cover; border: 2px solid var(--steel); cursor: pointer; transition: transform 0.1s; }
@@ -85,20 +172,6 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-const fmt$ = (n) => `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const fmtDate = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch { return iso; } };
-const fmtDateTime = (iso) => { if (!iso) return "—"; try { return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return iso; } };
-const formatTime12h = (hhmm) => {
-  if (!hhmm || typeof hhmm !== "string") return "";
-  const [h, m] = hhmm.split(":").map(Number);
-  if (isNaN(h)) return hhmm;
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const mm = String(m || 0).padStart(2, "0");
-  return `${h12}:${mm} ${period}`;
-};
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const randomCode = (len = 6) => { const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s = ""; for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]; return s; };
 const storageSet = async (key, value, shared = false) => { try { await window.storage?.set(key, JSON.stringify(value), shared); } catch (e) { console.warn("storage set failed", key, e); } };
 const storageGet = async (key, shared = false) => { try { const r = await window.storage?.get(key, shared); return r?.value ? JSON.parse(r.value) : null; } catch { return null; } };
 
@@ -123,208 +196,49 @@ const compressImage = (file, maxDim = 1600, quality = 0.7) => new Promise((resol
   reader.readAsDataURL(file);
 });
 
-const Logo = ({ size = "md" }) => {
-  const scale = size === "lg" ? 1.4 : size === "sm" ? 0.75 : 1;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 * scale }}>
-      <div style={{ width: 44 * scale, height: 44 * scale, background: "var(--hazard)", border: `${3 * scale}px solid var(--steel)`, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-3deg)" }}>
-        <Truck size={22 * scale} strokeWidth={2.5} />
-      </div>
-      <div style={{ lineHeight: 1 }}>
-        <div className="fbt-display" style={{ fontSize: 18 * scale, letterSpacing: "-0.03em" }}>4 BROTHERS</div>
-        <div className="fbt-mono" style={{ fontSize: 10 * scale, color: "var(--concrete)", marginTop: 2 }}>TRUCKING · LLC · EST. BAY POINT CA</div>
-      </div>
-    </div>
-  );
+// Short "ding" via WebAudio so no asset is required.
+const playDing = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.26);
+    osc.onended = () => { try { ctx.close(); } catch { /* noop */ } };
+  } catch { /* noop */ }
 };
 
-const Toast = ({ msg, onClose }) => {
-  useEffect(() => { const t = setTimeout(onClose, 2800); return () => clearTimeout(t); }, [onClose]);
-  return <div className="toast"><CheckCircle2 size={18} /> {msg}</div>;
+const requestBrowserNotif = async () => {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  if (Notification.permission === "granted" || Notification.permission === "denied") return Notification.permission;
+  try { return await Notification.requestPermission(); } catch { return "denied"; }
 };
 
-const Lightbox = ({ src, onClose }) => (
-  <div
-    className="modal-bg"
-    onClick={onClose}
-    style={{ alignItems: "center", zIndex: 10000, background: "rgba(0,0,0,0.92)" }}
-  >
-    <div style={{ position: "relative", maxWidth: "95vw", maxHeight: "95vh" }} onClick={(e) => e.stopPropagation()}>
-      <button onClick={onClose} style={{ position: "absolute", top: -40, right: 0, background: "var(--hazard)", border: "2px solid var(--steel)", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }}>
-        <X size={18} />
-      </button>
-      <img src={src} alt="Scale ticket" style={{ maxWidth: "95vw", maxHeight: "95vh", border: "3px solid var(--hazard)", display: "block" }} />
-    </div>
-  </div>
-);
+const fireBrowserNotif = (title, body, tag) => {
+  try {
+    if (!("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+    const n = new Notification(title, { body, tag, silent: true });
+    setTimeout(() => { try { n.close(); } catch { /* noop */ } }, 8000);
+  } catch { /* noop */ }
+};
+
+
+
 
 // ========== AUTH UTILITIES (SUPABASE) ==========
 // v20 Session Q: Hardened password requirements.
 // NIST-aligned: 12+ chars with mixed complexity. Catches most common attacks (brute force, credential stuffing).
-const validatePassword = (pw) => {
-  if (pw.length < 12) return "Password must be at least 12 characters";
-  if (!/[a-z]/.test(pw)) return "Password must contain at least one lowercase letter";
-  if (!/[A-Z]/.test(pw)) return "Password must contain at least one uppercase letter";
-  if (!/[0-9]/.test(pw)) return "Password must contain at least one number";
-  if (!/[^a-zA-Z0-9]/.test(pw)) return "Password must contain at least one special character (e.g. ! @ # $ %)";
-  // Check for common weak patterns
-  const lower = pw.toLowerCase();
-  if (/(.)\1{2,}/.test(pw)) return "Password cannot contain 3+ repeated characters in a row";
-  if (/012345|123456|234567|345678|456789|567890|abcdef|qwerty|asdfgh/.test(lower)) {
-    return "Password cannot contain common sequences (123456, qwerty, etc.)";
-  }
-  if (/password|admin|letmein|welcome|trucking|brothers|4brothers|dispatch|freight/.test(lower)) {
-    return "Password cannot contain common words (including company-related terms)";
-  }
-  return null;
-};
 
-const validateEmail = (e) => {
-  if (!e || !e.includes("@") || !e.includes(".")) return "Please enter a valid email";
-  return null;
-};
-
-// ========== LOGIN (Supabase email/password) ==========
-const LoginScreen = ({ onSuccess, onCancel }) => {
-  const [email, setEmail] = useState("");
-  const [pw, setPw] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    setErr("");
-    const ev = validateEmail(email);
-    if (ev) { setErr(ev); return; }
-    if (!pw) { setErr("Password is required"); return; }
-
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
-      if (error) {
-        setErr(error.message || "Login failed");
-        setLoading(false);
-        return;
-      }
-      onSuccess(data.user);
-    } catch (e) {
-      setErr(e.message || "Login failed — check your internet");
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fbt-root texture-paper" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <div className="fbt-card" style={{ maxWidth: 440, width: "100%", padding: 0, overflow: "hidden" }}>
-        <div className="hazard-stripe" style={{ height: 10 }} />
-        <div style={{ padding: 36 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-            <div style={{ width: 56, height: 56, background: "var(--hazard)", border: "3px solid var(--steel)", display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-3deg)", boxShadow: "4px 4px 0 var(--steel)" }}>
-              <Lock size={26} strokeWidth={2.5} color="var(--steel)" />
-            </div>
-            <div>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em" }}>▸ STAFF SIGN IN</div>
-              <h2 className="fbt-display" style={{ fontSize: 24, margin: 0, lineHeight: 1 }}>SECURE LOGIN</h2>
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 16 }}>
-            <div>
-              <label className="fbt-label">Email</label>
-              <input className="fbt-input" type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} autoFocus placeholder="you@example.com" />
-            </div>
-            <div>
-              <label className="fbt-label">Password</label>
-              <input className="fbt-input" type="password" autoComplete="current-password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} />
-            </div>
-
-            {err && (
-              <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} /> {err}
-              </div>
-            )}
-
-            <button onClick={submit} className="btn-primary" disabled={loading} style={{ justifyContent: "center", padding: "14px" }}>
-              {loading ? "SIGNING IN…" : <>SIGN IN <ArrowRight size={14} style={{ marginLeft: 6 }} /></>}
-            </button>
-
-            <button onClick={onCancel} className="btn-ghost" style={{ justifyContent: "center", padding: "10px" }}>
-              ← BACK TO PUBLIC SITE
-            </button>
-
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em", marginTop: 4 }}>
-              ▸ CLOUD LOGIN · SECURED BY SUPABASE
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ========== CHANGE PASSWORD (Supabase) ==========
-const ChangePasswordModal = ({ onClose, onToast }) => {
-  const [pw, setPw] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    setErr("");
-    const v = validatePassword(pw);
-    if (v) { setErr(v); return; }
-    if (pw !== confirm) { setErr("Passwords don't match"); return; }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password: pw });
-      if (error) { setErr(error.message); setLoading(false); return; }
-      onToast("PASSWORD CHANGED");
-      onClose();
-    } catch (e) {
-      setErr(e.message || "Failed to change password");
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="modal-bg" onClick={onClose}>
-      <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
-        <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 className="fbt-display" style={{ fontSize: 20, margin: 0, display: "flex", alignItems: "center", gap: 10 }}>
-            <KeyRound size={18} /> CHANGE PASSWORD
-          </h3>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
-        </div>
-        <div style={{ padding: 24, display: "grid", gap: 14 }}>
-          <div>
-            <label className="fbt-label">New Password</label>
-            <input className="fbt-input" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="12+ chars · upper + lower + number + symbol" autoFocus />
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6, lineHeight: 1.6, letterSpacing: "0.03em" }}>
-              ▸ MIN 12 CHARS · MIX CASE · INCLUDE A NUMBER · INCLUDE A SYMBOL<br/>
-              ▸ NO COMMON WORDS (PASSWORD, BROTHERS, TRUCKING, QWERTY, 123456)<br/>
-              ▸ NO 3+ REPEATED CHARS IN A ROW
-            </div>
-          </div>
-          <div>
-            <label className="fbt-label">Confirm New Password</label>
-            <input className="fbt-input" type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} />
-          </div>
-
-          {err && (
-            <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
-              <AlertCircle size={14} /> {err}
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
-            <button onClick={submit} className="btn-primary" disabled={loading}><CheckCircle2 size={16} /> {loading ? "UPDATING…" : "UPDATE PASSWORD"}</button>
-            <button onClick={onClose} className="btn-ghost">CANCEL</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 
 // ========================================================================
@@ -781,20 +695,6 @@ const publicField = (label, value, onChange, placeholder = "", type = "text") =>
 
 // ========== CLIENT TOKEN HELPER ==========
 // Deterministic token from client name — same name always → same link
-const clientToken = (name) => {
-  if (!name) return null;
-  const normalized = String(name).trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  if (!normalized) return null;
-  // Simple hash → base32-ish string, 8 chars
-  let h = 0;
-  for (let i = 0; i < normalized.length; i++) { h = ((h << 5) - h + normalized.charCodeAt(i)) | 0; }
-  const abs = Math.abs(h).toString(36).toUpperCase().padStart(6, "0").slice(0, 8);
-  return "C" + abs;
-};
-const matchesClientToken = (dispatch, token) => {
-  if (!token) return false;
-  return clientToken(dispatch.clientName) === token || clientToken(dispatch.subContractor) === token;
-};
 
 // ========== SHARED TRACKING UI ==========
 const TrackingHeader = ({ company }) => (
@@ -1084,20 +984,10 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [photoProgress, setPhotoProgress] = useState({ current: 0, total: 0 });  // v18 Session E: progress for batch photo compression
-  // v18 Session E: track online/offline state so we can warn driver before they lose their form to a failed submit
-  const [isOnline, setIsOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, []);
+  // Reactive online/offline state — drives the offline banner and the
+  // "OFFLINE — QUEUING" submit-progress label. handleTruckSubmit also queues
+  // submissions independently if navigator.onLine flips after we read it here.
+  const isOnline = useNetworkStatus();
   const [submitting, setSubmitting] = useState(false);
   const [submitProgress, setSubmitProgress] = useState(""); // stage text
   const [submitted, setSubmitted] = useState(false);
@@ -1172,10 +1062,11 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
       setSubmitError("Freight bill #, driver name, and truck # are required.");
       return;
     }
-    // v18 Session E: block submit when offline so driver knows right away (no silent failure)
+    // No internet? Don't block — handleTruckSubmit will queue the submission to
+    // localStorage and the App-level flusher will replay it once we're back online.
+    // We just clear any prior error so the user gets a clean run.
     if (!isOnline) {
-      setSubmitError("No internet connection. Your form is saved. Reconnect and hit SUBMIT again.");
-      return;
+      setSubmitError("");
     }
     // v20 Session P: spam defenses
     // 1. Honeypot check — bots typically fill every field including hidden ones.
@@ -1214,10 +1105,10 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
       setSubmitProgress("COMPRESSING PHOTOS…");
       await new Promise((r) => setTimeout(r, 100)); // UI tick
 
-      setSubmitProgress("UPLOADING TO DISPATCH…");
+      setSubmitProgress(isOnline ? "UPLOADING TO DISPATCH…" : "OFFLINE — QUEUING FOR LATER…");
       const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
       const submittedAt = new Date().toISOString();
-      await onSubmitTruck({
+      const result = await onSubmitTruck({
         ...form,
         extras: cleanExtras,
         id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
@@ -1225,8 +1116,9 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         photos,
         submittedAt,
       });
+      const wasQueued = result?.status === "queued";
 
-      setSubmitProgress("✓ SENT");
+      setSubmitProgress(wasQueued ? "✓ QUEUED" : "✓ SENT");
       await new Promise((r) => setTimeout(r, 400));
 
       // Save detailed submission summary for confirmation screen
@@ -1244,6 +1136,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         extras: cleanExtras,
         extrasTotal: cleanExtras.reduce((s, x) => s + (Number(x.amount) || 0), 0),
         submittedAt,
+        queued: wasQueued,
       });
       setLastFB(form.freightBillNumber);
       setSubmitted(true);
@@ -1276,13 +1169,18 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
   }
 
   if (submitted) {
+    const wasQueued = !!submissionSummary?.queued;
+    const accentColor = wasQueued ? "var(--hazard-deep)" : "var(--good)";
+    const accentBg = wasQueued ? "#FEF3C7" : "#F0FDF4";
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, background: "var(--cream)" }} className="texture-paper">
         <div className="fbt-card" style={{ padding: 32, textAlign: "center", maxWidth: 520, width: "100%" }}>
-          <div style={{ width: 80, height: 80, background: "var(--good)", borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <CheckCircle2 size={44} color="#FFF" />
+          <div style={{ width: 80, height: 80, background: accentColor, borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {wasQueued ? <Clock size={44} color="#FFF" /> : <CheckCircle2 size={44} color="#FFF" />}
           </div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.15em", marginBottom: 4 }}>▸ SENT TO DISPATCHER</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: accentColor, letterSpacing: "0.15em", marginBottom: 4 }}>
+            ▸ {wasQueued ? "QUEUED — WILL UPLOAD WHEN ONLINE" : "SENT TO DISPATCHER"}
+          </div>
           <h2 className="fbt-display" style={{ fontSize: 28, margin: "0 0 8px" }}>FB #{lastFB}</h2>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 20 }}>
             {submissionSummary?.submittedAt ? new Date(submissionSummary.submittedAt).toLocaleString() : "—"}
@@ -1290,7 +1188,7 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
 
           {/* Summary block */}
           {submissionSummary && (
-            <div style={{ background: "#F0FDF4", border: "2px solid var(--good)", padding: 16, marginBottom: 20, textAlign: "left" }}>
+            <div style={{ background: accentBg, border: `2px solid ${accentColor}`, padding: 16, marginBottom: 20, textAlign: "left" }}>
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ WHAT YOU SUBMITTED</div>
               <div style={{ display: "grid", gap: 6, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
                 <div><strong>DRIVER:</strong> {submissionSummary.driverName}</div>
@@ -1370,14 +1268,15 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
         <h1 className="fbt-display" style={{ fontSize: 32, margin: "0 0 8px", lineHeight: 1.1 }}>UPLOAD YOUR FREIGHT BILL</h1>
         <p style={{ color: "var(--concrete)", margin: "0 0 24px", fontSize: 15 }}>One submission per truck. Fill out the freight bill info and attach the scale ticket photos.</p>
 
-        {/* v18 Session E: Offline warning banner */}
+        {/* Offline banner — submitting is fine, the FB is queued locally and
+            uploaded automatically when the connection returns. */}
         {!isOnline && (
-          <div className="fbt-card" style={{ padding: 16, marginBottom: 20, background: "var(--safety)", color: "#FFF", borderLeft: "6px solid #7F1D1D", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div className="fbt-card" style={{ padding: 16, marginBottom: 20, background: "var(--hazard-deep)", color: "#FFF", borderLeft: "6px solid var(--steel)", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <AlertCircle size={26} />
             <div style={{ flex: 1, minWidth: 200 }}>
-              <div className="fbt-display" style={{ fontSize: 16 }}>NO INTERNET CONNECTION</div>
+              <div className="fbt-display" style={{ fontSize: 16 }}>OFFLINE — SUBMIT WILL QUEUE</div>
               <div className="fbt-mono" style={{ fontSize: 11, marginTop: 2, opacity: 0.95 }}>
-                YOU CAN FILL OUT THE FORM BUT CAN'T SUBMIT UNTIL YOU'RE BACK ONLINE. YOUR DATA IS KEPT LOCALLY.
+                FILL OUT THE FORM AND HIT SUBMIT — YOUR FB IS SAVED LOCALLY AND UPLOADS AUTOMATICALLY WHEN YOU'RE BACK ONLINE.
               </div>
             </div>
           </div>
@@ -1521,7 +1420,6 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
                 <div style={{ display: "grid", gap: 10, marginBottom: 8 }}>
                   {form.extras.map((x, idx) => {
                     const hasQtyRate = (Number(x.qty) > 0) && (Number(x.rate) > 0);
-                    const computed = hasQtyRate ? (Number(x.qty) * Number(x.rate)).toFixed(2) : "";
                     return (
                       <div key={idx} style={{ border: "1px solid var(--concrete)", padding: 8, background: "#FFF" }}>
                         <div style={{ display: "grid", gridTemplateColumns: "130px 1fr auto", gap: 6, alignItems: "center", marginBottom: 6 }}>
@@ -1650,7 +1548,6 @@ const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = 
               <label
                 htmlFor="big-camera-input"
                 style={{
-                  display: "block",
                   cursor: "pointer",
                   padding: "32px 20px",
                   background: photos.length > 0 ? "var(--good)" : "var(--hazard)",
@@ -2337,7 +2234,23 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       await deleteDispatch(id, { deletedBy: "admin", reason });
       const nextD = dispatches.filter((x) => x.id !== id);
       await setDispatches(nextD);
-      onToast("ORDER DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "ORDER DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverDispatch(id);
+              const fresh = await fetchDispatches();
+              await setDispatches(fresh);
+              onToast("ORDER RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -2381,7 +2294,23 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       await deleteFreightBill(id, { deletedBy: "admin", reason });
       const next = freightBills.filter((x) => x.id !== id);
       await setFreightBills(next);
-      onToast("FREIGHT BILL DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "FB DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverFreightBill(id);
+              const fresh = await fetchFreightBills();
+              await setFreightBills(fresh);
+              onToast("FB RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -2559,7 +2488,18 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
     window.location.href = url;
   };
 
-  const fbForDispatch = (id) => freightBills.filter((fb) => fb.dispatchId === id);
+  // Index freight bills by dispatchId once so inline lookups are O(1)
+  // instead of O(N) per render. Big win when there are hundreds of FBs
+  // and every dispatch row filters across them.
+  const fbsByDispatch = useMemo(() => {
+    const map = new Map();
+    for (const fb of freightBills) {
+      const list = map.get(fb.dispatchId);
+      if (list) list.push(fb); else map.set(fb.dispatchId, [fb]);
+    }
+    return map;
+  }, [freightBills]);
+  const fbForDispatch = (id) => fbsByDispatch.get(id) || [];
 
   const filteredDispatches = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -2568,11 +2508,11 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
       if (d.jobName.toLowerCase().includes(s)) return true;
       if ((d.subContractor || "").toLowerCase().includes(s)) return true;
       if (d.code.toLowerCase().includes(s)) return true;
-      const fbs = freightBills.filter((fb) => fb.dispatchId === d.id);
+      const fbs = fbsByDispatch.get(d.id) || [];
       if (fbs.some((fb) => (fb.freightBillNumber || "").toLowerCase().includes(s) || (fb.driverName || "").toLowerCase().includes(s) || (fb.truckNumber || "").toLowerCase().includes(s))) return true;
       return false;
     });
-  }, [dispatches, freightBills, search]);
+  }, [dispatches, fbsByDispatch, search]);
 
   // v18: group dispatches by day — key = YYYY-MM-DD of the "order date"
   // (order date is `date` field if present, else createdAt, else submittedAt).
@@ -2632,12 +2572,9 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               // Find the newly-inserted contact (will be last one with matching name, since setContacts diff'd & returned real id)
               // Best effort: wait one tick for state to settle, then find by name match
               setTimeout(() => {
-                const updatedContacts = nextList;  // parent contacts array will update via state refresh
-                // The real contact has been saved; we need to pick it up by its properties.
-                // Easiest: use the staged contact's temp id — it won't match after save, so admin picks again from dropdown.
-                // Actually we can look at latest contacts passed back via parent.
-                // Simpler approach: trust that realtime/parent re-passes `contacts` prop; the new contact will appear in dropdown.
-                // Pre-fill the current assignment row with the staged contact details so admin doesn't have to re-pick.
+                // The saved contact will reappear via the realtime contacts subscription;
+                // meanwhile pre-fill the current assignment row with the staged contact details
+                // so admin doesn't have to re-pick.
                 const next = [...draft.assignments];
                 const idx = quickAddContact.idx;
                 next[idx] = {
@@ -2697,8 +2634,6 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
         // Find the order fresh each render so we pick up state changes
         const dispatch = dispatches.find((x) => x.id === sendLinksTarget.id) || sendLinksTarget;
         const assignmentsToNotify = (dispatch.assignments || []).filter((a) => a.contactId);
-        const project = projects.find((p) => p.id === dispatch.projectId);
-        const customer = contacts.find((c) => c.id === dispatch.clientId);
 
         return (
           <div className="modal-bg" onClick={() => setSendLinksTarget(null)} style={{ zIndex: 108 }}>
@@ -3519,7 +3454,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                                   <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginTop: 4, fontWeight: 700 }}>
                                     ▸ START: {a.startTimes
                                       .filter((r) => r && (r.time || r.location))
-                                      .map((r, i) => {
+                                      .map((r) => {
                                         const t = r.time ? formatTime12h(r.time) : "TBD";
                                         const loc = r.location ? ` @ ${r.location}` : "";
                                         return `${t}${loc}`;
@@ -4883,7 +4818,6 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     if (hasLines) {
       return fb.billingLines.map((ln, lnIdx) => {
         const isFirst = lnIdx === 0;
-        const unit = ln.code === "H" ? "" : ""; // sample doesn't show units — they're baked into description
         // Description — if HOURLY show "HOURLY", if LOAD show "LOAD", if TOLL show "TOLL EMPTY" or "TOLL LOADED" etc.
         const desc = (ln.item || ln.code || "").toUpperCase();
         const qty = Number(ln.qty) || 0;
@@ -5641,7 +5575,7 @@ const CompanyProfileModal = ({ company, onSave, onClose, onToast }) => {
 
 // ========== INVOICES TAB ==========
 // ========== RECORD PAYMENT MODAL ==========
-const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoices, invoices, onClose, onToast }) => {
+const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
 
@@ -6987,10 +6921,27 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
         },
       });
 
-      const toastMsg = affectedFbs.length > 0
-        ? `INVOICE DELETED · ${affectedFbs.length - unlockFailures.length} FB${(affectedFbs.length - unlockFailures.length) !== 1 ? "S" : ""} UNLOCKED (RECOVERABLE 30 DAYS)`
-        : "INVOICE DELETED (RECOVERABLE 30 DAYS)";
-      onToast(toastMsg);
+      // Undo: recover the invoice. Note: unlocked FBs do NOT auto-relock —
+      // user will need to re-invoice them manually. That's an acceptable
+      // tradeoff since re-locking would silently change FB state.
+      const shortMsg = affectedFbs.length > 0
+        ? `INVOICE DELETED · ${affectedFbs.length - unlockFailures.length} FB${(affectedFbs.length - unlockFailures.length) !== 1 ? "S" : ""} UNLOCKED`
+        : "INVOICE DELETED";
+      onToast({
+        msg: shortMsg,
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverInvoice(inv.id);
+              onToast("INVOICE RESTORED — RE-INVOICE UNLOCKED FBs MANUALLY");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
     } catch (e) {
       console.error("Soft delete invoice failed:", e);
       alert("Delete failed: " + (e?.message || String(e)));
@@ -8130,22 +8081,6 @@ const buildEmailLink = (email, subject, body) => {
   if (body) params.push(`body=${encodeURIComponent(body)}`);
   return `mailto:${email}${params.length ? "?" + params.join("&") : ""}`;
 };
-const buildDispatchMessage = (dispatch, url, companyName) => {
-  const lines = [
-    `${companyName || "4 Brothers Trucking"} — Dispatch #${dispatch.code}`,
-    "",
-    `Job: ${dispatch.jobName}`,
-    `Date: ${dispatch.date}`,
-  ];
-  if (dispatch.pickup) lines.push(`Pickup: ${dispatch.pickup}`);
-  if (dispatch.dropoff) lines.push(`Dropoff: ${dispatch.dropoff}`);
-  if (dispatch.material) lines.push(`Material: ${dispatch.material}`);
-  lines.push(`Trucks needed: ${dispatch.trucksExpected}`);
-  lines.push("");
-  lines.push("Upload your freight bill + scale tickets here (one submission per truck):");
-  lines.push(url);
-  return lines.join("\n");
-};
 
 // ========== CONTACT MODAL ==========
 const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
@@ -8478,7 +8413,7 @@ const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
 };
 
 // ========== CONTACT DETAIL MODAL ==========
-const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
+const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
   const history = useMemo(() => {
     return dispatches.filter((d) => d.subContractorId === contact.id || (d.subContractor && contact.companyName && d.subContractor.toLowerCase() === contact.companyName.toLowerCase()));
   }, [dispatches, contact]);
@@ -8487,10 +8422,6 @@ const ContactDetailModal = ({ contact, dispatches, freightBills, company, onEdit
   const totalTons = history.reduce((s, d) => {
     return s + freightBills.filter((fb) => fb.dispatchId === d.id).reduce((ss, fb) => ss + (Number(fb.tonnage) || 0), 0);
   }, 0);
-
-  const copyPhoneText = () => {
-    if (contact.phone) { navigator.clipboard?.writeText(contact.phone); onToast("PHONE COPIED"); }
-  };
 
   // Portal link generation for customer contacts
   const generateToken = () => {
@@ -9009,7 +8940,6 @@ const newMaterialRow = (name = "", price = "") => ({
 // ========== QUARRY MODAL ==========
 const QuarryModal = ({ quarry, onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(quarry ? JSON.parse(JSON.stringify(quarry)) : newQuarryDraft());
-  const [priceChanges, setPriceChanges] = useState([]); // [{ name, old, new }]
 
   const updateMaterial = (idx, field, value) => {
     const next = [...draft.materials];
@@ -9688,16 +9618,6 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
   // LINE-ITEM HELPERS (v16 unified structure)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  // Compute net for a line based on gross, brokerable flag, and brokerage %
-  const computeLineNet = (line) => {
-    const gross = Number(line.gross) || (Number(line.qty) || 0) * (Number(line.rate) || 0);
-    if (line.brokerable) {
-      const pct = Number(line.brokeragePct) || 0;
-      return Number((gross - gross * pct / 100).toFixed(2));
-    }
-    return Number(gross.toFixed(2));
-  };
-
   // Recompute gross + net for a line after qty/rate/brokerable/brokeragePct changes
   const recomputeLine = (line) => {
     const qty = Number(line.qty) || 0;
@@ -10060,7 +9980,21 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
         entityLabel: `FB#${fb.freightBillNumber || "—"}`,
         metadata: { reason, status: fb.status, driverName: fb.driverName },
       });
-      onToast("✓ FB DELETED (RECOVERABLE 30 DAYS)");
+      onToast({
+        msg: "✓ FB DELETED",
+        action: {
+          label: "UNDO",
+          onClick: async () => {
+            try {
+              await recoverFreightBill(fb.id);
+              onToast("FB RESTORED");
+            } catch (err) {
+              console.error("Undo restore failed:", err);
+              onToast("⚠ UNDO FAILED — CHECK RECOVERY TAB");
+            }
+          },
+        },
+      });
       onClose();
     } catch (e) {
       console.error("Delete failed:", e);
@@ -10152,7 +10086,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                   ⚠ POSSIBLE DUPLICATE — FB #{fb.freightBillNumber} MATCHES {duplicates.length} OTHER FB{duplicates.length !== 1 ? "S" : ""}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1.6 }}>
-                  {duplicates.slice(0, 5).map((dup, i) => (
+                  {duplicates.slice(0, 5).map((dup) => (
                     <div key={dup.fb.id} style={{ marginBottom: 4 }}>
                       ▸ <strong>FB #{dup.fb.freightBillNumber}</strong> ·{" "}
                       {dup.dispatch ? `Order #${dup.dispatch.code}` : "no order"}
@@ -10980,7 +10914,7 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
 };
 
 // ========== REVIEW TAB (End-of-day approval screen) ==========
-const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, projects = [], editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
+const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -11265,7 +11199,7 @@ const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
 // ========== PAY STATEMENT PDF GENERATOR (v18 Session 3) ==========
 // Clean invoice-style layout: centered SVG logo · 3-col header · Pay To block · sparse table ·
 // per-FB brokerage deduction · boxed total · thank you + notes footer.
-const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, brokeragePct, brokerageApplies, allFreightBills, allDispatches, company, contact, isHistorical = false, statementNumber = null }) => {
+const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, allDispatches, company, contact, statementNumber = null }) => {
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
   const fmtQty = (n) => Number(n || 0).toFixed(2);
@@ -11549,7 +11483,7 @@ ${paidInfoHtml}
 };
 
 // ========== PAY STUB MODAL (offered after marking paid) ==========
-const PayStubOfferModal = ({ target, fbs, payRecord, allFreightBills, allDispatches, company, onPrint, onClose }) => {
+const PayStubOfferModal = ({ target, onPrint, onClose }) => {
   return (
     <div className="modal-bg" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
@@ -13245,9 +13179,6 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
                       const sExp = expanded[`s_${pd.projectKey}_${sub.subKey}`];
                       const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
                       const paidFbs = sub.fbs.filter((x) => !!x.fb.paidAt);
-                      const unpaidGross = unpaidFbs.reduce((s, x) => s + x.gross, 0);
-                      const unpaidBrok = sub.brokerageApplies ? unpaidGross * (sub.brokeragePct / 100) : 0;
-                      const unpaidNet = unpaidGross - unpaidBrok;
                       const isAllPaid = unpaidFbs.length === 0 && paidFbs.length > 0;
                       // Missing-rate detection: any FB whose assignment has no payRate configured
                       const missingRateFbs = sub.fbs.filter((x) => {
@@ -14276,7 +14207,7 @@ const daysAgoRange = (days) => {
 const toISODate = (d) => d.toISOString().slice(0, 10);
 
 // Core computation — returns a full report object
-const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries, contacts }) => {
+const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries }) => {
   const fromT = from.getTime();
   const toT = to.getTime();
 
@@ -14533,7 +14464,7 @@ const downloadReportCSV = (report) => {
 
 // ========== REPORTS TAB ==========
 // ========== FREIGHT BILL SEARCH PANEL ==========
-const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, projects, editFreightBill, onToast, company }) => {
+const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, projects, editFreightBill, invoices = [], onToast, company }) => {
   const [search, setSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -15590,7 +15521,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
       localStorage.setItem(FB_ARCHIVE_LS_KEY, JSON.stringify({
         fromDate, toDate, customerId, projectId, statusFilter, fieldsInclude,
       }));
-    } catch {}
+    } catch { /* noop: localStorage can fail in private mode */ }
   };
 
   const handleGenerate = async () => {
@@ -16552,7 +16483,7 @@ const BidDeadlineChip = ({ dueAt, label = "DUE" }) => {
 // ========== BID MODAL (new + edit) ==========
 const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
   const isNew = !bid?.id;
-  const [draft, setDraft] = useState(bid ? { ...bid } : {
+  const initialDraft = bid ? { ...bid } : {
     rfbNumber: "",
     title: "",
     agency: "",
@@ -16582,7 +16513,10 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
     notes: "",
     tags: [],
     checklistItems: [],  // v19a: document checklist [{id, label, done, notes}]
-  });
+  };
+  // Only persist drafts for NEW bids — editing an existing one already has
+  // the server as source of truth, so draft-restore would be confusing.
+  const [draft, setDraft, wasRestored, clearDraft] = useFormDraft("bid:new", initialDraft, isNew);
   const [saving, setSaving] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [checklistInput, setChecklistInput] = useState("");  // v19a: for adding new checklist items
@@ -16629,6 +16563,7 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
         winningBidAmount: draft.winningBidAmount === "" ? null : Number(draft.winningBidAmount),
       };
       await onSave(payload);
+      clearDraft();  // saved — drop any persisted restore copy
       onClose();
     } catch (e) {
       console.error("BidModal save:", e);
@@ -16653,7 +16588,16 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
         <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>{isNew ? "NEW BID" : "EDIT BID"}</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+              {isNew ? "NEW BID" : "EDIT BID"}
+              {wasRestored && (
+                <span
+                  onClick={() => { clearDraft(); setDraft(initialDraft); }}
+                  title="Click to discard the restored draft and start fresh"
+                  style={{ marginLeft: 8, padding: "2px 6px", background: "var(--good)", color: "#FFF", fontSize: 9, cursor: "pointer", letterSpacing: "0.06em" }}
+                >● RESTORED · CLICK TO DISCARD</span>
+              )}
+            </div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>
               {draft.rfbNumber ? `${draft.rfbNumber} · ` : ""}{draft.title || "Untitled"}
             </h3>
@@ -18930,7 +18874,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
   const [stmtOpenOnly, setStmtOpenOnly] = useState(true);
   const customers = useMemo(() => (contacts || []).filter((c) => c.type === "customer"), [contacts]);
 
-  const { from, to, label } = useMemo(() => {
+  const { from, to } = useMemo(() => {
     if (rangePreset === "lastweek") {
       const r = lastWeekRange();
       return { ...r, label: "Last week (Mon–Sun)" };
@@ -19079,6 +19023,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
         contacts={contacts}
         projects={projects}
         editFreightBill={editFreightBill}
+        invoices={invoices}
         onToast={onToast}
         company={company}
       />
@@ -20055,7 +20000,7 @@ const DriverPayPortalPage = ({ token, onBack }) => {
 // ========== DRIVER / SUB PAY PORTAL (v23 Session Y) ==========
 // Public page at /#/pay/:token. Sub/driver sees their own pay activity only.
 // Privacy: never shows other subs, customer amounts, or company margins.
-const CustomerPortal = ({ token, onBack }) => {
+const CustomerPortal = ({ token }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20070,13 +20015,36 @@ const CustomerPortal = ({ token, onBack }) => {
         const result = await fetchCustomerByToken(token);
         if (!result) { setError("Invalid or expired portal link"); }
         else { setData(result); }
-      } catch (e) {
+      } catch {
         setError("Failed to load portal — please try again");
       } finally {
         setLoading(false);
       }
     })();
   }, [token]);
+
+  // Filter orders — must run on every render (hooks rules), so compute from data?.orders
+  // and gate rendering below.
+  const filteredOrders = useMemo(() => {
+    const orders = data?.orders || [];
+    const freightBills = data?.freightBills || [];
+    let list = orders;
+    if (orderFilter !== "all") list = list.filter((o) => {
+      if (orderFilter === "open") return o.status === "open";
+      if (orderFilter === "closed") return o.status === "closed";
+      if (orderFilter !== "all") return o.projectId === Number(orderFilter);
+      return true;
+    });
+    if (search.trim()) {
+      const s = search.trim().toLowerCase();
+      list = list.filter((o) => {
+        const fbs = freightBills.filter((fb) => fb.dispatchId === o.id);
+        const hay = `${o.jobName} ${o.code} ${fbs.map((fb) => `${fb.freightBillNumber} ${fb.driverName}`).join(" ")}`.toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [data, orderFilter, search]);
 
   if (loading) {
     return (
@@ -20103,26 +20071,6 @@ const CustomerPortal = ({ token, onBack }) => {
   }
 
   const { customer, orders, freightBills, projects } = data;
-
-  // Filter orders
-  const filteredOrders = useMemo(() => {
-    let list = orders;
-    if (orderFilter !== "all") list = list.filter((o) => {
-      if (orderFilter === "open") return o.status === "open";
-      if (orderFilter === "closed") return o.status === "closed";
-      if (orderFilter !== "all") return o.projectId === Number(orderFilter);
-      return true;
-    });
-    if (search.trim()) {
-      const s = search.trim().toLowerCase();
-      list = list.filter((o) => {
-        const fbs = freightBills.filter((fb) => fb.dispatchId === o.id);
-        const hay = `${o.jobName} ${o.code} ${fbs.map((fb) => `${fb.freightBillNumber} ${fb.driverName}`).join(" ")}`.toLowerCase();
-        return hay.includes(s);
-      });
-    }
-    return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-  }, [orders, orderFilter, search, freightBills]);
 
   // Metrics
   const totalTons = freightBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
@@ -20330,7 +20278,7 @@ const CustomerPortal = ({ token, onBack }) => {
 // ========== HOME / DASHBOARD TAB ==========
 const HomeTab = ({
   freightBills, dispatches, contacts, projects, invoices, quotes, bids = [], company,
-  onJumpTab, onToast,
+  onJumpTab,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -21456,7 +21404,7 @@ export default function App() {
       }
 
       // Listen for auth changes (login/logout from other tabs)
-      supabase.auth.onAuthStateChange((event, sess) => {
+      supabase.auth.onAuthStateChange((event, _sess) => {
         if (event === "SIGNED_IN") { setAuthed(true); setView("dashboard"); }
         if (event === "SIGNED_OUT") { setAuthed(false); setView("public"); }
       });
@@ -21474,8 +21422,9 @@ export default function App() {
       const activityEvents = ["mousedown", "keydown", "scroll", "touchstart", "click"];
       activityEvents.forEach((evt) => window.addEventListener(evt, markActive, { passive: true }));
 
-      // Check for idle every 10 seconds
-      const idleCheckInterval = setInterval(() => {
+      // Check for idle every 10 seconds. We intentionally don't clear this:
+      // Dashboard is the top-level view so the interval lives for the app's lifetime.
+      setInterval(() => {
         const idleMs = Date.now() - lastActivityRef.current;
         if (idleMs >= IDLE_TIMEOUT_MS) {
           setIdleWarning(true);
@@ -21555,7 +21504,7 @@ export default function App() {
     firstLoadRef.current = true;
     setTimeout(() => { firstLoadRef.current = false; }, 2000);
 
-    const unsubFB = subscribeToFreightBills(async (payload) => {
+    const unsubFB = subscribeToFreightBills(async (_payload) => {
       // Refetch to get fresh data
       const fresh = await fetchFreightBills();
       const freshIds = new Set(fresh.map((x) => x.id));
@@ -21676,17 +21625,22 @@ export default function App() {
   const setCompany = async (val) => { setCompanyState(val); await storageSet("fbt:company", val); };
   const setLastViewedMondayReport = async (val) => { setLastViewedMondayReportState(val); await storageSet("fbt:lastViewedMondayReport", val); };
 
-  // Dispatch & freight bill operations — now go through Supabase
+  // Dispatch & freight bill operations — now go through Supabase.
   // The setter receives the NEW FULL ARRAY (how the UI calls it today).
   // We diff against current state to figure out insert/update/delete.
+  // Optimistic: update local state immediately, then reconcile with server
+  // truth (real IDs / updatedAt) when the API calls finish. On failure
+  // we roll back to `previous` so the UI doesn't lie about what's saved.
   const setDispatchesShared = async (val) => {
-    // Diff: find new/updated/deleted items
-    const currentMap = new Map(dispatches.map((d) => [d.id, d]));
+    const previous = dispatches;
+    setDispatches(val);  // optimistic — UI reflects change instantly
+
+    const currentMap = new Map(previous.map((d) => [d.id, d]));
     const newMap = new Map(val.map((d) => [d.id, d]));
 
     try {
       // Deletes: in current but not in new
-      for (const [id, d] of currentMap) {
+      for (const [id] of currentMap) {
         if (!newMap.has(id) && !String(id).startsWith("temp-")) {
           await deleteDispatch(id);
         }
@@ -21714,15 +21668,17 @@ export default function App() {
       setDispatches(saved);
     } catch (e) {
       console.error("setDispatchesShared failed:", e);
-      // Fall back to optimistic local update so user's screen still reflects their change
-      setDispatches(val);
-      // v18: surface the error — previously silent failure meant user didn't know save failed
-      showToast("⚠ SAVE FAILED — CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setDispatches(previous);  // roll back the optimistic update
+      showToast("⚠ SAVE FAILED — REVERTED LOCAL CHANGES. CHECK CONNECTION.");
     }
   };
 
   const setFreightBillsShared = async (val) => {
-    const currentMap = new Map(freightBills.map((fb) => [fb.id, fb]));
+    const previous = freightBills;
+    setFreightBills(val);  // optimistic
+    prevFbIdsRef.current = new Set(val.map((x) => x.id));
+
+    const currentMap = new Map(previous.map((fb) => [fb.id, fb]));
     const newMap = new Map(val.map((fb) => [fb.id, fb]));
 
     try {
@@ -21745,8 +21701,9 @@ export default function App() {
       prevFbIdsRef.current = new Set(saved.map((x) => x.id));
     } catch (e) {
       console.error("setFreightBillsShared failed:", e);
-      setFreightBills(val);
-      showToast("⚠ SAVE FAILED — FB CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setFreightBills(previous);  // roll back
+      prevFbIdsRef.current = new Set(previous.map((x) => x.id));
+      showToast("⚠ SAVE FAILED — REVERTED FB CHANGES. CHECK CONNECTION.");
     }
   };
 
@@ -21754,7 +21711,9 @@ export default function App() {
 
   // --- Contacts (Supabase) ---
   const setContacts = async (val) => {
-    const currentMap = new Map(contacts.map((c) => [c.id, c]));
+    const previous = contacts;
+    setContactsState(val);  // optimistic
+    const currentMap = new Map(previous.map((c) => [c.id, c]));
     const newMap = new Map(val.map((c) => [c.id, c]));
     try {
       for (const [id] of currentMap) {
@@ -21782,20 +21741,22 @@ export default function App() {
       }
       setContactsState(saved);
     } catch (e) {
+      // Roll back the optimistic update in either failure mode.
+      setContactsState(previous);
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A CONTACT — RELOAD");
-        // Don't update local state; next realtime refresh will fix it
         return;
       }
       console.error("setContacts failed:", e);
-      setContactsState(val);
-      showToast("⚠ SAVE FAILED — CONTACT CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED CONTACT CHANGES. CHECK CONNECTION.");
     }
   };
 
   // --- Quarries (Supabase) ---
   const setQuarries = async (val) => {
-    const currentMap = new Map(quarries.map((q) => [q.id, q]));
+    const previous = quarries;
+    setQuarriesState(val);  // optimistic
+    const currentMap = new Map(previous.map((q) => [q.id, q]));
     const newMap = new Map(val.map((q) => [q.id, q]));
     try {
       for (const [id] of currentMap) {
@@ -21822,20 +21783,22 @@ export default function App() {
       }
       setQuarriesState(saved);
     } catch (e) {
+      setQuarriesState(previous);  // roll back
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A QUARRY — RELOAD");
         return;
       }
       console.error("setQuarries failed:", e);
-      setQuarriesState(val);
-      showToast("⚠ SAVE FAILED — QUARRY CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED QUARRY CHANGES. CHECK CONNECTION.");
     }
   };
 
   // --- Invoices (Supabase) ---
   // Invoices are append-only mostly — we just insert new ones
   const setInvoices = async (val) => {
-    const currentIds = new Set(invoices.map((i) => i.id));
+    const previous = invoices;
+    setInvoicesState(val);  // optimistic
+    const currentIds = new Set(previous.map((i) => i.id));
     try {
       // Find deleted ones
       const newIds = new Set(val.map((i) => i.id));
@@ -21858,8 +21821,8 @@ export default function App() {
       setInvoicesState(saved);
     } catch (e) {
       console.error("setInvoices failed:", e);
-      setInvoicesState(val);
-      showToast("⚠ SAVE FAILED — INVOICE CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      setInvoicesState(previous);  // roll back
+      showToast("⚠ SAVE FAILED — REVERTED INVOICE CHANGES. CHECK CONNECTION.");
     }
   };
 
@@ -21891,7 +21854,9 @@ export default function App() {
 
   // --- Projects (Supabase) ---
   const setProjects = async (val) => {
-    const currentMap = new Map(projects.map((p) => [p.id, p]));
+    const previous = projects;
+    setProjectsState(val);  // optimistic
+    const currentMap = new Map(previous.map((p) => [p.id, p]));
     const newMap = new Map(val.map((p) => [p.id, p]));
     try {
       for (const [id] of currentMap) {
@@ -21918,13 +21883,13 @@ export default function App() {
       }
       setProjectsState(saved);
     } catch (e) {
+      setProjectsState(previous);  // roll back
       if (e?.code === "CONCURRENT_EDIT") {
         showToast("⚠ SOMEONE ELSE EDITED A PROJECT — RELOAD");
         return;
       }
       console.error("setProjects failed:", e);
-      setProjectsState(val);
-      showToast("⚠ SAVE FAILED — PROJECT CHANGES NOT SYNCED. RELOAD OR CHECK CONNECTION.");
+      showToast("⚠ SAVE FAILED — REVERTED PROJECT CHANGES. CHECK CONNECTION.");
     }
   };
 
@@ -21954,72 +21919,116 @@ export default function App() {
       throw e;
     }
   };
-  // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic)
-  const handleTruckSubmit = async (fb) => {
-    try {
-      const { id: _drop, ...rest } = fb;
-
-      // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
-      // them in the normal review workflow (instead of a separate yellow panel).
-      // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
-      // PRESERVE qty AND rate from driver input — don't collapse to qty=1, rate=total.
-      const extras = Array.isArray(rest.extras) ? rest.extras : [];
-      const extraBillingLines = extras
-        .filter((x) => Number(x.amount) > 0)
-        .map((x, idx) => {
-          const low = String(x.label || "").toLowerCase();
-          const code = low.includes("toll") ? "TOLL"
-                     : low.includes("dump") ? "DUMP"
-                     : low.includes("fuel") ? "FUEL"
-                     : "OTHER";
-          const item = code === "OTHER" ? (x.label || "Extra") : x.label;
-          const totalAmt = Number(x.amount) || 0;
-
-          // If driver entered qty + rate separately, use those. Otherwise default qty=1.
-          const driverQty = Number(x.qty);
-          const driverRate = Number(x.rate);
-          const qty = driverQty > 0 ? driverQty : 1;
-          const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
-          const gross = Number((qty * rate).toFixed(2));
-
-          return {
-            id: Date.now() + idx + Math.floor(Math.random() * 1000),
-            code,
-            item,
-            qty,
-            rate,
-            gross,
-            brokerable: false,  // tolls/dump/fuel pass-through are not brokered
-            brokeragePct: 0,
-            net: gross,
-            copyToPay: false,
-            isAdjustment: false,
-            sourceExtra: true,  // audit: this line came from driver-submitted extras
-            note: x.note || "",   // preserve any description from driver
-            createdAt: new Date().toISOString(),
-            createdBy: "driver",
-          };
-        });
-
-      // Driver/sub-submitted FBs always start as "pending" — admin must approve.
-      // Preserve any existing billingLines (shouldn't be any on submit), then append extras as lines.
-      const submittedLines = [...(rest.billingLines || []), ...extraBillingLines];
-
-      const newRow = await insertFreightBill({
-        ...rest,
-        status: "pending",
-        billingLines: submittedLines,
+  // Driver upload — insert directly to Supabase (public insert allowed, bypasses the diff logic).
+  // Returns { status: "submitted" | "queued", queueId? } so DriverUploadPage can render
+  // the right confirmation. Falls back to local queue when offline or on network error;
+  // App-level flusher (see useEffect below) replays queued submissions once we're back online.
+  const buildSubmittedFb = (fb) => {
+    const { id: _drop, ...rest } = fb;
+    // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
+    // them in the normal review workflow (instead of a separate yellow panel).
+    // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
+    // PRESERVE qty AND rate from driver input — don't collapse to qty=1, rate=total.
+    const extras = Array.isArray(rest.extras) ? rest.extras : [];
+    const extraBillingLines = extras
+      .filter((x) => Number(x.amount) > 0)
+      .map((x, idx) => {
+        const low = String(x.label || "").toLowerCase();
+        const code = low.includes("toll") ? "TOLL"
+                   : low.includes("dump") ? "DUMP"
+                   : low.includes("fuel") ? "FUEL"
+                   : "OTHER";
+        const item = code === "OTHER" ? (x.label || "Extra") : x.label;
+        const totalAmt = Number(x.amount) || 0;
+        const driverQty = Number(x.qty);
+        const driverRate = Number(x.rate);
+        const qty = driverQty > 0 ? driverQty : 1;
+        const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
+        const gross = Number((qty * rate).toFixed(2));
+        return {
+          id: Date.now() + idx + Math.floor(Math.random() * 1000),
+          code, item, qty, rate, gross,
+          brokerable: false,  // tolls/dump/fuel pass-through are not brokered
+          brokeragePct: 0,
+          net: gross,
+          copyToPay: false,
+          isAdjustment: false,
+          sourceExtra: true,  // audit: this line came from driver-submitted extras
+          note: x.note || "",
+          createdAt: new Date().toISOString(),
+          createdBy: "driver",
+        };
       });
+    // Driver/sub-submitted FBs always start as "pending" — admin must approve.
+    // Preserve any existing billingLines (shouldn't be any on submit), then append extras as lines.
+    const submittedLines = [...(rest.billingLines || []), ...extraBillingLines];
+    return { ...rest, status: "pending", billingLines: submittedLines };
+  };
+
+  const handleTruckSubmit = async (fb) => {
+    const finalFb = buildSubmittedFb(fb);
+    // Definitively offline — don't even try, just queue.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const queueId = enqueueUpload(finalFb);
+      return { status: "queued", queueId };
+    }
+    try {
+      const newRow = await insertFreightBill(finalFb);
       // Realtime subscription will pick this up on dispatcher's devices, but also update our own state
       setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
+      return { status: "submitted", id: newRow.id };
     } catch (e) {
       console.error("handleTruckSubmit failed:", e);
+      // Network-shaped errors → queue for retry. Keep the original throw for
+      // anything else (validation, auth) so the caller still surfaces it.
+      const msg = String(e?.message || e || "").toLowerCase();
+      const looksTransient = msg.includes("network") || msg.includes("fetch")
+        || msg.includes("timeout") || msg.includes("failed to") || e?.name === "TypeError";
+      if (looksTransient) {
+        const queueId = enqueueUpload(finalFb);
+        return { status: "queued", queueId, error: e };
+      }
       throw e;
     }
   };
 
+  // Periodically (and on `online` events) try to flush any queued FB submissions.
+  // Replays them through insertFreightBill in arrival order; stops as soon as one fails.
+  useEffect(() => {
+    let running = false;
+    const flush = async () => {
+      if (running) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      const queue = readUploadQueue();
+      if (queue.length === 0) return;
+      running = true;
+      try {
+        for (const entry of queue) {
+          try {
+            await insertFreightBill(entry.fb);
+            removeFromUploadQueue(entry.id);
+          } catch (err) {
+            console.warn("[upload-queue] retry failed, will try again later:", err);
+            // Stop on first failure — preserve order, retry whole queue next tick.
+            break;
+          }
+        }
+      } finally {
+        running = false;
+      }
+    };
+    flush();  // try immediately on mount in case we have leftovers
+    const onOnline = () => flush();
+    window.addEventListener("online", onOnline);
+    const t = setInterval(flush, 30000);  // periodic retry every 30s as a safety net
+    return () => {
+      window.removeEventListener("online", onOnline);
+      clearInterval(t);
+    };
+  }, []);
+
   // Auth handlers
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = () => {
     setAuthed(true);
     setView("dashboard");
     showToast("LOGGED IN");
@@ -22035,12 +22044,11 @@ export default function App() {
   };
 
   // v20 Session Q: Idle warning countdown
-  // When warning is shown, count down 60 seconds. If it hits 0, force logout.
+  // When warning appears, seed countdown and tick it down. If it hits 0, force logout.
+  // The non-warning reset is handled wherever we call setIdleWarning(false), so this
+  // effect only runs its interval while the warning is active.
   useEffect(() => {
-    if (!idleWarning) {
-      setIdleCountdown(IDLE_WARNING_SEC);
-      return;
-    }
+    if (!idleWarning) return;
     const countdownInterval = setInterval(() => {
       setIdleCountdown((s) => {
         if (s <= 1) {
