@@ -5052,10 +5052,93 @@ const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, setInvoice
 };
 
 // ========== INVOICE VIEW MODAL (payment history) ==========
-const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], onJumpToPayroll, onClose, onToast }) => {
+const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], editFreightBill, setInvoices, invoices = [], onJumpToPayroll, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
   const history = invoice.paymentHistory || [];
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
+
+  // v18: Delete payment handler. Removes payment from history, recalcs totals,
+  // and clears customerPaidAt on FBs that were ONLY linked to this deleted payment.
+  const [deletingIdx, setDeletingIdx] = useState(null);
+  const deletePayment = async (idx) => {
+    const payment = history[idx];
+    if (!payment) return;
+    const msg = `Delete this payment?\n\n${fmt$(payment.amount)} · ${payment.date ? new Date(payment.date).toLocaleDateString() : "—"} · ${(payment.method || "").toUpperCase()}${payment.reference ? ` #${payment.reference}` : ""}\n\nThis will recalculate the invoice balance. Any FBs marked "customer paid" by this payment will be reverted if no other payment covers them.`;
+    if (!confirm(msg)) return;
+
+    setDeletingIdx(idx);
+    try {
+      // 1. Build new history without this entry
+      const newHistory = history.filter((_, i) => i !== idx);
+      const newAmountPaid = newHistory.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      const newTotal = Number(invoice.total) || 0;
+      let newStatus = "outstanding";
+      if (newTotal > 0 && newAmountPaid >= newTotal - 0.01) newStatus = "paid";
+      else if (newAmountPaid > 0) newStatus = "partial";
+
+      // 2. For FBs the deleted payment touched, check if ANOTHER remaining payment still covers them.
+      // If no remaining payment covers the FB, clear its customerPaidAt/customerPaidAmount.
+      const affectedFbIds = payment.mode === "perfb" && payment.fbIds?.length > 0
+        ? payment.fbIds
+        : (invoice.freightBillIds || []);  // "full" mode touched all FBs
+
+      for (const fbId of affectedFbIds) {
+        const fb = freightBills.find((f) => f.id === fbId);
+        if (!fb) continue;
+        if (!fb.customerPaidAt) continue;  // wasn't paid — nothing to clear
+
+        // Is there any remaining payment (in newHistory) that references this FB?
+        const stillCovered = newHistory.some((p) => {
+          if (p.mode === "perfb") return p.fbIds?.includes(fbId);
+          // "full" mode covers all FBs on the invoice
+          return (invoice.freightBillIds || []).includes(fbId);
+        });
+        if (stillCovered) continue;
+
+        // No remaining payment covers this FB — clear the paid stamp
+        try {
+          await editFreightBill(fbId, {
+            ...fb,
+            customerPaidAt: null,
+            customerPaidAmount: null,
+          });
+        } catch (e) {
+          console.error("Clear customerPaidAt failed for FB:", fbId, e);
+        }
+      }
+
+      // 3. Update the invoice with new history + recalculated totals
+      const updatedInvoice = {
+        ...invoice,
+        amountPaid: newAmountPaid,
+        paymentHistory: newHistory,
+        paymentStatus: newStatus,
+      };
+      try {
+        await updateInvoice(invoice.id, updatedInvoice);
+        // Also push to local state so the modal's displayed data refreshes
+        if (setInvoices && Array.isArray(invoices)) {
+          const nextInvoices = invoices.map((i) => i.id === invoice.id ? updatedInvoice : i);
+          setInvoices(nextInvoices);
+        }
+      } catch (e) {
+        console.error("updateInvoice failed:", e);
+        onToast("⚠ DELETE FAILED — DATABASE ERROR");
+        return;
+      }
+
+      onToast(`✓ PAYMENT DELETED — ${fmt$(payment.amount)}`);
+      // Don't close the modal — admin might want to delete more.
+      // But the modal is rendered with the STALE `invoice` prop. Caller must re-fetch.
+      // Workaround: close modal to force re-render with fresh data.
+      setTimeout(() => { onClose(); }, 300);
+    } catch (e) {
+      console.error("deletePayment failed:", e);
+      onToast("⚠ DELETE FAILED");
+    } finally {
+      setDeletingIdx(null);
+    }
+  };
 
   // Compute payroll status for each FB — who got paid, what's still owed
   const payrollByFb = invFbs.map((fb) => {
@@ -5117,12 +5200,23 @@ const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [
             ) : (
               <div style={{ display: "grid", gap: 4 }}>
                 {history.map((p, idx) => (
-                  <div key={idx} style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div key={idx} style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, fontFamily: "JetBrains Mono, monospace", alignItems: "center" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <strong>{fmt$(p.amount)}</strong> · {p.date ? new Date(p.date).toLocaleDateString() : "—"} · {p.method?.toUpperCase()}{p.reference ? ` #${p.reference}` : ""}
                       {p.mode === "perfb" && p.fbIds?.length > 0 && <span style={{ color: "var(--concrete)" }}> · {p.fbIds.length} FB{p.fbIds.length !== 1 ? "s" : ""}</span>}
                       {p.notes && <div style={{ color: "var(--concrete)", fontSize: 11, marginTop: 2, fontStyle: "italic" }}>"{p.notes}"</div>}
                     </div>
+                    {editFreightBill && setInvoices && (
+                      <button
+                        type="button"
+                        disabled={deletingIdx === idx}
+                        onClick={() => deletePayment(idx)}
+                        style={{ padding: "4px 10px", fontSize: 10, background: "transparent", border: "1.5px solid var(--safety)", color: "var(--safety)", cursor: deletingIdx === idx ? "wait" : "pointer", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em" }}
+                        title="Delete this payment (reverses any linked FB paid stamps)"
+                      >
+                        {deletingIdx === idx ? "..." : <><Trash2 size={11} style={{ marginRight: 3, verticalAlign: "middle" }} /> DELETE</>}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -6178,6 +6272,9 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           freightBills={freightBills}
           contacts={contacts}
           dispatches={dispatches}
+          editFreightBill={editFreightBill}
+          setInvoices={setInvoices}
+          invoices={invoices}
           onJumpToPayroll={(subId) => {
             setViewingInvoice(null);
             if (onJumpToPayroll) onJumpToPayroll(subId);
