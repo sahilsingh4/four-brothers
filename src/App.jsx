@@ -91,6 +91,8 @@ import {
   validatePassword, validateEmail, clientToken, matchesClientToken,
 } from "./utils";
 import { Toast } from "./components/Toast";
+import { Logo } from "./components/Logo";
+import { Lightbox } from "./components/Lightbox";
 
 const GlobalStyles = () => (
   <style>{`
@@ -309,36 +311,8 @@ const fireBrowserNotif = (title, body, tag) => {
   } catch { /* noop */ }
 };
 
-const Logo = ({ size = "md" }) => {
-  const scale = size === "lg" ? 1.4 : size === "sm" ? 0.75 : 1;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 * scale }}>
-      <div style={{ width: 44 * scale, height: 44 * scale, background: "var(--hazard)", border: `${3 * scale}px solid var(--steel)`, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(-3deg)" }}>
-        <Truck size={22 * scale} strokeWidth={2.5} />
-      </div>
-      <div style={{ lineHeight: 1 }}>
-        <div className="fbt-display" style={{ fontSize: 18 * scale, letterSpacing: "-0.03em" }}>4 BROTHERS</div>
-        <div className="fbt-mono" style={{ fontSize: 10 * scale, color: "var(--concrete)", marginTop: 2 }}>TRUCKING · LLC · EST. BAY POINT CA</div>
-      </div>
-    </div>
-  );
-};
 
 
-const Lightbox = ({ src, onClose }) => (
-  <div
-    className="modal-bg"
-    onClick={onClose}
-    style={{ alignItems: "center", zIndex: 10000, background: "rgba(0,0,0,0.92)" }}
-  >
-    <div style={{ position: "relative", maxWidth: "95vw", maxHeight: "95vh" }} onClick={(e) => e.stopPropagation()}>
-      <button onClick={onClose} style={{ position: "absolute", top: -40, right: 0, background: "var(--hazard)", border: "2px solid var(--steel)", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 10001 }}>
-        <X size={18} />
-      </button>
-      <img src={src} alt="Scale ticket" style={{ maxWidth: "95vw", maxHeight: "95vh", border: "3px solid var(--hazard)", display: "block" }} />
-    </div>
-  </div>
-);
 
 // ========== AUTH UTILITIES (SUPABASE) ==========
 // v20 Session Q: Hardened password requirements.
