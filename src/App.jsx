@@ -21171,8 +21171,8 @@ const HomeTab = ({
 
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("home");
-  const { logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setLogs, setQuotes, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
+  const { logs, quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
+  const { setLogs, setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
@@ -22067,8 +22067,8 @@ export default function App() {
       ) : (
         <>
           <Dashboard
-            state={{ logs, quotes, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-            setters={{ setLogs, setQuotes, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+            state={{ logs, quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
+            setters={{ setLogs, setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
             onToast={showToast}
             onExit={() => setView("public")}
             onLogout={handleLogout}
