@@ -15,7 +15,7 @@ import { Truck, ClipboardList, Receipt, Phone, Mail, MapPin, Fuel, Plus, Trash2,
 const GlobalStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap');
-    :root { --hazard:#F59E0B; --hazard-deep:#D97706; --steel:#1C1917; --concrete:#44403C; --cream:#FAFAF9; --rust:#9A3412; --safety:#EF4444; --good:#65A30D; }
+    :root { --hazard:#F59E0B; --hazard-deep:#D97706; --steel:#44403C; --concrete:#78716C; --cream:#FAFAF9; --rust:#9A3412; --safety:#EF4444; --good:#65A30D; --line:#D6D3D1; }
     * { box-sizing: border-box; }
     body { margin: 0; }
     .fbt-root { font-family: 'Oswald', sans-serif; color: var(--steel); background: var(--cream); min-height: 100vh; }
@@ -58,7 +58,7 @@ const GlobalStyles = () => (
     .corner-mark.tr { top: -2px; right: -2px; border-left: none; border-bottom: none; }
     .corner-mark.bl { bottom: -2px; left: -2px; border-right: none; border-top: none; }
     .corner-mark.br { bottom: -2px; right: -2px; border-left: none; border-top: none; }
-    .modal-bg { position: fixed; inset: 0; background: rgba(28,25,23,0.85); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
+    .modal-bg { position: fixed; inset: 0; background: rgba(28,25,23,0.6); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto; }
     .modal-body { background: var(--cream); border: 3px solid var(--hazard); box-shadow: 10px 10px 0 var(--steel); max-width: 720px; width: 100%; max-height: 90vh; overflow-y: auto; }
     .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1.5px solid var(--steel); font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
     .thumb { width: 80px; height: 80px; object-fit: cover; border: 2px solid var(--steel); cursor: pointer; transition: transform 0.1s; }
