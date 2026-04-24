@@ -75,3 +75,33 @@ export const matchesClientToken = (dispatch, token) => {
   if (!token) return false;
   return clientToken(dispatch.clientName) === token || clientToken(dispatch.subContractor) === token;
 };
+
+// Compress an image File to a JPEG dataURL, scaled to fit `maxDim` on the
+// longer edge. Used wherever the app accepts photo uploads (driver freight
+// bills, company logos, etc.) — small enough payloads to fit in localStorage
+// queues and Supabase rows. DOM-only (FileReader, canvas, Image).
+export const compressImage = (file, maxDim = 1600, quality = 0.7) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
