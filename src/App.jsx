@@ -4998,11 +4998,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
   const [selectedFbIds, setSelectedFbIds] = useState(new Set());
   // Which FBs have their billing lines expanded (click-to-toggle UI)
   const [expandedFbIds, setExpandedFbIds] = useState(new Set());
-  // v18 Fix 2b: per-line save state — { "fbId:lineId": "saving" | "saved" | "error" }
-  // "saved" entries auto-clear after 1.5s. "saving" means an edit is in flight.
-  const [lineSaveState, setLineSaveState] = useState({});
-  // Debounce timers per line — held in a ref so they survive re-renders
-  const saveTimersRef = useRef({});
+  // v18 Change B: LOCAL DRAFT per FB. Edits write here, NOT to parent state until admin clicks SAVE.
+  // Shape: { [fbId]: [...billingLines] }. Presence = dirty. Absent = clean (use FB's saved lines).
+  const [lineDrafts, setLineDrafts] = useState({});
+  // Per-FB save status: "idle" | "saving" | "saved" | "error". Drives the button label + colors.
+  const [fbSaveStatus, setFbSaveStatus] = useState({});
 
   // Reset builder state when modal opens/closes
   useEffect(() => {
@@ -5010,10 +5010,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       setBuilderMode(null);
       setSelectedFbIds(new Set());
       setExpandedFbIds(new Set());
-      setLineSaveState({});
-      // Clear any pending timers
-      Object.values(saveTimersRef.current).forEach((t) => clearTimeout(t));
-      saveTimersRef.current = {};
+      setLineDrafts({});
+      setFbSaveStatus({});
     }
   }, [showNewInvoice]);
 
@@ -5100,77 +5098,35 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     return { ...ln, qty, rate, gross, net };
   };
 
-  // Persist the FB's billingLines to the database. Updates per-line save state so the UI
-  // can show "saving…" / "saved ✓". Debounced per-line by 600ms to avoid hammering DB.
-  // CRITICAL: spread the full FB into the patch. `updateFreightBill` → `fbToDB` rebuilds
-  // every column from the patch, so any field missing from the patch is sent as NULL.
-  // Without the spread, edits here would wipe dispatch_id, driver_name, status, etc.
-  const persistFbLines = (fbId, updatedLines) => {
-    const currentFb = freightBills.find((f) => f.id === fbId);
-    if (!currentFb) {
-      console.error("persistFbLines: FB not found", fbId);
-      return;
-    }
-
-    // Mark every affected line as "saving" immediately
-    const key = (lineId) => `${fbId}:${lineId}`;
-    setLineSaveState((prev) => {
-      const next = { ...prev };
-      updatedLines.forEach((ln) => { next[key(ln.id)] = "saving"; });
-      return next;
-    });
-
-    // Clear any pending timer for this fb
-    if (saveTimersRef.current[fbId]) {
-      clearTimeout(saveTimersRef.current[fbId]);
-    }
-
-    saveTimersRef.current[fbId] = setTimeout(async () => {
-      try {
-        // Send FULL FB with only billingLines replaced. This preserves dispatch_id,
-        // driver_name, status, approved_at, etc. which fbToDB would otherwise null-out.
-        const freshFb = freightBills.find((f) => f.id === fbId) || currentFb;
-        await editFreightBill(fbId, { ...freshFb, billingLines: updatedLines });
-        // Mark saved
-        setLineSaveState((prev) => {
-          const next = { ...prev };
-          updatedLines.forEach((ln) => { next[key(ln.id)] = "saved"; });
-          return next;
-        });
-        // Clear "saved" badges after 1.5s
-        setTimeout(() => {
-          setLineSaveState((prev) => {
-            const next = { ...prev };
-            updatedLines.forEach((ln) => {
-              if (next[key(ln.id)] === "saved") delete next[key(ln.id)];
-            });
-            return next;
-          });
-        }, 1500);
-      } catch (e) {
-        console.error("persistFbLines failed:", e);
-        setLineSaveState((prev) => {
-          const next = { ...prev };
-          updatedLines.forEach((ln) => { next[key(ln.id)] = "error"; });
-          return next;
-        });
-        onToast("⚠ SAVE FAILED — CHECK CONNECTION");
-      }
-    }, 600);
-  };
-
-  // Inline builder-side line CRUD helpers (operate on the current FB from freightBills)
-  const builderUpdateLine = (fbId, lineId, patch) => {
+  // v18 Change B: get effective billing lines for an FB — draft if dirty, else the saved version.
+  const getFbLines = (fbId) => {
+    if (lineDrafts[fbId] !== undefined) return lineDrafts[fbId];
     const fb = freightBills.find((f) => f.id === fbId);
-    if (!fb) return;
-    const next = (fb.billingLines || []).map((ln) => ln.id === lineId ? recomputeBuilderLine({ ...ln, ...patch }) : ln);
-    persistFbLines(fbId, next);
+    return Array.isArray(fb?.billingLines) ? fb.billingLines : [];
   };
+
+  // Is this FB's draft different from saved? (dirty)
+  const isFbDirty = (fbId) => {
+    if (lineDrafts[fbId] === undefined) return false;
+    const fb = freightBills.find((f) => f.id === fbId);
+    const saved = Array.isArray(fb?.billingLines) ? fb.billingLines : [];
+    return JSON.stringify(saved) !== JSON.stringify(lineDrafts[fbId]);
+  };
+
+  // Mutate local draft only — no DB call. Save happens on button click.
+  const builderUpdateLine = (fbId, lineId, patch) => {
+    const currentLines = getFbLines(fbId);
+    const next = currentLines.map((ln) => ln.id === lineId ? recomputeBuilderLine({ ...ln, ...patch }) : ln);
+    setLineDrafts((prev) => ({ ...prev, [fbId]: next }));
+    // Clear any stale "saved" status so user sees they have unsaved changes
+    setFbSaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
+  };
+
   const builderAddLine = (fbId, seed = {}) => {
     const fb = freightBills.find((f) => f.id === fbId);
     if (!fb) return;
-    // v18: default brokerage ON for sub FBs (use the sub contact's %).
-    // OFF for drivers + for pass-through codes like TOLL/DUMP/FUEL/OTHER (those are reimbursements, not revenue).
+    // Default brokerage ON for sub FBs (use the sub contact's %).
+    // OFF for drivers + for pass-through codes (TOLL/DUMP/FUEL/OTHER are reimbursements, not revenue).
     const disp = dispatches.find((d) => d.id === fb.dispatchId);
     const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
     const isSub = assignment?.kind === "sub";
@@ -5190,14 +5146,70 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       copyToPay: false,
       isAdjustment: false,
     });
-    const next = [...(fb.billingLines || []), newLine];
-    persistFbLines(fbId, next);
+    const currentLines = getFbLines(fbId);
+    setLineDrafts((prev) => ({ ...prev, [fbId]: [...currentLines, newLine] }));
+    setFbSaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
   };
+
   const builderDeleteLine = (fbId, lineId) => {
-    const fb = freightBills.find((f) => f.id === fbId);
-    if (!fb) return;
-    const next = (fb.billingLines || []).filter((ln) => ln.id !== lineId);
-    persistFbLines(fbId, next);
+    const currentLines = getFbLines(fbId);
+    const next = currentLines.filter((ln) => ln.id !== lineId);
+    setLineDrafts((prev) => ({ ...prev, [fbId]: next }));
+    setFbSaveStatus((prev) => ({ ...prev, [fbId]: "idle" }));
+  };
+
+  // Commit local draft to DB via editFreightBill (full-FB spread, safe from partial-patch issue).
+  const saveFbLines = async (fbId) => {
+    const currentFb = freightBills.find((f) => f.id === fbId);
+    if (!currentFb) {
+      onToast("⚠ FB NOT FOUND");
+      return;
+    }
+    const draft = lineDrafts[fbId];
+    if (draft === undefined) {
+      // Nothing to save
+      return;
+    }
+
+    setFbSaveStatus((prev) => ({ ...prev, [fbId]: "saving" }));
+    try {
+      await editFreightBill(fbId, { ...currentFb, billingLines: draft });
+      // Clear draft — FB now matches saved state
+      setLineDrafts((prev) => {
+        const next = { ...prev };
+        delete next[fbId];
+        return next;
+      });
+      setFbSaveStatus((prev) => ({ ...prev, [fbId]: "saved" }));
+      onToast(`✓ FB#${currentFb.freightBillNumber || fbId} SAVED`);
+      // Clear "saved" status after 2s
+      setTimeout(() => {
+        setFbSaveStatus((prev) => {
+          if (prev[fbId] !== "saved") return prev;
+          const next = { ...prev };
+          delete next[fbId];
+          return next;
+        });
+      }, 2000);
+    } catch (e) {
+      console.error("saveFbLines failed:", e);
+      setFbSaveStatus((prev) => ({ ...prev, [fbId]: "error" }));
+      onToast("⚠ SAVE FAILED — CHECK CONNECTION");
+    }
+  };
+
+  // Discard local draft — revert to saved lines.
+  const discardFbDraft = (fbId) => {
+    setLineDrafts((prev) => {
+      const next = { ...prev };
+      delete next[fbId];
+      return next;
+    });
+    setFbSaveStatus((prev) => {
+      const next = { ...prev };
+      delete next[fbId];
+      return next;
+    });
   };
 
   // Filter freight bills by date + client (dispatch sub/job) + APPROVED status + invoice binding
@@ -5708,13 +5720,14 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     }
   };
 
-  // v18 Fix 2: editable billing-line panel shown inside each expanded FB row in the invoice builder.
-  // Edits flow via persistFbLines → editFreightBill → Supabase. Save state shown per-line.
+  // v18 Change B: editable billing-line panel shown inside each expanded FB row in the invoice builder.
+  // Edits go to local lineDrafts only. Admin must click SAVE in the bottom banner to commit to DB.
   // Disabled (read-only) when FB is locked to another invoice.
   const renderEditableLines = (fb, indent = 14) => {
-    const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+    const lines = getFbLines(fb.id);
     const locked = !!fb.invoiceId;  // already on another invoice → read-only here
-    const saveKey = (lineId) => `${fb.id}:${lineId}`;
+    const dirty = isFbDirty(fb.id);
+    const status = fbSaveStatus[fb.id] || "idle";
 
     if (lines.length === 0 && !locked) {
       return (
@@ -5747,7 +5760,6 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
           <div></div>
         </div>
         {lines.map((ln) => {
-          const status = lineSaveState[saveKey(ln.id)];
           const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
           const brokAmt = ln.brokerable ? gross * (Number(ln.brokeragePct) || 0) / 100 : 0;
           const net = Number(ln.net) || (gross - brokAmt);
@@ -5755,7 +5767,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             <div
               key={ln.id}
               onClick={(e) => e.stopPropagation()}
-              style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", padding: "4px 4px", borderBottom: "1px dotted var(--concrete)", background: status === "saving" ? "#FEF9C3" : status === "error" ? "#FEE2E2" : "transparent" }}
+              style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", padding: "4px 4px", borderBottom: "1px dotted var(--concrete)", background: "transparent" }}
             >
               <select
                 disabled={locked}
@@ -5821,11 +5833,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                   />
                 )}
               </div>
-              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: "var(--good)", textAlign: "right", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: "var(--good)", textAlign: "right" }}>
                 ${net.toFixed(2)}
-                {status === "saving" && <span style={{ fontSize: 8, color: "var(--hazard-deep)", fontWeight: 400, fontStyle: "italic" }}>saving…</span>}
-                {status === "saved" && <span style={{ fontSize: 9, color: "var(--good)", fontWeight: 700 }}>✓</span>}
-                {status === "error" && <span style={{ fontSize: 8, color: "var(--safety)", fontWeight: 700 }}>!</span>}
               </div>
               <button
                 type="button"
@@ -5856,6 +5865,47 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             <button type="button" className="btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={(e) => { e.stopPropagation(); builderAddLine(fb.id, { code: "OTHER", item: "" }); }}>
               <Plus size={11} style={{ marginRight: 3 }} /> OTHER
             </button>
+          </div>
+        )}
+        {/* v18 Change B: SAVE + DISCARD row — only shown when there are unsaved edits or an active status */}
+        {!locked && (dirty || status === "saving" || status === "saved" || status === "error") && (
+          <div style={{
+            display: "flex", gap: 8, alignItems: "center", marginTop: 10, padding: "8px 10px",
+            background: dirty ? "#FEF3C7" : status === "saved" ? "#D1FAE5" : status === "error" ? "#FEE2E2" : "#F5F5F4",
+            border: `1.5px solid ${dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)"}`,
+            flexWrap: "wrap",
+          }}>
+            <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.08em", fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
+              {status === "saving" ? "▸ SAVING…" :
+               status === "saved" ? "✓ SAVED" :
+               status === "error" ? "⚠ SAVE FAILED — TRY AGAIN" :
+               dirty ? "▸ UNSAVED CHANGES" : ""}
+            </span>
+            {dirty && (
+              <>
+                <button
+                  type="button"
+                  disabled={status === "saving"}
+                  onClick={(e) => { e.stopPropagation(); saveFbLines(fb.id); }}
+                  className="btn-primary"
+                  style={{ padding: "4px 14px", fontSize: 11, marginLeft: "auto" }}
+                >
+                  SAVE
+                </button>
+                <button
+                  type="button"
+                  disabled={status === "saving"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("Discard unsaved changes to this FB's billing lines?")) discardFbDraft(fb.id);
+                  }}
+                  className="btn-ghost"
+                  style={{ padding: "4px 10px", fontSize: 10 }}
+                >
+                  DISCARD
+                </button>
+              </>
+            )}
           </div>
         )}
         {locked && (
@@ -5926,14 +5976,22 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       </div>
 
       {/* Builder — hidden by default, opens as a modal when user clicks NEW INVOICE */}
-      {showNewInvoice && (
-      <div className="modal-bg" onClick={() => setShowNewInvoice(false)}>
+      {showNewInvoice && (() => {
+        const closeModal = () => {
+          const dirtyCount = Object.keys(lineDrafts).length;
+          if (dirtyCount > 0) {
+            if (!confirm(`You have unsaved edits on ${dirtyCount} FB${dirtyCount !== 1 ? "s" : ""}. Close anyway? (edits will be discarded)`)) return;
+          }
+          setShowNewInvoice(false);
+        };
+        return (
+      <div className="modal-bg" onClick={closeModal}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1040, maxHeight: "95vh", overflowY: "auto" }}>
       <div className="fbt-card" style={{ padding: 24, margin: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <div style={{ width: 8, height: 24, background: "var(--hazard)" }} />
           <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>NEW INVOICE</h3>
-          <button onClick={() => setShowNewInvoice(false)} className="btn-ghost" style={{ marginLeft: "auto", padding: "6px 12px", fontSize: 12 }}>
+          <button onClick={closeModal} className="btn-ghost" style={{ marginLeft: "auto", padding: "6px 12px", fontSize: 12 }}>
             <X size={14} style={{ marginRight: 4 }} /> CLOSE
           </button>
         </div>
@@ -6163,8 +6221,9 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                 const checked = selectedFbIds.has(fb.id);
                 const expanded = expandedFbIds.has(fb.id);
                 const disp = dispatches.find((d) => d.id === fb.dispatchId);
-                const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                const lines = getFbLines(fb.id);  // v18 Change B: use draft if dirty
                 const fbTotal = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                const dirty = isFbDirty(fb.id);
                 return (
                   <div key={fb.id} style={{ background: checked ? "#FEF3C7" : "#FFF", border: `1.5px solid ${checked ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
                     <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
@@ -6182,7 +6241,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                         setSelectedFbIds(next);
                       }} style={{ width: 16, height: 16 }} />
                       <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
-                        <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                        <span style={{ fontWeight: 700 }}>
+                          FB#{fb.freightBillNumber || "—"}
+                          {dirty && <span title="Unsaved changes" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
+                        </span>
                         <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
                         <span>T{fb.truckNumber || "—"}</span>
                         <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -6210,10 +6272,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
               {matchedBills.map((fb) => {
                 const expanded = expandedFbIds.has(fb.id);
                 const disp = dispatches.find((d) => d.id === fb.dispatchId);
-                const lines = Array.isArray(fb.billingLines) ? fb.billingLines : [];
+                const lines = getFbLines(fb.id);
                 const fbTotal = lines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+                const dirty = isFbDirty(fb.id);
                 return (
-                  <div key={fb.id} style={{ background: "#FFF", border: "1.5px solid var(--concrete)" }}>
+                  <div key={fb.id} style={{ background: dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${dirty ? "var(--hazard-deep)" : "var(--concrete)"}` }}>
                     <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
                          onClick={() => {
                            const next = new Set(expandedFbIds);
@@ -6221,7 +6284,10 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                            setExpandedFbIds(next);
                          }}>
                       <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
-                        <span style={{ fontWeight: 700 }}>FB#{fb.freightBillNumber || "—"}</span>
+                        <span style={{ fontWeight: 700 }}>
+                          FB#{fb.freightBillNumber || "—"}
+                          {dirty && <span title="Unsaved changes" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
+                        </span>
                         <span>{fb.submittedAt ? fb.submittedAt.slice(0, 10) : "—"}</span>
                         <span>T{fb.truckNumber || "—"}</span>
                         <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -6469,9 +6535,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
             // v18 Fix 2b: rate is gone. Validation only checks for FBs + bill-to + that each FB has
             // at least one billing line (user must have edited legacy FBs via the expand panel).
             const legacyFbs = matchedBills.filter((fb) => !Array.isArray(fb.billingLines) || fb.billingLines.length === 0);
+            const dirtyFbs = matchedBills.filter((fb) => isFbDirty(fb.id));
             const issues = [];
             if (matchedBills.length === 0) issues.push("No freight bills match your filters (date range / approved / invoice status)");
             if (legacyFbs.length > 0) issues.push(`${legacyFbs.length} FB${legacyFbs.length !== 1 ? "s have" : " has"} no billing lines — expand each and add at least one line (HOURLY / LOAD / etc.)`);
+            if (dirtyFbs.length > 0) issues.push(`${dirtyFbs.length} FB${dirtyFbs.length !== 1 ? "s have" : " has"} unsaved edits — click SAVE on each before generating`);
             if (!billTo.name) issues.push("Select a customer — its bill-to info auto-fills");
             if (issues.length === 0) return null;
             return (
@@ -6492,6 +6560,11 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
                   onToast(`${legacyFbs.length} FB${legacyFbs.length !== 1 ? "s need" : " needs"} billing lines — expand to add`);
                   return;
                 }
+                const dirtyFbs = matchedBills.filter((fb) => isFbDirty(fb.id));
+                if (dirtyFbs.length > 0) {
+                  onToast(`${dirtyFbs.length} FB${dirtyFbs.length !== 1 ? "s have" : " has"} unsaved edits — click SAVE first`);
+                  return;
+                }
                 if (!billTo.name) { onToast("SELECT CUSTOMER OR BILL-TO NAME"); return; }
                 generate();
                 setShowNewInvoice(false);
@@ -6506,7 +6579,8 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
       </div>
       </div>
       </div>
-      )}
+      );
+      })()}
 
       {/* Invoice payment stats */}
       {invoices.length > 0 && (() => {
@@ -7978,6 +8052,44 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
               return ln;
             });
           }
+
+          // v18 Fix #2: FB has lines but only extras (TOLL/DUMP/FUEL/OTHER) — no primary H/T/L line.
+          // This happens when driver submits with extras but no hourly line gets auto-created.
+          // Seed one primary line based on dispatch method.
+          const hasPrimary = lines.some((ln) => ["H", "T", "L"].includes(ln.code));
+          if (!hasPrimary) {
+            const isSub = assignment?.kind === "sub";
+            const contactForBilling = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+            const brokerableDefault = isSub && !!contactForBilling?.brokerageApplies;
+            const brokeragePctDefault = brokerableDefault ? Number(contactForBilling?.brokeragePercent || 10) : 0;
+
+            const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
+            const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
+            const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
+            const rate = Number(dispatch?.ratePerHour || dispatch?.ratePerTon || dispatch?.ratePerLoad || 0);
+            const qty = method === "hour" ? seedHours
+                     : method === "ton" ? Number(fb.tonnage) || 0
+                     : Number(fb.loadCount) || 1;
+
+            if (rate > 0 || qty > 0) {
+              const gross = Number((qty * rate).toFixed(2));
+              const net = brokerableDefault
+                ? Number((gross - gross * brokeragePctDefault / 100).toFixed(2))
+                : gross;
+              // Prepend primary line at top so admin sees it first
+              lines = [{
+                id: Date.now(),
+                code, item, qty, rate, gross,
+                brokerable: brokerableDefault,
+                brokeragePct: brokeragePctDefault,
+                net,
+                copyToPay: false,
+                createdAt: new Date().toISOString(),
+                createdBy: "system-seed",
+              }, ...lines];
+            }
+          }
+
           // v18: LEGACY EXTRAS MIGRATION — old FBs have extras[] that weren't auto-converted
           // to billing lines. If we find any, append them so admin sees them in the normal grid.
           // This is a one-time migration on modal open; the merged lines will be saved when admin saves.
@@ -7992,13 +8104,20 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                            : low.includes("fuel") ? "FUEL"
                            : "OTHER";
                 const item = code === "OTHER" ? (x.label || "Extra") : x.label;
-                const amt = Number(x.amount) || 0;
+                const totalAmt = Number(x.amount) || 0;
+                // Preserve driver's qty + rate if they entered them separately
+                const driverQty = Number(x.qty);
+                const driverRate = Number(x.rate);
+                const qty = driverQty > 0 ? driverQty : 1;
+                const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
+                const gross = Number((qty * rate).toFixed(2));
                 return {
                   id: Date.now() + 10000 + idx,
-                  code, item, qty: 1, rate: amt, gross: amt,
-                  brokerable: false, brokeragePct: 0, net: amt,
+                  code, item, qty, rate, gross,
+                  brokerable: false, brokeragePct: 0, net: gross,
                   copyToPay: false, isAdjustment: false,
                   sourceExtra: true,
+                  note: x.note || "",
                   createdAt: new Date().toISOString(),
                   createdBy: "legacy-migration",
                 };
@@ -8054,13 +8173,19 @@ const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill,
                        : low.includes("fuel") ? "FUEL"
                        : "OTHER";
             const item = code === "OTHER" ? (x.label || "Extra") : x.label;
-            const amt = Number(x.amount) || 0;
+            const totalAmt = Number(x.amount) || 0;
+            const driverQty = Number(x.qty);
+            const driverRate = Number(x.rate);
+            const qty = driverQty > 0 ? driverQty : 1;
+            const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
+            const gross = Number((qty * rate).toFixed(2));
             return {
               id: Date.now() + 10000 + idx,
-              code, item, qty: 1, rate: amt, gross: amt,
-              brokerable: false, brokeragePct: 0, net: amt,
+              code, item, qty, rate, gross,
+              brokerable: false, brokeragePct: 0, net: gross,
               copyToPay: false, isAdjustment: false,
               sourceExtra: true,
+              note: x.note || "",
               createdAt: new Date().toISOString(),
               createdBy: "legacy-migration",
             };
@@ -15878,6 +16003,7 @@ export default function App() {
       // v18 Fix: convert driver-reported extras into billing lines immediately so admin sees
       // them in the normal review workflow (instead of a separate yellow panel).
       // Pay lines are NOT auto-created — admin stays in control of what gets paid to the driver/sub.
+      // PRESERVE qty AND rate from driver input — don't collapse to qty=1, rate=total.
       const extras = Array.isArray(rest.extras) ? rest.extras : [];
       const extraBillingLines = extras
         .filter((x) => Number(x.amount) > 0)
@@ -15888,20 +16014,29 @@ export default function App() {
                      : low.includes("fuel") ? "FUEL"
                      : "OTHER";
           const item = code === "OTHER" ? (x.label || "Extra") : x.label;
-          const amt = Number(x.amount) || 0;
+          const totalAmt = Number(x.amount) || 0;
+
+          // If driver entered qty + rate separately, use those. Otherwise default qty=1.
+          const driverQty = Number(x.qty);
+          const driverRate = Number(x.rate);
+          const qty = driverQty > 0 ? driverQty : 1;
+          const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
+          const gross = Number((qty * rate).toFixed(2));
+
           return {
             id: Date.now() + idx + Math.floor(Math.random() * 1000),
             code,
             item,
-            qty: 1,
-            rate: amt,
-            gross: amt,
+            qty,
+            rate,
+            gross,
             brokerable: false,  // tolls/dump/fuel pass-through are not brokered
             brokeragePct: 0,
-            net: amt,
+            net: gross,
             copyToPay: false,
             isAdjustment: false,
             sourceExtra: true,  // audit: this line came from driver-submitted extras
+            note: x.note || "",   // preserve any description from driver
             createdAt: new Date().toISOString(),
             createdBy: "driver",
           };
