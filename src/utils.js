@@ -134,6 +134,24 @@ export const BID_STATUSES = [
 ];
 export const BID_STATUS_MAP = Object.fromEntries(BID_STATUSES.map((s) => [s.value, s]));
 
+// Build a phone-number SMS link. Returns null for empty / non-digit input.
+// iOS uses & as separator, Android uses ?, but most platforms now accept ? with encoded body.
+export const buildSMSLink = (phone, message) => {
+  if (!phone) return null;
+  const clean = String(phone).replace(/[^\d+]/g, "");
+  if (!clean) return null;
+  return `sms:${clean}?body=${encodeURIComponent(message)}`;
+};
+
+// Build a mailto: link with optional subject + body. Returns null for empty email.
+export const buildEmailLink = (email, subject, body) => {
+  if (!email) return null;
+  const params = [];
+  if (subject) params.push(`subject=${encodeURIComponent(subject)}`);
+  if (body) params.push(`body=${encodeURIComponent(body)}`);
+  return `mailto:${email}${params.length ? "?" + params.join("&") : ""}`;
+};
+
 // Common bid portals for the BidModal source dropdown.
 export const BID_PORTALS = [
   { value: "publicpurchase", label: "Public Purchase" },
