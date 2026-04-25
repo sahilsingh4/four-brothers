@@ -27,6 +27,13 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
   const seedHours = Number(fb.hoursBilled) > 0
     ? Number(fb.hoursBilled)
     : hoursFromTimes(fb.pickupTime, fb.dropoffTime);
+  // J3: pay-side seed for subs honors project.subMinimumHours as a floor.
+  // Drivers pay actual hours (no per-project floor — driver pay is per-driver).
+  // When the project field is blank, paySeedHours just equals seedHours.
+  const subMinHours = assignment?.kind === "sub" && Number(project?.subMinimumHours) > 0
+    ? Number(project.subMinimumHours)
+    : 0;
+  const paySeedHours = subMinHours > 0 ? Math.max(seedHours, subMinHours) : seedHours;
 
   // v23 Session X: Duplicate FB# detection
   // Warning-only. A match on ANY of these three rules flags a potential duplicate:
@@ -288,15 +295,15 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     payingLines: Array.isArray(fb.payingLines) && fb.payingLines.length > 0
       ? (() => {
           // BACKFILL FIX: if an existing HOURLY line has qty=0 and times give a real value, update it
-          if (seedHours > 0) {
+          if (paySeedHours > 0) {
             return fb.payingLines.map((ln) => {
               if (ln.code === "H" && (!ln.qty || Number(ln.qty) === 0)) {
                 const rate = Number(ln.rate) || 0;
-                const gross = Number((seedHours * rate).toFixed(2));
+                const gross = Number((paySeedHours * rate).toFixed(2));
                 const net = ln.brokerable
                   ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
                   : gross;
-                return { ...ln, qty: seedHours, gross, net };
+                return { ...ln, qty: paySeedHours, gross, net };
               }
               return ln;
             });
@@ -309,9 +316,11 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
           const item = method === "hour" ? "HOURLY" : method === "ton" ? "TONS" : "LOADS";
           const rate = Number(assignment?.payRate || 0);
-          // For HOUR method: use computed hours from times, else hoursBilled, else 0
-          // For TON/LOAD: use submitted qty
-          const qty = method === "hour" ? seedHours
+          // For HOUR method: use paySeedHours so subs on a project with
+          // subMinimumHours set get the floor automatically. Drivers + non-min
+          // subs see the same value (paySeedHours == seedHours when no floor).
+          // For TON/LOAD: use submitted qty (no floor concept).
+          const qty = method === "hour" ? paySeedHours
                    : method === "ton" ? Number(fb.tonnage) || 0
                    : Number(fb.loadCount) || 1;
           if (rate > 0 || qty > 0) {
@@ -1182,6 +1191,22 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 6 }}>
               ▸ CHANGING TIMES AUTO-UPDATES HOURLY LINES IN BILLING &amp; PAY · YOU CAN OVERRIDE QTY MANUALLY BELOW
             </div>
+
+            {/* J4: Sub minimum-hours badge — visible whenever this FB is on a
+                sub assignment AND the project has subMinimumHours set AND it's
+                actually being applied (paySeedHours > seedHours). Informational,
+                no admin action needed (the floor was already baked into the
+                pay line's qty during draft seeding). */}
+            {assignment?.kind === "sub" && subMinHours > 0 && paySeedHours > seedHours && (
+              <div style={{ marginTop: 8, padding: 10, background: "#EFF6FF", border: "1.5px solid var(--hazard)", borderRadius: 6 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 4 }}>
+                  ▸ SUB MINIMUM APPLIED · {subMinHours}HR (project default)
+                </div>
+                <div style={{ fontSize: 11, color: "var(--steel)", lineHeight: 1.5 }}>
+                  Actual hours: <strong>{seedHours.toFixed(2)}</strong> · Sub paid for: <strong>{paySeedHours.toFixed(2)} hrs</strong> at the project sub-pay rate.
+                </div>
+              </div>
+            )}
 
             {/* Minimum hours warning */}
             {(() => {
