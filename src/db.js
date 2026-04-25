@@ -559,11 +559,20 @@ export const fetchCustomerByToken = async (token) => {
     .select("*")
     .eq("customer_id", customer.id);
 
+  // Fetch their invoices — only non-deleted (soft-delete check)
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("*")
+    .eq("bill_to_id", customer.id)
+    .is("deleted_at", null)
+    .order("invoice_date", { ascending: false });
+
   return {
     customer,
     orders: (orders || []).map(dispatchFromDB),
     freightBills: approvedFbs,
     projects: projects || [],
+    invoices: (invoices || []).map(invoiceFromDB),
   };
 };
 
