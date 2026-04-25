@@ -110,6 +110,7 @@ import { ComparisonModal } from "./components/ComparisonModal";
 import { FBTraceModal } from "./components/FBTraceModal";
 import { BidDeadlineChip } from "./components/BidDeadlineChip";
 import { FBEditModal } from "./components/FBEditModal";
+import { HomeTab } from "./components/HomeTab";
 import { useFormDraft } from "./hooks/useFormDraft";
 import { readUploadQueue, enqueueUpload, removeFromUploadQueue } from "./hooks/uploadQueue";
 import { GlobalStyles } from "./components/GlobalStyles";
