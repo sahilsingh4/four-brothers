@@ -55,6 +55,32 @@ describe("computeDispatchSummary", () => {
     expect(r.pct).toBe(0);
     expect(Number.isFinite(r.pct)).toBe(true);
   });
+
+  // F3: pipeline counts that drive the dispatch-card status row
+  it("counts pendingReview, approved, invoiced, paid, and flagged FBs", () => {
+    const bills = [
+      { status: "pending", photos: [{ id: 1 }] },                                           // 1 to review
+      { status: "pending", photos: [] },                                                    // 1 to review + flagged
+      { status: "approved", photos: [{ id: 1 }] },                                          // approved, not invoiced
+      { status: "approved", invoiceId: "inv1", photos: [{ id: 1 }] },                       // invoiced, sub not paid
+      { status: "approved", invoiceId: "inv1", paidAt: "2026-04-01", photos: [{ id: 1 }] }, // invoiced + sub paid
+      { status: "rejected", photos: [] },                                                   // rejected, no flag (rejected is excluded from flagged)
+    ];
+    const r = computeDispatchSummary({ trucksExpected: 6, status: "open" }, bills);
+    expect(r.pendingReviewCount).toBe(2);
+    expect(r.approvedCount).toBe(3);
+    expect(r.invoicedCount).toBe(2);
+    expect(r.pendingInvoiceCount).toBe(1);
+    expect(r.paidOutCount).toBe(1);
+    expect(r.flaggedCount).toBe(1); // only the pending+no-photos one (rejected excluded)
+  });
+
+  it("returns zero counts when there are no bills", () => {
+    const r = computeDispatchSummary({ trucksExpected: 5, status: "open" }, []);
+    expect(r.invoicedCount).toBe(0);
+    expect(r.paidOutCount).toBe(0);
+    expect(r.flaggedCount).toBe(0);
+  });
 });
 
 describe("<DispatchTrackingCard />", () => {

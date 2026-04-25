@@ -197,7 +197,26 @@ export const computeDispatchSummary = (d, bills) => {
   const statusColor = statusLabel === "COMPLETE"
     ? "var(--good)"
     : statusLabel.startsWith("OPEN") ? "var(--concrete)" : "var(--hazard-deep)";
-  return { totalTons, totalLoads, pct, statusLabel, statusColor };
+
+  // F3: cross-stage pipeline counts so the dispatch card surfaces invoice +
+  // payroll status without the owner opening each dispatch.
+  const approvedCount = bills.filter((fb) => fb.status === "approved").length;
+  const pendingReviewCount = bills.filter((fb) => (fb.status || "pending") === "pending").length;
+  const invoicedCount = bills.filter((fb) => fb.invoiceId).length;
+  const pendingInvoiceCount = bills.filter((fb) => fb.status === "approved" && !fb.invoiceId).length;
+  const paidOutCount = bills.filter((fb) => fb.paidAt).length;
+  const customerPaidCount = bills.filter((fb) => fb.customerPaidAt).length;
+  // "Flagged" = data-quality issues that should get the owner's attention:
+  // missing photos on a non-rejected FB.
+  const flaggedCount = bills.filter((fb) => (fb.status || "pending") !== "rejected" && (!fb.photos || fb.photos.length === 0)).length;
+
+  return {
+    totalTons, totalLoads, pct, statusLabel, statusColor,
+    approvedCount, pendingReviewCount,
+    invoicedCount, pendingInvoiceCount,
+    paidOutCount, customerPaidCount,
+    flaggedCount,
+  };
 };
 
 // Compress an image File to a JPEG dataURL, scaled to fit `maxDim` on the
