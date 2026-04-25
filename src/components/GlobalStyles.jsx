@@ -56,6 +56,20 @@ export const GlobalStyles = () => (
     .thumb { width: 80px; height: 80px; object-fit: cover; border: 2px solid var(--steel); cursor: pointer; transition: transform 0.1s; }
     .thumb:hover { transform: scale(1.05); box-shadow: 3px 3px 0 var(--hazard); }
 
+    /* v21: Force auto-fit/auto-fill grids inside modals + content cards to
+       collapse to a single column on iPhone-SE-class widths. Without this,
+       grids declared with minmax(220–340px, 1fr) overflow the modal because
+       a single column can't shrink below the minmax floor. Overrides inline
+       grid-template-columns via attribute selector + !important. */
+    @media (max-width: 480px) {
+      .fbt-card [style*="repeat(auto-fit"],
+      .fbt-card [style*="repeat(auto-fill"],
+      .modal-body [style*="repeat(auto-fit"],
+      .modal-body [style*="repeat(auto-fill"] {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
     /* v19c Session K: Mobile-specific rules — applies on phone widths (≤640px) */
     @media (max-width: 640px) {
       /* Nav tabs — smaller padding, smaller font so 13 tabs fit */
