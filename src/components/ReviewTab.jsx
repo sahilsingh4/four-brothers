@@ -142,9 +142,13 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                       </span>
                       <span className="chip" style={{ background: "var(--hazard)", fontSize: 9, padding: "2px 8px" }}>FB #{fb.freightBillNumber || "—"}</span>
                       {d && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>Order #{d.code}</span>}
-                      {photos.length > 0 && (
+                      {photos.length > 0 ? (
                         <span className="chip" style={{ background: "#FFF", fontSize: 9, padding: "2px 8px" }}>
                           <Camera size={10} style={{ marginRight: 3 }} /> {photos.length}
+                        </span>
+                      ) : (
+                        <span className="chip" title="No proof-of-haul photos — review carefully" style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
+                          ⚠ NO PHOTOS
                         </span>
                       )}
                     </div>

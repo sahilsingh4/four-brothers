@@ -1983,14 +1983,44 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   </div>
                 ) : (
                   <div style={{ display: "grid", gap: 14 }}>
-                    {bills.map((fb) => (
-                      <div key={fb.id} style={{ border: "2px solid var(--steel)", background: "#FFF" }}>
-                        <div style={{ padding: "12px 16px", background: "#FEF3C7", borderBottom: "2px solid var(--steel)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                    {bills.map((fb) => {
+                      const inv = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
+                      const noPhotos = !fb.photos || fb.photos.length === 0;
+                      const fbStatus = fb.status || "pending";
+                      return (
+                      <div key={fb.id} style={{ border: "1px solid var(--line)", borderRadius: 8, background: "#FFF" }}>
+                        <div style={{ padding: "12px 16px", background: "var(--surface)", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                           <div>
                             <div className="fbt-display" style={{ fontSize: 18 }}>FB #{fb.freightBillNumber}</div>
                             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{fmtDateTime(fb.submittedAt)}</div>
                           </div>
                           <button className="btn-danger" onClick={() => removeFreightBill(fb.id)}><Trash2 size={12} /></button>
+                        </div>
+                        {/* Cross-stage status chip strip — surfaces invoice / payroll / photo state at a glance */}
+                        <div style={{ padding: "8px 16px", display: "flex", flexWrap: "wrap", gap: 6, borderBottom: "1px solid var(--line)" }}>
+                          <span className="chip" style={{ background: fbStatus === "approved" ? "#F0FDF4" : fbStatus === "rejected" ? "#FEF2F2" : "var(--surface)", color: fbStatus === "approved" ? "var(--good)" : fbStatus === "rejected" ? "var(--safety)" : "var(--concrete)", borderColor: fbStatus === "approved" ? "var(--good)" : fbStatus === "rejected" ? "var(--safety)" : "var(--line)" }}>
+                            {fbStatus.toUpperCase()}
+                          </span>
+                          {inv && (
+                            <span className="chip" title={`On invoice ${inv.invoiceNumber}`} style={{ background: "#EFF6FF", color: "var(--hazard-deep)", borderColor: "var(--hazard)" }}>
+                              ON {inv.invoiceNumber || "INV"}
+                            </span>
+                          )}
+                          {fb.paidAt && (
+                            <span className="chip" title="Sub paid out" style={{ background: "#F0FDF4", color: "var(--good)", borderColor: "var(--good)" }}>
+                              SUB PAID
+                            </span>
+                          )}
+                          {fb.customerPaidAt && (
+                            <span className="chip" title="Customer paid invoice" style={{ background: "#F0FDF4", color: "var(--good)", borderColor: "var(--good)" }}>
+                              CUST PAID
+                            </span>
+                          )}
+                          {noPhotos && (
+                            <span className="chip" title="No proof-of-haul photos attached" style={{ background: "#FEF2F2", color: "var(--safety)", borderColor: "var(--safety)" }}>
+                              ⚠ NO PHOTOS
+                            </span>
+                          )}
                         </div>
                         <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
                           <div><strong>DRIVER:</strong> {fb.driverName}</div>
@@ -2001,7 +2031,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           {fb.pickupTime && <div><strong>PU:</strong> {fb.pickupTime}</div>}
                           {fb.dropoffTime && <div><strong>DO:</strong> {fb.dropoffTime}</div>}
                         </div>
-                        {fb.notes && <div style={{ margin: "0 16px 14px", padding: 10, background: "#F5F5F4", fontSize: 12, borderLeft: "3px solid var(--hazard)" }}>{fb.notes}</div>}
+                        {fb.notes && <div style={{ margin: "0 16px 14px", padding: 10, background: "var(--surface)", fontSize: 12, borderLeft: "3px solid var(--hazard)" }}>{fb.notes}</div>}
                         {fb.photos && fb.photos.length > 0 && (
                           <div style={{ padding: "0 16px 16px" }}>
                             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ {fb.photos.length} ATTACHMENT{fb.photos.length !== 1 ? "S" : ""}</div>
@@ -2011,7 +2041,8 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
