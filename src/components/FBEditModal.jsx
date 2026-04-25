@@ -1079,38 +1079,38 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
             <div>
-              <label className="fbt-label">Freight Bill #</label>
-              <input className="fbt-input" value={draft.freightBillNumber} onChange={(e) => setDraft({ ...draft, freightBillNumber: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-fbnum`}>Freight Bill #</label>
+              <input id={`fb-${fb.id}-fbnum`} className="fbt-input" value={draft.freightBillNumber} onChange={(e) => setDraft({ ...draft, freightBillNumber: e.target.value })} />
             </div>
             <div>
-              <label className="fbt-label">Truck #</label>
-              <input className="fbt-input" value={draft.truckNumber} onChange={(e) => setDraft({ ...draft, truckNumber: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-truck`}>Truck #</label>
+              <input id={`fb-${fb.id}-truck`} className="fbt-input" value={draft.truckNumber} onChange={(e) => setDraft({ ...draft, truckNumber: e.target.value })} />
             </div>
             <div>
-              <label className="fbt-label">Driver Name</label>
-              <input className="fbt-input" value={draft.driverName} onChange={(e) => setDraft({ ...draft, driverName: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-driver`}>Driver Name</label>
+              <input id={`fb-${fb.id}-driver`} className="fbt-input" value={draft.driverName} onChange={(e) => setDraft({ ...draft, driverName: e.target.value })} />
             </div>
           </div>
 
           {/* Job info */}
           <div>
-            <label className="fbt-label">Job Name Override (optional — leaves order's job name alone)</label>
-            <input className="fbt-input" value={draft.jobNameOverride} onChange={(e) => setDraft({ ...draft, jobNameOverride: e.target.value })} placeholder={dispatch?.jobName || "Uses order's job name by default"} />
+            <label className="fbt-label" htmlFor={`fb-${fb.id}-jobover`}>Job Name Override (optional — leaves order's job name alone)</label>
+            <input id={`fb-${fb.id}-jobover`} className="fbt-input" value={draft.jobNameOverride} onChange={(e) => setDraft({ ...draft, jobNameOverride: e.target.value })} placeholder={dispatch?.jobName || "Uses order's job name by default"} />
           </div>
           <div>
-            <label className="fbt-label">Description of Work</label>
-            <textarea className="fbt-textarea" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="e.g. 3 loads hauled basalt from Vulcan Napa to Salinas job site" style={{ minHeight: 60 }} />
+            <label className="fbt-label" htmlFor={`fb-${fb.id}-desc`}>Description of Work</label>
+            <textarea id={`fb-${fb.id}-desc`} className="fbt-textarea" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="e.g. 3 loads hauled basalt from Vulcan Napa to Salinas job site" style={{ minHeight: 60 }} />
           </div>
 
           {/* Material / tonnage / loads */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
             <div>
-              <label className="fbt-label">Material</label>
-              <input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-material`}>Material</label>
+              <input id={`fb-${fb.id}-material`} className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} />
             </div>
             <div>
-              <label className="fbt-label">Tonnage</label>
-              <input className="fbt-input" type="number" step="0.01" value={draft.tonnage} onChange={(e) => setDraft({ ...draft, tonnage: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-tonnage`}>Tonnage</label>
+              <input id={`fb-${fb.id}-tonnage`} className="fbt-input" type="number" step="0.01" value={draft.tonnage} onChange={(e) => setDraft({ ...draft, tonnage: e.target.value })} />
               {/* F6: tonnage overage warning — flag if entered tonnage is >20% over the dispatch's expected tons/truck. */}
               {(() => {
                 const expected = Number(dispatch?.expectedTonnagePerTruck);
@@ -1125,8 +1125,8 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               })()}
             </div>
             <div>
-              <label className="fbt-label">Load Count</label>
-              <input className="fbt-input" type="number" min="1" value={draft.loadCount} onChange={(e) => setDraft({ ...draft, loadCount: e.target.value })} />
+              <label className="fbt-label" htmlFor={`fb-${fb.id}-loads`}>Load Count</label>
+              <input id={`fb-${fb.id}-loads`} className="fbt-input" type="number" min="1" value={draft.loadCount} onChange={(e) => setDraft({ ...draft, loadCount: e.target.value })} />
             </div>
           </div>
 
@@ -1660,6 +1660,36 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             </div>
           </div>
 
+
+          {/* Pre-trip inspection — present on the FIRST FB submitted by a driver
+              for a given dispatch+day. Shows OK/DEFECT counts and lists each
+              defect inline. Read-only (driver-signed). */}
+          {fb.pretripInspection && (() => {
+            const insp = fb.pretripInspection;
+            const items = Array.isArray(insp.items) ? insp.items : [];
+            const okCount = items.filter((i) => i.result === "ok").length;
+            const defects = items.filter((i) => i.result === "defect");
+            const when = insp.completedAt ? new Date(insp.completedAt).toLocaleString() : "—";
+            return (
+              <div style={{ padding: 10, border: `1.5px solid ${defects.length > 0 ? "var(--hazard)" : "var(--good)"}`, background: defects.length > 0 ? "#FEF3C7" : "#F0FDF4", borderRadius: 6 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: defects.length > 0 ? "var(--hazard-deep)" : "var(--good)", fontWeight: 700, marginBottom: 4 }}>
+                  ▸ DOT PRE-TRIP · {okCount}/{items.length} OK · {defects.length} DEFECT{defects.length !== 1 ? "S" : ""}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--steel)" }}>
+                  Signed by <strong>{insp.signedBy || "—"}</strong> · {when} · Truck {insp.truckNumber || "—"}
+                </div>
+                {defects.length > 0 && (
+                  <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
+                    {defects.map((d) => (
+                      <div key={d.id} style={{ fontSize: 11, color: "var(--steel)" }}>
+                        • <strong>{d.label}</strong>{d.note ? ` — ${d.note}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Photos — admin can add, view, or remove */}
           <div>

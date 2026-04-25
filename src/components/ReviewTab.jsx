@@ -230,6 +230,15 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                           </span>
                         );
                       })()}
+                      {fb.pretripInspection && (() => {
+                        const defects = (fb.pretripInspection.items || []).filter((i) => i.result === "defect").length;
+                        const bg = defects > 0 ? "var(--hazard-deep)" : "var(--good)";
+                        return (
+                          <span className="chip" title={`DOT pre-trip ${defects > 0 ? `with ${defects} defect${defects !== 1 ? "s" : ""}` : "(all OK)"} signed by ${fb.pretripInspection.signedBy || "driver"}`} style={{ background: bg, color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: bg }}>
+                            ✓ PRE-TRIP{defects > 0 ? ` · ${defects} DEF` : ""}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="fbt-display" style={{ fontSize: 15, lineHeight: 1.2 }}>
                       {fb.driverName || "Unknown driver"} · Truck {fb.truckNumber || "—"}
