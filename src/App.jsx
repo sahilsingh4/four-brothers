@@ -54,7 +54,6 @@ import {
   EyeOff,
   FileDown,
   FileText,
-  Fuel,
   HardDrive,
   History,
   KeyRound,
@@ -124,8 +123,6 @@ import { CompanyProfileModal } from "./components/CompanyProfileModal";
 import { ContactDetailModal } from "./components/ContactDetailModal";
 import { ProjectDetailModal } from "./components/ProjectDetailModal";
 import { InvoiceViewModal } from "./components/InvoiceViewModal";
-import { HoursTab } from "./components/HoursTab";
-import { BillingTab } from "./components/BillingTab";
 import { FBPhotoGallery } from "./components/FBPhotoGallery";
 import { FleetTab } from "./components/FleetTab";
 import { QuotesTab, QuoteDetailModal } from "./components/QuotesTab";
@@ -239,7 +236,6 @@ const buildBackupPayload = (state, { includePhotos = true } = {}) => {
     _version: BACKUP_VERSION,
     _exportedAt: new Date().toISOString(),
     _includesPhotos: includePhotos,
-    logs: state.logs || [],
     quotes: state.quotes || [],
     fleet: state.fleet || [],
     dispatches: state.dispatches || [],
@@ -278,7 +274,7 @@ const downloadCSV = (filename, rows) => {
 
 const exportAllCSVs = (state) => {
   const ts = new Date().toISOString().slice(0, 10);
-  const { dispatches = [], freightBills = [], invoices = [], logs = [] } = state;
+  const { dispatches = [], freightBills = [], invoices = [] } = state;
   const dispMap = {};
   dispatches.forEach((d) => { dispMap[d.id] = d; });
 
@@ -319,17 +315,6 @@ const exportAllCSVs = (state) => {
       ]),
     ]);
   }
-
-  // Hours logs
-  if (logs.length > 0) {
-    downloadCSV(`4brothers-hours-${ts}.csv`, [
-      ["Date", "Truck", "Driver", "Job", "Start", "End", "Hours", "Billable Hours", "Rate", "Amount", "Notes"],
-      ...logs.map((l) => [
-        l.date, l.truck, l.driver, l.job || "", l.startTime || "", l.endTime || "",
-        l.hours || "", l.billableHours || "", l.rate || "", l.amount || 0, l.notes || "",
-      ]),
-    ]);
-  }
 };
 
 const validateBackup = (obj) => {
@@ -337,7 +322,7 @@ const validateBackup = (obj) => {
   if (obj._format !== "4brothers-backup") return "This doesn't look like a 4 Brothers backup file";
   if (typeof obj._version !== "number") return "Backup file is missing version info";
   if (obj._version > BACKUP_VERSION) return `Backup is from a newer app version (v${obj._version}) — update the app first`;
-  const arrays = ["logs", "quotes", "fleet", "dispatches", "freightBills", "invoices", "contacts", "quarries"];
+  const arrays = ["quotes", "fleet", "dispatches", "freightBills", "invoices", "contacts", "quarries"];
   for (const k of arrays) {
     if (obj[k] !== undefined && !Array.isArray(obj[k])) return `Backup field '${k}' is corrupted (not an array)`;
   }
@@ -377,7 +362,7 @@ const daysAgoRange = (days) => {
 const toISODate = (d) => d.toISOString().slice(0, 10);
 
 // Core computation — returns a full report object
-const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries }) => {
+const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, quarries }) => {
   const fromT = from.getTime();
   const toT = to.getTime();
 
@@ -403,9 +388,11 @@ const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quo
   // Total tonnage
   const totalTons = billsInRange.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
 
-  // Hours logs → revenue
-  const logsInRange = logs.filter((l) => inRangeDate(l.date));
-  const laborRevenue = logsInRange.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  // Labor revenue = total of invoices issued in range. Replaces the obsolete
+  // logs[]-based calc; this number now reflects what we actually billed.
+  const laborRevenue = invoices
+    .filter((inv) => inv.invoiceDate && inRangeDate(inv.invoiceDate))
+    .reduce((s, inv) => s + (Number(inv.total) || 0), 0);
 
   // Top clients by tonnage (across all bills in range)
   const clientTons = {};
@@ -470,7 +457,6 @@ const computeReport = ({ from, to, dispatches, freightBills, logs, invoices, quo
     closedCount: closedInRange.length,
     billsCount: billsInRange.length,
     totalTons,
-    logsCount: logsInRange.length,
     laborRevenue,
     topClients,
     topSubs,
@@ -586,7 +572,6 @@ const downloadReportCSV = (report) => {
   push(["Dispatches Closed", report.closedCount]);
   push(["Freight Bills Received", report.billsCount]);
   push(["Total Tonnage", report.totalTons.toFixed(2)]);
-  push(["Hours Logs", report.logsCount]);
   push(["Labor Revenue", report.laborRevenue.toFixed(2)]);
   push(["New Quote Requests", report.quotesCount]);
   push(["Invoices Generated", report.invoicesCount]);
@@ -4206,7 +4191,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
   );
 };
 
-const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
+const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -4242,8 +4227,8 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
   }, [rangePreset, customFrom, customTo]);
 
   const report = useMemo(
-    () => computeReport({ from, to, dispatches, freightBills, logs, invoices, quotes, quarries, contacts }),
-    [from, to, dispatches, freightBills, logs, invoices, quotes, quarries, contacts]
+    () => computeReport({ from, to, dispatches, freightBills, invoices, quotes, quarries, contacts }),
+    [from, to, dispatches, freightBills, invoices, quotes, quarries, contacts]
   );
 
   // Monday morning banner — show if today is Monday (5am-noon) and user hasn't viewed last week's report
@@ -4650,7 +4635,6 @@ const DataTab = ({ state, setters, onToast }) => {
     (state.dispatches?.length || 0) +
     (state.freightBills?.length || 0) +
     (state.invoices?.length || 0) +
-    (state.logs?.length || 0) +
     (state.quotes?.length || 0) +
     (state.fleet?.length || 0);
 
@@ -4700,7 +4684,6 @@ const DataTab = ({ state, setters, onToast }) => {
           invoices: obj.invoices?.length || 0,
           contacts: obj.contacts?.length || 0,
           quarries: obj.quarries?.length || 0,
-          logs: obj.logs?.length || 0,
           quotes: obj.quotes?.length || 0,
           fleet: obj.fleet?.length || 0,
         };
@@ -4712,7 +4695,6 @@ const DataTab = ({ state, setters, onToast }) => {
           `• ${counts.invoices} invoices\n` +
           `• ${counts.contacts} contacts\n` +
           `• ${counts.quarries} quarries\n` +
-          `• ${counts.logs} hours logs\n` +
           `• ${counts.quotes} quote requests\n` +
           `• ${counts.fleet} fleet units\n\n` +
           `Current data will be permanently overwritten.`;
@@ -4722,7 +4704,6 @@ const DataTab = ({ state, setters, onToast }) => {
           return;
         }
         // Apply
-        await setters.setLogs(obj.logs || []);
         await setters.setQuotes(obj.quotes || []);
         await setters.setFleet(obj.fleet || []);
         await setters.setDispatches(obj.dispatches || []);
@@ -4786,7 +4767,6 @@ const DataTab = ({ state, setters, onToast }) => {
             { l: "Invoices", v: state.invoices?.length || 0 },
             { l: "Contacts", v: state.contacts?.length || 0 },
             { l: "Quarries", v: state.quarries?.length || 0 },
-            { l: "Hours Logs", v: state.logs?.length || 0 },
             { l: "Quotes", v: state.quotes?.length || 0 },
             { l: "Fleet Units", v: state.fleet?.length || 0 },
           ].map((s, i) => (
@@ -5014,8 +4994,8 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
 
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("home");
-  const { logs, quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setLogs, setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
+  const { quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
+  const { setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
@@ -5028,8 +5008,6 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
     { k: "projects", l: "Projects", ico: <Briefcase size={16} /> },
     { k: "invoices", l: "Invoices", ico: <Receipt size={16} /> },
     { k: "contacts", l: "Contacts", ico: <Users size={16} /> },
-    { k: "hours", l: "Hours", ico: <FileText size={16} /> },
-    { k: "billing", l: "Billing", ico: <Fuel size={16} /> },
     { k: "quotes", l: "Quotes", ico: <Mail size={16} /> },
     { k: "bids", l: "Bids", ico: <FileText size={16} /> },
     { k: "fleet", l: "Fleet", ico: <Truck size={16} /> },
@@ -5089,8 +5067,6 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} generateCapabilityStatementPDF={generateCapabilityStatementPDF} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} generateCustomerStatementPDF={generateCustomerStatementPDF} />}
-        {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
-        {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onConvertToBid={async (quote) => {
           // Build a bid pre-filled from the quote, persist it, link the quote back, navigate to Bids tab.
           const bidDraft = {
@@ -5173,7 +5149,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         }} onToast={onToast} />}
         {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
-        {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
+        {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "recovery" && <RecoveryTab onToast={onToast} />}
         {tab === "audit" && <AuditTab onToast={onToast} />}
         {tab === "testimonials" && <TestimonialsTab onToast={onToast} />}
@@ -5185,7 +5161,6 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
 
 export default function App() {
   const [view, setView] = useState("public");
-  const [logs, setLogs] = useState([]);
   const [quotes, setQuotes] = useState([]);
   // v19 Batch 3 Session F: bids/RFP tracker
   const [bids, setBids] = useState([]);
@@ -5324,13 +5299,13 @@ export default function App() {
       }
       if (lvmr) setLastViewedMondayReportState(lvmr);
 
-      // Hours + fleet + company still use local storage (not critical to sync across devices)
+      // Fleet + company still use local storage (not critical to sync across devices)
       // v18: quotes moved to Supabase — no longer loaded from localStorage
-      const [l, f, co] = await Promise.all([
-        storageGet("fbt:logs"), storageGet("fbt:fleet"),
+      const [f, co] = await Promise.all([
+        storageGet("fbt:fleet"),
         storageGet("fbt:company"),
       ]);
-      if (l) setLogs(l); if (f) setFleet(f);
+      if (f) setFleet(f);
       if (co) setCompanyState((prev) => ({ ...prev, ...co }));
 
       setLoaded(true);
@@ -6060,8 +6035,8 @@ export default function App() {
       ) : (
         <>
           <Dashboard
-            state={{ logs, quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-            setters={{ setLogs, setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+            state={{ quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
+            setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
             onToast={showToast}
             onExit={() => setView("public")}
             onLogout={handleLogout}
