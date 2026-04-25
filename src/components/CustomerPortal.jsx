@@ -55,6 +55,26 @@ export const CustomerPortal = ({ token }) => {
     return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }, [data, orderFilter, search]);
 
+  // A/R rollup per project — must run before early returns to keep hook order
+  // consistent across render passes.
+  const arByProject = useMemo(() => {
+    const invs = data?.invoices || [];
+    const projs = data?.projects || [];
+    const balanceOf = (inv) => Math.max(0, (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0));
+    const map = new Map();
+    invs.forEach((inv) => {
+      const key = inv.projectId || "_none";
+      const entry = map.get(key) || { projectId: inv.projectId, count: 0, outstanding: 0, total: 0 };
+      entry.count += 1;
+      entry.total += Number(inv.total) || 0;
+      entry.outstanding += balanceOf(inv);
+      map.set(key, entry);
+    });
+    return Array.from(map.values())
+      .map((e) => ({ ...e, project: projs.find((p) => p.id === e.projectId) }))
+      .sort((a, b) => b.outstanding - a.outstanding);
+  }, [data]);
+
   if (loading) {
     return (
       <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
@@ -80,11 +100,32 @@ export const CustomerPortal = ({ token }) => {
   }
 
   const { customer, orders, freightBills, projects } = data;
+  const invoices = data.invoices || [];
 
   // Metrics
   const totalTons = freightBills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
   const totalLoads = freightBills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
   const totalHours = freightBills.reduce((s, fb) => s + (Number(fb.hoursBilled) || 0), 0);
+
+  // A/R rollup — sum unpaid balances + per-project breakdown
+  const invoiceBalance = (inv) => {
+    const total = Number(inv.total) || 0;
+    const paid = Number(inv.amountPaid) || 0;
+    return Math.max(0, total - paid);
+  };
+  const invoiceStatus = (inv) => {
+    if (inv.statusOverride) return inv.statusOverride;
+    if (inv.paymentStatus) return inv.paymentStatus;
+    const bal = invoiceBalance(inv);
+    if (bal <= 0.01) return "paid";
+    if ((Number(inv.amountPaid) || 0) > 0) return "partial";
+    return "outstanding";
+  };
+  const totalOutstanding = invoices.reduce((s, inv) => s + invoiceBalance(inv), 0);
+  const outstandingCount = invoices.filter((inv) => invoiceBalance(inv) > 0.01).length;
+  const totalInvoiced = invoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+  const totalPaid = invoices.reduce((s, inv) => s + (Number(inv.amountPaid) || 0), 0);
+  const fmtMoney = (n) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="fbt-root" style={{ minHeight: "100vh", background: "#F5F5F4" }}>
@@ -180,6 +221,98 @@ export const CustomerPortal = ({ token }) => {
             <div className="stat-label">Hours Billed</div>
           </div>
         </div>
+
+        {/* Invoices + A/R */}
+        {invoices.length > 0 && (
+          <div className="fbt-card" style={{ padding: 0, overflow: "hidden", marginBottom: 20 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", background: outstandingCount > 0 ? "#FEF3C7" : "#F0FDF4", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Receipt size={18} style={{ color: outstandingCount > 0 ? "var(--hazard-deep)" : "var(--good)" }} />
+                <div>
+                  <div className="fbt-display" style={{ fontSize: 16 }}>Invoices &amp; balance</div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                    {invoices.length} invoice{invoices.length !== 1 ? "s" : ""} · {fmtMoney(totalInvoiced)} billed · {fmtMoney(totalPaid)} paid
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div className="fbt-display" style={{ fontSize: 22, color: outstandingCount > 0 ? "var(--hazard-deep)" : "var(--good)" }}>
+                  {fmtMoney(totalOutstanding)}
+                </div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                  {outstandingCount > 0 ? `${outstandingCount} OUTSTANDING` : "ALL PAID"}
+                </div>
+              </div>
+            </div>
+
+            {/* Per-project breakdown — only shown if there are 2+ projects */}
+            {arByProject.length > 1 && (
+              <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--line)", background: "#F8FAFC", display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {arByProject.map((entry) => (
+                  <span
+                    key={entry.projectId || "none"}
+                    className="chip"
+                    title={`${entry.count} invoice${entry.count !== 1 ? "s" : ""} · ${fmtMoney(entry.outstanding)} outstanding of ${fmtMoney(entry.total)}`}
+                    style={{ background: entry.outstanding > 0.01 ? "#FEF3C7" : "#F0FDF4", color: "var(--steel)", fontSize: 10, padding: "3px 8px", borderColor: entry.outstanding > 0.01 ? "var(--hazard)" : "var(--good)" }}
+                  >
+                    <strong>{entry.project?.name || "(no project)"}</strong>
+                    <span style={{ marginLeft: 6, color: entry.outstanding > 0.01 ? "var(--hazard-deep)" : "var(--good)" }}>{fmtMoney(entry.outstanding)}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Invoice rows */}
+            <div style={{ display: "grid", gap: 0 }}>
+              {invoices.map((inv) => {
+                const status = invoiceStatus(inv);
+                const balance = invoiceBalance(inv);
+                const project = projects.find((p) => p.id === inv.projectId);
+                const statusBg = status === "paid" ? "var(--good)" : status === "partial" ? "var(--hazard)" : "var(--safety)";
+                const statusLabel = status === "paid" ? "PAID" : status === "partial" ? "PARTIAL" : "OUTSTANDING";
+                const overdue = inv.dueDate && status !== "paid" && new Date(inv.dueDate) < new Date(new Date().toISOString().slice(0, 10) + "T23:59:59");
+                return (
+                  <div key={inv.id} style={{ padding: "12px 18px", borderTop: "1px solid var(--line)", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 12, alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 3 }}>
+                        <span className="chip" style={{ background: statusBg, color: "#FFF", fontSize: 9, padding: "2px 6px" }}>{statusLabel}</span>
+                        <span className="fbt-display" style={{ fontSize: 14 }}>INV #{inv.invoiceNumber}</span>
+                        {project && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>· {project.name}</span>}
+                        {overdue && <span className="chip" style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 6px" }}>OVERDUE</span>}
+                      </div>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
+                        Issued {inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : "—"}
+                        {inv.dueDate && ` · Due ${new Date(inv.dueDate).toLocaleDateString()}`}
+                        {inv.poNumber && ` · PO ${inv.poNumber}`}
+                        {(inv.freightBillIds || []).length > 0 && ` · ${(inv.freightBillIds || []).length} FB${(inv.freightBillIds || []).length !== 1 ? "s" : ""}`}
+                      </div>
+                      {(inv.paymentHistory || []).length > 0 && (
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
+                          ▸ Payments: {inv.paymentHistory.map((p, i) => (
+                            <span key={i}>{i > 0 ? " · " : ""}{fmtMoney(p.amount)}{p.date ? ` (${new Date(p.date).toLocaleDateString()})` : ""}{p.method ? ` ${p.method}` : ""}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fbt-display" style={{ fontSize: 16 }}>{fmtMoney(inv.total)}</div>
+                      {status !== "paid" && balance > 0.01 && (
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700 }}>
+                          {fmtMoney(balance)} due
+                        </div>
+                      )}
+                      {status === "paid" && (
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", fontWeight: 700 }}>
+                          ✓ paid in full
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
