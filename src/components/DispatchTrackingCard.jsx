@@ -3,7 +3,13 @@ import { fmtDate, fmtDateTime, computeDispatchSummary } from "../utils";
 // Single dispatch tracking card (also used in client-wide view).
 // Shows status, progress bar, totals, and the list of submitted FBs with photos.
 export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }) => {
-  const { totalTons, totalLoads, pct, statusLabel, statusColor } = computeDispatchSummary(dispatch, bills);
+  const {
+    totalTons, totalLoads, pct, statusLabel, statusColor,
+    approvedCount, pendingReviewCount,
+    invoicedCount, pendingInvoiceCount,
+    paidOutCount, customerPaidCount,
+    flaggedCount,
+  } = computeDispatchSummary(dispatch, bills);
   return (
     <div className="fbt-card" style={{ padding: 0, overflow: "hidden" }}>
       <div className="hazard-stripe-thin" style={{ height: 6 }} />
@@ -29,10 +35,51 @@ export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }
             <span>▸ {bills.length} / {dispatch.trucksExpected} TRUCKS IN</span>
             <span>{pct.toFixed(0)}%</span>
           </div>
-          <div style={{ height: 10, background: "#E7E5E4", border: "1px solid var(--steel)" }}>
+          <div style={{ height: 10, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 4, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${pct}%`, background: pct >= 100 ? "var(--good)" : "var(--hazard)", transition: "width 0.4s ease" }} />
           </div>
         </div>
+
+        {/* F3: Pipeline status — review/invoice/paid counts at a glance, plus a flagged-FB warning. */}
+        {bills.length > 0 && (
+          <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            {pendingReviewCount > 0 && (
+              <span className="chip" title="Freight bills awaiting end-of-day review" style={{ background: "#FEF3C7", color: "var(--hazard-deep)", borderColor: "var(--hazard)" }}>
+                {pendingReviewCount} TO REVIEW
+              </span>
+            )}
+            {approvedCount > 0 && (
+              <span className="chip" title="Approved FBs" style={{ background: "#F0FDF4", color: "var(--good)", borderColor: "var(--good)" }}>
+                {approvedCount} APPROVED
+              </span>
+            )}
+            {pendingInvoiceCount > 0 && (
+              <span className="chip" title="Approved FBs not yet on an invoice" style={{ background: "#EFF6FF", color: "var(--hazard-deep)", borderColor: "var(--hazard)" }}>
+                {pendingInvoiceCount} TO INVOICE
+              </span>
+            )}
+            {invoicedCount > 0 && (
+              <span className="chip" title="FBs on an invoice" style={{ background: "var(--surface)", color: "var(--steel)", borderColor: "var(--line)" }}>
+                {invoicedCount} INVOICED
+              </span>
+            )}
+            {paidOutCount > 0 && (
+              <span className="chip" title="FBs paid out to subs" style={{ background: "#F0FDF4", color: "var(--good)", borderColor: "var(--good)" }}>
+                {paidOutCount} SUB PAID
+              </span>
+            )}
+            {customerPaidCount > 0 && customerPaidCount === bills.length && (
+              <span className="chip" title="Customer paid the invoice for all FBs" style={{ background: "#F0FDF4", color: "var(--good)", borderColor: "var(--good)" }}>
+                ✓ CUST PAID
+              </span>
+            )}
+            {flaggedCount > 0 && (
+              <span className="chip" title="FBs missing proof-of-haul photos" style={{ background: "#FEF2F2", color: "var(--safety)", borderColor: "var(--safety)" }}>
+                ⚠ {flaggedCount} NO PHOTOS
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Totals */}
         {bills.length > 0 && (
