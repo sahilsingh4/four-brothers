@@ -4,6 +4,7 @@ import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
 import { compressImage, fmtDate } from "../utils";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
+import { useFormDraft } from "../hooks/useFormDraft";
 
 export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null, assignmentContact = null }) => {
   // For driver-kind assignments, driver name is locked in (but editable via override)
@@ -14,7 +15,13 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     ? (assignment?.truckNumber || assignmentContact?.defaultTruckNumber || "")
     : "";
 
-  const [form, setForm] = useState({
+  // Auto-save the driver's in-progress freight-bill form to localStorage so a
+  // browser refresh, accidental close, or expiring auth on cellular doesn't
+  // wipe out a form they've been filling for several minutes. Key by dispatch
+  // code + assignment ID so two drivers on the same phone (rare but possible)
+  // don't clobber each other.
+  const draftKey = `driver-upload:${dispatch?.code || "unknown"}:${assignment?.aid || "main"}`;
+  const initialForm = {
     freightBillNumber: "",
     driverName: lockedDriverName || "",
     driverId: assignment?.kind === "driver" ? assignment.contactId : null,
@@ -23,7 +30,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     tonnage: "", loadCount: "1",
     pickupTime: "", dropoffTime: "", notes: "",
     extras: [],
-  });
+  };
+  const [form, setForm, formWasRestored, clearFormDraft] = useFormDraft(draftKey, initialForm);
 
   // Track which pre-filled fields the driver has unlocked for override
   const [unlockedFields, setUnlockedFields] = useState({});
@@ -186,6 +194,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       });
       setLastFB(form.freightBillNumber);
       setSubmitted(true);
+      clearFormDraft();
       // v20 Session P: record this submission in rate-limit tracker
       recordSubmission();
     } catch (e) {
@@ -356,6 +365,22 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         </div>
         <div className="fbt-card" style={{ padding: 24 }}>
           <div style={{ display: "grid", gap: 14 }}>
+            {formWasRestored && !submitted && (
+              <div style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.05em", fontWeight: 700 }}>
+                  ▸ DRAFT RESTORED FROM YOUR LAST SESSION
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { clearFormDraft(); setForm(initialForm); }}
+                  className="btn-ghost"
+                  style={{ padding: "4px 10px", fontSize: 10 }}
+                  title="Discard the restored draft and start over"
+                >
+                  START OVER
+                </button>
+              </div>
+            )}
             <div>
               <label className="fbt-label">Freight Bill # * <span style={{ color: "var(--concrete)", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>(from the top of your paper bill)</span></label>
               <input className="fbt-input" value={form.freightBillNumber} onChange={(e) => setForm({ ...form, freightBillNumber: e.target.value })} placeholder="e.g. 45821" style={{ fontSize: 16 }} />
