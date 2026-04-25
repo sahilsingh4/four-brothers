@@ -2067,8 +2067,8 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           {fb.material && <div><strong>MAT:</strong> {fb.material}</div>}
                           {fb.tonnage && <div><strong>TONS:</strong> {fb.tonnage}</div>}
                           {fb.loadCount && <div><strong>LOADS:</strong> {fb.loadCount}</div>}
-                          {fb.pickupTime && <div><strong>PU:</strong> {fb.pickupTime}</div>}
-                          {fb.dropoffTime && <div><strong>DO:</strong> {fb.dropoffTime}</div>}
+                          {fb.pickupTime && <div><strong>START:</strong> {fb.pickupTime}</div>}
+                          {fb.dropoffTime && <div><strong>END:</strong> {fb.dropoffTime}</div>}
                         </div>
                         {fb.notes && <div style={{ margin: "0 16px 14px", padding: 10, background: "var(--surface)", fontSize: 12, borderLeft: "3px solid var(--hazard)" }}>{fb.notes}</div>}
                         {fb.photos && fb.photos.length > 0 && (

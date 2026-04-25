@@ -290,7 +290,7 @@ const exportAllCSVs = (state) => {
 
   // Freight bills
   downloadCSV(`4brothers-freightbills-${ts}.csv`, [
-    ["Freight Bill #", "Submitted", "Dispatch Code", "Job", "Sub", "Driver", "Truck", "Material", "Tonnage", "Load Count", "Pickup Time", "Dropoff Time", "Photos", "Notes"],
+    ["Freight Bill #", "Submitted", "Dispatch Code", "Job", "Sub", "Driver", "Truck", "Material", "Tonnage", "Load Count", "Start Time", "End Time", "Photos", "Notes"],
     ...freightBills.map((fb) => {
       const d = dispMap[fb.dispatchId];
       return [

@@ -287,7 +287,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 {submissionSummary.tonnage && <div><strong>TONNAGE:</strong> {submissionSummary.tonnage} tons</div>}
                 {submissionSummary.loadCount && submissionSummary.loadCount !== "1" && <div><strong>LOADS:</strong> {submissionSummary.loadCount}</div>}
                 {(submissionSummary.pickupTime || submissionSummary.dropoffTime) && (
-                  <div><strong>TIMES:</strong> {submissionSummary.pickupTime || "—"} → {submissionSummary.dropoffTime || "—"}</div>
+                  <div><strong>TIMES:</strong> start {submissionSummary.pickupTime || "—"} → end {submissionSummary.dropoffTime || "—"}</div>
                 )}
                 <div><strong>PHOTOS:</strong> {submissionSummary.photoCount} scale ticket{submissionSummary.photoCount !== 1 ? "s" : ""} attached</div>
                 {submissionSummary.extras.length > 0 && (
@@ -508,9 +508,41 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               <div><label className="fbt-label">Tonnage</label><input className="fbt-input" type="number" step="0.01" value={form.tonnage} onChange={(e) => setForm({ ...form, tonnage: e.target.value })} placeholder="e.g. 25.4" /></div>
               <div><label className="fbt-label">Load Count</label><input className="fbt-input" type="number" value={form.loadCount} onChange={(e) => setForm({ ...form, loadCount: e.target.value })} /></div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
-              <div><label className="fbt-label">Pickup Time</label><input className="fbt-input" type="time" value={form.pickupTime} onChange={(e) => setForm({ ...form, pickupTime: e.target.value })} /></div>
-              <div><label className="fbt-label">Dropoff Time</label><input className="fbt-input" type="time" value={form.dropoffTime} onChange={(e) => setForm({ ...form, dropoffTime: e.target.value })} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+              <div>
+                <label className="fbt-label">Start time</label>
+                <input className="fbt-input" type="time" value={form.pickupTime} onChange={(e) => setForm({ ...form, pickupTime: e.target.value })} />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    const now = new Date();
+                    const hh = String(now.getHours()).padStart(2, "0");
+                    const mm = String(now.getMinutes()).padStart(2, "0");
+                    setForm({ ...form, pickupTime: `${hh}:${mm}` });
+                  }}
+                  style={{ marginTop: 6, width: "100%", fontSize: 12 }}
+                >
+                  Signed out — loaded (now)
+                </button>
+              </div>
+              <div>
+                <label className="fbt-label">End time</label>
+                <input className="fbt-input" type="time" value={form.dropoffTime} onChange={(e) => setForm({ ...form, dropoffTime: e.target.value })} />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    const now = new Date();
+                    const hh = String(now.getHours()).padStart(2, "0");
+                    const mm = String(now.getMinutes()).padStart(2, "0");
+                    setForm({ ...form, dropoffTime: `${hh}:${mm}` });
+                  }}
+                  style={{ marginTop: 6, width: "100%", fontSize: 12 }}
+                >
+                  Signed out — empty (now)
+                </button>
+              </div>
             </div>
             <div><label className="fbt-label">Notes</label><textarea className="fbt-textarea" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Anything unusual about this load?" /></div>
 
