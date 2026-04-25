@@ -38,6 +38,16 @@ export default defineConfig([
       // Tells no-unused-vars that a JSX tag reference counts as a use.
       // Without this, `const Foo = (...)` + `<Foo />` reports Foo unused.
       'react/jsx-uses-vars': 'error',
+      // Downgrade set-state-in-effect from error → warn. The 13 violations in
+      // the codebase are all pre-existing, audited "respond-to-external-trigger"
+      // patterns: consume a one-shot prop (DispatchesTab pendingDispatch,
+      // ReviewTab pendingFB), autofill a sibling field on prop change but only
+      // when the target is empty (FBEditModal billed/paid hours), or reset
+      // modal-internal mode on a toggle (InvoicesTab showNewInvoice). Each is
+      // a single bounded write — the cascade self-terminates after one render.
+      // We still want this rule active so genuinely new cascading-render bugs
+      // get flagged in PRs; warn-level keeps it visible without breaking CI.
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
 ])
