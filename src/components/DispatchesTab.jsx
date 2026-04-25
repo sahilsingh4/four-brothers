@@ -1141,9 +1141,22 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           const pid = e.target.value ? Number(e.target.value) : null;
                           const p = availableProjects.find((x) => x.id === pid);
                           const patch = { projectId: pid };
-                          // Inherit project's default rate if order rate is still the default "142"
-                          if (p?.defaultRate != null && p.defaultRate !== "" && (draft.ratePerHour === "142" || !draft.ratePerHour)) {
-                            patch.ratePerHour = String(p.defaultRate);
+                          if (p) {
+                            // Pre-fill jobName from the project so the dispatcher doesn't
+                            // have to retype "MCI #91684 — Salinas Stormwater Phase 2A"
+                            // when it's already on the project record. Only overwrite if
+                            // the field is empty (don't trample manual edits) and we have
+                            // a project name to use.
+                            if (!draft.jobName && p.name) {
+                              patch.jobName = p.contractNumber ? `${p.contractNumber} — ${p.name}` : p.name;
+                            }
+                            // Same idea for pickup/dropoff/material — fill if blank, leave
+                            // alone if the dispatcher already typed something order-specific.
+                            if (!draft.pickup && p.location) patch.pickup = p.location;
+                            // Inherit project's default rate if order rate is still the default "142"
+                            if (p.defaultRate != null && p.defaultRate !== "" && (draft.ratePerHour === "142" || !draft.ratePerHour)) {
+                              patch.ratePerHour = String(p.defaultRate);
+                            }
                           }
                           setDraft({ ...draft, ...patch });
                         }}
