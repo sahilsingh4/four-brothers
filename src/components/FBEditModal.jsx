@@ -1094,6 +1094,18 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             <div>
               <label className="fbt-label">Tonnage</label>
               <input className="fbt-input" type="number" step="0.01" value={draft.tonnage} onChange={(e) => setDraft({ ...draft, tonnage: e.target.value })} />
+              {/* F6: tonnage overage warning — flag if entered tonnage is >20% over the dispatch's expected tons/truck. */}
+              {(() => {
+                const expected = Number(dispatch?.expectedTonnagePerTruck);
+                const actual = Number(draft.tonnage);
+                if (!expected || !actual || actual <= expected * 1.2) return null;
+                const pctOver = Math.round(((actual / expected) - 1) * 100);
+                return (
+                  <div className="fbt-mono" style={{ marginTop: 4, fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700 }}>
+                    ⚠ OVERAGE +{pctOver}% · EXPECTED {expected}T/TRUCK · VERIFY SCALE TICKET
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="fbt-label">Load Count</label>
