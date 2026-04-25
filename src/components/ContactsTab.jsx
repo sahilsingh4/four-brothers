@@ -400,11 +400,69 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
 // table). For CDL + medical card kinds, uploading a photo also runs OCR
 // to suggest the expiration date and offers to populate the existing
 // cdlExpiry / medicalCardExpiry fields on the contact.
+//
+// "Required documents" — admin can mark each kind as required. The list is
+// persisted to localStorage per contact type so the next driver / sub the
+// admin onboards uses the same checklist. Shows ✓/✗ for each required kind.
+//
+// "Share upload link" — generates a portal token and enables the contact's
+// portal_enabled flag, then offers a copyable URL that opens the public
+// OnboardingPage where the driver/sub can upload docs themselves.
+const REQUIRED_KEY = (type) => `fbt:requiredDocs:${type}`;
 const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
   const [pendingKind, setPendingKind] = useState(kinds[0]?.v || "other");
   const [busy, setBusy] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [requiredKinds, setRequiredKinds] = useState(() => {
+    try {
+      const raw = localStorage.getItem(REQUIRED_KEY(draft.type));
+      if (raw) return JSON.parse(raw);
+    } catch { /* noop */ }
+    // Default: every predefined kind except "other"
+    return kinds.filter((k) => k.v !== "other").map((k) => k.v);
+  });
+  const persistRequired = (next) => {
+    setRequiredKinds(next);
+    try { localStorage.setItem(REQUIRED_KEY(draft.type), JSON.stringify(next)); } catch { /* noop */ }
+  };
+  const toggleRequired = (kindValue) => {
+    persistRequired(
+      requiredKinds.includes(kindValue)
+        ? requiredKinds.filter((k) => k !== kindValue)
+        : [...requiredKinds, kindValue]
+    );
+  };
   const docs = Array.isArray(draft.documents) ? draft.documents : [];
   const labelFor = (k) => kinds.find((x) => x.v === k)?.label || k;
+  const hasUploadedKind = (kindValue) => docs.some((d) => d.kind === kindValue);
+
+  const generateShareLink = () => {
+    if (!draft.id) {
+      onToast?.("⚠ Save the contact first, then generate the link.");
+      return;
+    }
+    let token = draft.portalToken;
+    if (!token) {
+      // Random URL-safe token, 20 chars
+      const bytes = new Uint8Array(15);
+      crypto.getRandomValues(bytes);
+      token = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 20);
+    }
+    setDraft({ ...draft, portalToken: token, portalEnabled: true });
+    const url = `${window.location.origin}${window.location.pathname}#/onboard/${token}`;
+    try {
+      navigator.clipboard.writeText(url);
+      onToast?.("✓ Upload link copied to clipboard");
+    } catch {
+      // Fallback: show in a prompt the user can copy from
+      window.prompt("Upload link (copy this):", url);
+    }
+  };
+  const revokeShareLink = () => {
+    if (!confirm("Revoke the upload link? The contact won't be able to use the existing URL anymore.")) return;
+    setDraft({ ...draft, portalEnabled: false });
+    onToast?.("Link revoked.");
+  };
 
   const addDoc = async (files) => {
     if (!files || files.length === 0) return;
@@ -464,9 +522,96 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
 
   return (
     <div style={{ padding: 12, background: "#F8FAFC", border: "1.5px solid var(--line)", borderRadius: 6 }}>
-      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--steel)", fontWeight: 700, marginBottom: 8 }}>
-        ▸ COMPLIANCE PACKET ({docs.length} {docs.length === 1 ? "document" : "documents"})
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--steel)", fontWeight: 700 }}>
+          ▸ COMPLIANCE PACKET ({docs.length} {docs.length === 1 ? "document" : "documents"})
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setShowConfig((v) => !v)}
+            className="btn-ghost"
+            style={{ padding: "3px 8px", fontSize: 10 }}
+            title="Pick which document kinds to require for every driver/sub. Saved across contacts."
+          >
+            {showConfig ? "Done" : "Configure required"}
+          </button>
+          {draft.portalEnabled ? (
+            <>
+              <button
+                type="button"
+                onClick={generateShareLink}
+                className="btn-ghost"
+                style={{ padding: "3px 8px", fontSize: 10 }}
+                title="Copy the upload link again"
+              >
+                Copy upload link
+              </button>
+              <button
+                type="button"
+                onClick={revokeShareLink}
+                className="btn-ghost"
+                style={{ padding: "3px 8px", fontSize: 10, color: "var(--safety)" }}
+              >
+                Revoke link
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={generateShareLink}
+              className="btn-ghost"
+              style={{ padding: "3px 8px", fontSize: 10 }}
+              title="Generate a public link the contact can use to upload their docs themselves"
+            >
+              Share upload link
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Required-docs checklist — ✓ for kinds with at least one uploaded
+          document, ✗ for kinds the admin needs to chase. Hidden when no
+          kinds are marked required. */}
+      {requiredKinds.length > 0 && (
+        <div style={{ marginBottom: 10, padding: 8, background: "#FFF", border: "1px solid var(--line)", borderRadius: 4 }}>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 6 }}>
+            REQUIRED FOR EVERY {draft.type === "driver" ? "DRIVER" : "SUB"} ({requiredKinds.filter(hasUploadedKind).length}/{requiredKinds.length} ON FILE)
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 4 }}>
+            {requiredKinds.map((k) => {
+              const have = hasUploadedKind(k);
+              return (
+                <div key={k} style={{ fontSize: 11, color: have ? "var(--good)" : "var(--safety)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontWeight: 700 }}>{have ? "✓" : "✗"}</span>
+                  <span>{labelFor(k)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Configuration panel — toggle which kinds are required for this type */}
+      {showConfig && (
+        <div style={{ marginBottom: 10, padding: 10, background: "#FEF3C7", border: "1px solid var(--hazard)", borderRadius: 4 }}>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
+            REQUIRED DOCUMENT KINDS · APPLIES TO ALL {draft.type === "driver" ? "DRIVERS" : "SUBS"}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 4 }}>
+            {kinds.map((k) => (
+              <label key={k.v} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={requiredKinds.includes(k.v)}
+                  onChange={() => toggleRequired(k.v)}
+                />
+                {k.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         <select

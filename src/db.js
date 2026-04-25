@@ -453,6 +453,10 @@ const contactFromDB = (row) => ({
   taxIdType: row.tax_id_type || "", // 'ssn' | 'ein'
   legalName: row.legal_name || "",  // Name on 1099 (if different from company/contact name)
   is1099Eligible: !!row.is_1099_eligible,
+  // Compliance / driver-doc expiration fields
+  cdlExpiry: row.cdl_expiry || "",
+  medicalCardExpiry: row.medical_card_expiry || "",
+  documents: Array.isArray(row.documents) ? row.documents : [],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -483,6 +487,9 @@ const contactToDB = (c) => ({
   tax_id_type: c.taxIdType || null,
   legal_name: c.legalName || null,
   is_1099_eligible: !!c.is1099Eligible,
+  cdl_expiry: c.cdlExpiry || null,
+  medical_card_expiry: c.medicalCardExpiry || null,
+  documents: Array.isArray(c.documents) ? c.documents : [],
 });
 
 export const fetchContacts = async () => {
@@ -521,6 +528,57 @@ export const deleteContact = async (id) => {
 
 // ========== CUSTOMER PORTAL LOOKUP ==========
 // Public read by portal_token. Returns customer + their approved FBs only.
+// Public read by portal_token for driver / sub document onboarding. Same
+// portal_token + portal_enabled fields the customer portal uses, but with
+// a type filter that allows driver and sub. Returns the contact (with
+// documents) plus only the public-safe fields the onboarding page needs
+// (no pay rates, no tax IDs, no internal notes).
+export const fetchContactForOnboarding = async (token) => {
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("portal_token", token)
+    .eq("portal_enabled", true)
+    .in("type", ["driver", "sub"])
+    .maybeSingle();
+  if (error) { console.error("fetchContactForOnboarding:", error); return null; }
+  if (!data) return null;
+  const c = contactFromDB(data);
+  // Strip sensitive fields before returning to the public page
+  return {
+    id: c.id,
+    type: c.type,
+    companyName: c.companyName,
+    contactName: c.contactName,
+    documents: c.documents || [],
+    cdlExpiry: c.cdlExpiry || "",
+    medicalCardExpiry: c.medicalCardExpiry || "",
+  };
+};
+
+// Public update path — let the contact attach documents to themselves via
+// the onboarding link without needing admin auth. We only allow updates to
+// the documents[] array + the two expiry fields the OCR pre-fills (CDL,
+// medical card). Everything else is rejected.
+export const updateContactDocsByToken = async (token, payload) => {
+  const allowed = {};
+  if (Array.isArray(payload.documents)) allowed.documents = payload.documents;
+  if (typeof payload.cdlExpiry === "string") allowed.cdl_expiry = payload.cdlExpiry || null;
+  if (typeof payload.medicalCardExpiry === "string") allowed.medical_card_expiry = payload.medicalCardExpiry || null;
+  if (Object.keys(allowed).length === 0) return null;
+  allowed.updated_at = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("contacts")
+    .update(allowed)
+    .eq("portal_token", token)
+    .eq("portal_enabled", true)
+    .in("type", ["driver", "sub"])
+    .select()
+    .maybeSingle();
+  if (error) { console.error("updateContactDocsByToken:", error); return null; }
+  return data ? contactFromDB(data) : null;
+};
+
 export const fetchCustomerByToken = async (token) => {
   const { data: cust, error: e1 } = await supabase
     .from("contacts")
