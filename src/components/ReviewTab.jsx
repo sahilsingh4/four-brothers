@@ -8,6 +8,15 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
+  // Bulk-select: per-row checkboxes feed this Set; user can approve a subset.
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Auto-open FB editor when jumping from home dashboard.
   // Consume-trigger pattern: parent passes pendingFB once, we read it and
@@ -45,12 +54,11 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
     return list.sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
   }, [freightBills, filter, dateFrom, dateTo, search, dispatches]);
 
-  const approveAll = async () => {
-    const pending = filtered.filter((fb) => (fb.status || "pending") === "pending");
-    if (pending.length === 0) { onToast("NOTHING TO APPROVE"); return; }
-    if (!confirm(`Approve ${pending.length} pending freight bill${pending.length !== 1 ? "s" : ""}? Customers will be able to see them.`)) return;
+  const approveBatch = async (fbs) => {
+    if (fbs.length === 0) { onToast("NOTHING TO APPROVE"); return; }
+    if (!confirm(`Approve ${fbs.length} pending freight bill${fbs.length !== 1 ? "s" : ""}? Customers will be able to see them.`)) return;
     try {
-      for (const fb of pending) {
+      for (const fb of fbs) {
         await editFreightBill(fb.id, {
           ...fb,
           status: "approved",
@@ -58,11 +66,37 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
           approvedBy: "admin",
         });
       }
-      onToast(`✓ ${pending.length} APPROVED`);
+      setSelectedIds(new Set());
+      onToast(`✓ ${fbs.length} APPROVED`);
     } catch (e) {
       console.error(e);
       onToast("BATCH APPROVE FAILED");
     }
+  };
+
+  const approveAll = () => {
+    const pending = filtered.filter((fb) => (fb.status || "pending") === "pending");
+    return approveBatch(pending);
+  };
+
+  const approveSelected = () => {
+    const pending = filtered.filter((fb) => selectedIds.has(fb.id) && (fb.status || "pending") === "pending");
+    return approveBatch(pending);
+  };
+
+  // Currently-visible pending FBs that the user could mass-select
+  const visiblePending = filtered.filter((fb) => (fb.status || "pending") === "pending");
+  const allVisibleSelected = visiblePending.length > 0 && visiblePending.every((fb) => selectedIds.has(fb.id));
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visiblePending.forEach((fb) => next.delete(fb.id));
+      } else {
+        visiblePending.forEach((fb) => next.add(fb.id));
+      }
+      return next;
+    });
   };
 
   return (
@@ -114,10 +148,28 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
         </select>
         <input className="fbt-input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ width: "auto" }} title="From" />
         <input className="fbt-input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ width: "auto" }} title="To" />
-        {filter === "pending" && pendingCount > 0 && (
-          <button onClick={approveAll} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
-            <ShieldCheck size={14} /> APPROVE ALL ({filtered.filter(fb => (fb.status || "pending") === "pending").length})
-          </button>
+        {visiblePending.length > 0 && (
+          <>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 12, cursor: "pointer", background: "#FFF" }}>
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={toggleSelectAllVisible}
+                style={{ cursor: "pointer" }}
+              />
+              Select all ({visiblePending.length})
+            </label>
+            {selectedIds.size > 0 && (
+              <button onClick={approveSelected} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
+                <ShieldCheck size={14} /> Approve selected ({Array.from(selectedIds).filter((id) => visiblePending.some((fb) => fb.id === id)).length})
+              </button>
+            )}
+            {selectedIds.size === 0 && (
+              <button onClick={approveAll} className="btn-primary" style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}>
+                <ShieldCheck size={14} /> Approve all ({visiblePending.length})
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -137,7 +189,18 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
             const border = status === "approved" ? "var(--good)" : status === "rejected" ? "var(--safety)" : "var(--hazard)";
             const photos = fb.photos || [];
             return (
-              <div key={fb.id} className="fbt-card" style={{ padding: 14, background: bg, borderLeft: `4px solid ${border}`, cursor: "pointer" }} onClick={() => setEditing(fb)}>
+              <div key={fb.id} className="fbt-card" style={{ padding: 14, background: bg, borderLeft: `4px solid ${border}`, cursor: "pointer", display: "flex", gap: 12, alignItems: "flex-start" }} onClick={() => setEditing(fb)}>
+                {status === "pending" && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(fb.id)}
+                    onChange={() => toggleSelected(fb.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ marginTop: 4, cursor: "pointer", width: 16, height: 16, flexShrink: 0 }}
+                    title="Select for bulk approve"
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
@@ -180,6 +243,7 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                       <img key={idx} src={p.dataUrl} alt="" style={{ width: 44, height: 44, objectFit: "cover", border: "1px solid var(--steel)" }} />
                     ))}
                   </div>
+                </div>
                 </div>
               </div>
             );
