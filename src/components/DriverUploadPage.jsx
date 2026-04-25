@@ -6,7 +6,7 @@ import { compressImage, fmtDate } from "../utils";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useFormDraft } from "../hooks/useFormDraft";
 
-export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null, assignmentContact = null }) => {
+export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDrivers = [], assignment = null, assignmentContact = null, allDispatches = [], allFreightBills = [] }) => {
   // For driver-kind assignments, driver name is locked in (but editable via override)
   const lockedDriverName = assignment?.kind === "driver" ? assignment.name : null;
   // Prefill truck number — prefer the truck assigned on the order (fleet-synced at assignment time),
@@ -385,6 +385,71 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
             </div>
           </div>
         )}
+
+        {/* "Your day at a glance" — every truck assigned to this driver/sub
+            today across all dispatches. Helps a multi-truck driver/sub know
+            how many uploads they have remaining without juggling SMS links. */}
+        {(() => {
+          const contactId = assignmentContact?.id;
+          if (!contactId || !allDispatches?.length) return null;
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const myAssignments = [];
+          allDispatches.forEach((d) => {
+            if (d.date !== todayStr) return;
+            (d.assignments || []).forEach((a) => {
+              if (a.contactId !== contactId) return;
+              const submitted = (allFreightBills || []).some((fb) => fb.dispatchId === d.id && fb.assignmentId === a.aid);
+              const isCurrent = d.id === dispatch.id && a.aid === assignment?.aid;
+              myAssignments.push({ d, a, submitted, isCurrent });
+            });
+          });
+          if (myAssignments.length <= 1) return null;
+          const remaining = myAssignments.filter((m) => !m.submitted).length;
+          return (
+            <div className="fbt-card" style={{ padding: 16, marginBottom: 16, background: "var(--accent-soft)", border: "1px solid var(--accent-border)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--steel)" }}>Your day at a glance</div>
+                <div style={{ fontSize: 12, color: "var(--concrete)" }}>{myAssignments.length} truck{myAssignments.length !== 1 ? "s" : ""} · {remaining} left to upload</div>
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {myAssignments.map(({ d, a, submitted, isCurrent }) => {
+                  const url = `${window.location.origin}${window.location.pathname}#/submit/${d.code}/a/${a.aid}`;
+                  return (
+                    <a
+                      key={`${d.id}-${a.aid}`}
+                      href={isCurrent ? "#" : url}
+                      onClick={(e) => { if (isCurrent) e.preventDefault(); }}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 10,
+                        alignItems: "center",
+                        padding: "10px 12px",
+                        background: isCurrent ? "var(--accent)" : "#FFF",
+                        color: isCurrent ? "#FFF" : "var(--steel)",
+                        border: `1px solid ${isCurrent ? "var(--accent-border)" : "var(--line)"}`,
+                        borderRadius: 6,
+                        textDecoration: "none",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {a.startTimes?.[0]?.time ? `${a.startTimes[0].time} · ` : ""}#{d.code} · {d.jobName || "—"}
+                        </div>
+                        <div style={{ fontSize: 11, opacity: isCurrent ? 0.85 : 0.7, marginTop: 2 }}>
+                          {d.pickup ? `From ${d.pickup}` : ""}{d.pickup && d.dropoff ? " → " : ""}{d.dropoff || ""}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: submitted ? "var(--good-soft)" : isCurrent ? "rgba(255,255,255,0.25)" : "var(--warn-bg)", color: submitted ? "var(--good)" : isCurrent ? "#FFF" : "var(--warn-fg)" }}>
+                        {submitted ? "✓ Done" : isCurrent ? "This one" : "Open"}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="fbt-card" style={{ padding: 20, marginBottom: 24, background: "#FEF3C7" }}>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>JOB DETAILS</div>

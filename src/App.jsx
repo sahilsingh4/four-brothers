@@ -6392,6 +6392,8 @@ export default function App() {
             availableDrivers={availableDrivers}
             assignment={assignment}
             assignmentContact={assignmentContact}
+            allDispatches={dispatches}
+            allFreightBills={freightBills}
           />
         </Suspense>
       </div>
