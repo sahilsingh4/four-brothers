@@ -98,8 +98,8 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     loadCount: fb.loadCount || 1,
     pickupTime: fb.pickupTime || "",
     dropoffTime: fb.dropoffTime || "",
-    signedOutLoadedAt: fb.signedOutLoadedAt || "",
-    signedOutEmptyAt: fb.signedOutEmptyAt || "",
+    signedOutStatus: fb.signedOutStatus || "",
+    signedOutAt: fb.signedOutAt || "",
     hoursBilled: fb.hoursBilled || "",
     jobNameOverride: fb.jobNameOverride || "",
     description: fb.description || "",
@@ -1249,22 +1249,42 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             })()}
           </div>
 
-          {/* Signed-out timestamps — separate from start/end time. Captured by the
-              driver at upload; admin can edit if needed. Independent of billing hours. */}
+          {/* Signed-out status — separate from start/end time. Driver picks ONE
+              of "loaded" or "empty" and stamps a single time. Admin can edit. */}
           <div style={{ padding: 12, background: "#F8FAFC", border: "1.5px solid var(--line)" }}>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
-              ▸ SIGNED-OUT TIMES (DRIVER YARD CHECK)
+              ▸ SIGNED-OUT (DRIVER YARD CHECK)
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-              <div>
-                <label className="fbt-label">Signed out — loaded</label>
-                <input className="fbt-input" type="time" value={draft.signedOutLoadedAt || ""} onChange={(e) => setDraft({ ...draft, signedOutLoadedAt: e.target.value })} />
-              </div>
-              <div>
-                <label className="fbt-label">Signed out — empty</label>
-                <input className="fbt-input" type="time" value={draft.signedOutEmptyAt || ""} onChange={(e) => setDraft({ ...draft, signedOutEmptyAt: e.target.value })} />
-              </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {["loaded", "empty"].map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setDraft({ ...draft, signedOutStatus: draft.signedOutStatus === opt ? "" : opt })}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    border: `2px solid ${draft.signedOutStatus === opt ? "var(--good)" : "var(--line)"}`,
+                    background: draft.signedOutStatus === opt ? "var(--good)" : "#FFF",
+                    color: draft.signedOutStatus === opt ? "#FFF" : "var(--steel)",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    textTransform: "capitalize",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt}
+                </button>
+              ))}
             </div>
+            <input
+              className="fbt-input"
+              type="time"
+              value={draft.signedOutAt || ""}
+              onChange={(e) => setDraft({ ...draft, signedOutAt: e.target.value })}
+              disabled={!draft.signedOutStatus}
+            />
           </div>
 
           {/* Notes */}
