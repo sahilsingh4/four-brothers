@@ -835,6 +835,8 @@ const projectFromDB = (row) => ({
   notes: row.notes || "",
   defaultRate: row.default_rate !== null && row.default_rate !== undefined ? Number(row.default_rate) : null,
   minimumHours: row.minimum_hours !== null && row.minimum_hours !== undefined ? Number(row.minimum_hours) : null,
+  subPayRate: row.sub_pay_rate !== null && row.sub_pay_rate !== undefined ? Number(row.sub_pay_rate) : null,
+  subMinimumHours: row.sub_minimum_hours !== null && row.sub_minimum_hours !== undefined ? Number(row.sub_minimum_hours) : null,
   // v21 Session S: Public portfolio fields
   showOnWebsite: !!row.show_on_website,
   publicDescription: row.public_description || "",
@@ -865,6 +867,8 @@ const projectToDB = (p) => ({
   notes: p.notes || null,
   default_rate: p.defaultRate !== null && p.defaultRate !== undefined && p.defaultRate !== "" ? Number(p.defaultRate) : null,
   minimum_hours: p.minimumHours !== null && p.minimumHours !== undefined && p.minimumHours !== "" ? Number(p.minimumHours) : null,
+  sub_pay_rate: p.subPayRate !== null && p.subPayRate !== undefined && p.subPayRate !== "" ? Number(p.subPayRate) : null,
+  sub_minimum_hours: p.subMinimumHours !== null && p.subMinimumHours !== undefined && p.subMinimumHours !== "" ? Number(p.subMinimumHours) : null,
   // v21 Session S: Public portfolio fields
   show_on_website: !!p.showOnWebsite,
   public_description: p.publicDescription || null,

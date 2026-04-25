@@ -1244,11 +1244,19 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                 // Look up fleet unit assigned to this driver (sync'd from Fleet tab)
                                 const fleetUnit = isDriver && c ? fleet.find((f) => f.driverId === c.id) : null;
                                 const resolvedTruck = fleetUnit?.unit || c?.defaultTruckNumber || "";
-                                // Auto-fill pay rate/method from contact default (both drivers AND subs)
-                                // Only fill if the assignment field is empty
+                                // J2: project subPayRate beats contact default for subs.
+                                // Drivers still use the contact default (driver pay isn't project-scoped).
+                                const projectForOrder = draft.projectId ? projects.find((p) => p.id === Number(draft.projectId) || p.id === draft.projectId) : null;
+                                const projectSubPay = !isDriver && projectForOrder?.subPayRate != null && projectForOrder.subPayRate !== ""
+                                  ? String(projectForOrder.subPayRate)
+                                  : null;
+                                // Auto-fill pay rate/method (only when empty, so a manual edit is preserved):
+                                //   1. Project sub-pay rate (subs only, when set)
+                                //   2. Contact's defaultPayRate (fallback for both kinds)
                                 const autoFill = c ? {
-                                  payRate: (next[idx].payRate === "" || next[idx].payRate == null) && c.defaultPayRate != null
-                                    ? String(c.defaultPayRate) : next[idx].payRate,
+                                  payRate: (next[idx].payRate === "" || next[idx].payRate == null)
+                                    ? (projectSubPay || (c.defaultPayRate != null ? String(c.defaultPayRate) : next[idx].payRate))
+                                    : next[idx].payRate,
                                   payMethod: (!next[idx].payMethod || next[idx].payMethod === "hour") && c.defaultPayMethod
                                     ? c.defaultPayMethod : (next[idx].payMethod || "hour"),
                                   truckNumber: isDriver && (!next[idx].truckNumber) && resolvedTruck
