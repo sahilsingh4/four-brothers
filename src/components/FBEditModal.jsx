@@ -1081,6 +1081,26 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             <div>
               <label className="fbt-label" htmlFor={`fb-${fb.id}-fbnum`}>Freight Bill #</label>
               <input id={`fb-${fb.id}-fbnum`} className="fbt-input" value={draft.freightBillNumber} onChange={(e) => setDraft({ ...draft, freightBillNumber: e.target.value })} />
+              {/* Duplicate FB# detection — flags when another non-rejected FB
+                  exists with the same number for the same customer. */}
+              {(() => {
+                const num = (draft.freightBillNumber || "").trim().toUpperCase();
+                if (!num) return null;
+                const customerId = dispatch?.clientId;
+                const dups = (freightBills || []).filter((other) => {
+                  if (other.id === fb.id) return false;
+                  if ((other.status || "pending") === "rejected") return false;
+                  if ((other.freightBillNumber || "").trim().toUpperCase() !== num) return false;
+                  const otherDisp = dispatches.find((x) => x.id === other.dispatchId);
+                  return (otherDisp?.clientId || null) === (customerId || null);
+                });
+                if (dups.length === 0) return null;
+                return (
+                  <div className="fbt-mono" style={{ marginTop: 4, fontSize: 10, color: "var(--safety)", fontWeight: 700 }}>
+                    ⚠ DUPLICATE: FB#{num} is on {dups.length} other FB{dups.length !== 1 ? "S" : ""} for this customer
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="fbt-label" htmlFor={`fb-${fb.id}-truck`}>Truck #</label>
@@ -1446,7 +1466,23 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                             disabled={rowLocked}
                             style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #BAE6FD", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
-                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
+                          {fmt$(ln.gross)}
+                          {/* Math drift detection — gross should equal qty × rate.
+                              When it doesn't, the row was hand-edited externally
+                              or imported with bad data. Chip lets the reviewer
+                              spot it instantly. */}
+                          {(() => {
+                            const expected = (Number(ln.qty) || 0) * (Number(ln.rate) || 0);
+                            const actual = Number(ln.gross) || 0;
+                            if (Math.abs(expected - actual) <= 0.01) return null;
+                            return (
+                              <div className="fbt-mono" title={`Expected qty × rate = ${fmt$(expected)} but stored gross = ${fmt$(actual)}. Manual override or stale data.`} style={{ fontSize: 8, color: "var(--safety)", fontWeight: 700, marginTop: 2 }}>
+                                ⚠ DRIFT
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
                           <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updateBillingLine(ln.id, { brokerable: e.target.checked })}
                             disabled={rowLocked} />
@@ -1586,7 +1622,20 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                             disabled={rowLocked}
                             style={{ width: "100%", padding: "3px 5px", fontSize: 10, textAlign: "right", fontFamily: "inherit", border: "1px solid #86EFAC", background: rowLocked ? "#F5F5F4" : "#FFF" }} />
                         </td>
-                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{fmt$(ln.gross)}</td>
+                        <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>
+                          {fmt$(ln.gross)}
+                          {/* Pay-line math drift — same check as billing side. */}
+                          {(() => {
+                            const expected = (Number(ln.qty) || 0) * (Number(ln.rate) || 0);
+                            const actual = Number(ln.gross) || 0;
+                            if (Math.abs(expected - actual) <= 0.01) return null;
+                            return (
+                              <div className="fbt-mono" title={`Expected qty × rate = ${fmt$(expected)} but stored gross = ${fmt$(actual)}.`} style={{ fontSize: 8, color: "var(--safety)", fontWeight: 700, marginTop: 2 }}>
+                                ⚠ DRIFT
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td style={{ padding: "4px 6px", textAlign: "center" }}>
                           <input type="checkbox" checked={!!ln.brokerable} onChange={(e) => updatePayingLine(ln.id, { brokerable: e.target.checked })}
                             disabled={rowLocked || assignment?.kind !== "sub"}
