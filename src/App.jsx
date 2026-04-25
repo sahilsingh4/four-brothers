@@ -142,6 +142,7 @@ const ClientTrackingPage = lazy(() => import("./components/ClientTrackingPage").
 const DriverPayPortalPage = lazy(() => import("./components/DriverPayPortalPage").then((m) => ({ default: m.DriverPayPortalPage })));
 const DriverUploadPage = lazy(() => import("./components/DriverUploadPage").then((m) => ({ default: m.DriverUploadPage })));
 const CustomerPortal = lazy(() => import("./components/CustomerPortal").then((m) => ({ default: m.CustomerPortal })));
+const OnboardingPage = lazy(() => import("./components/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
 const PublicSite = lazy(() => import("./components/PublicSite").then((m) => ({ default: m.PublicSite })));
 
 // Suspense fallback shown while a lazy chunk is in flight.
@@ -6456,6 +6457,7 @@ export default function App() {
   const customerMatch = route.match(/^#\/customer\/([a-f0-9]+)/i);
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]+)/i);
   const payMatch = route.match(/^#\/pay\/([a-f0-9]+)/i);  // v23 Session Y
+  const onboardMatch = route.match(/^#\/onboard\/([A-Za-z0-9]+)/i);
 
   if (!loaded) {
     return (
@@ -6558,6 +6560,16 @@ export default function App() {
     return (
       <Suspense fallback={<RouteLoading />}>
         <CustomerPortal token={token} onBack={() => { window.location.hash = ""; }} />
+      </Suspense>
+    );
+  }
+
+  // Driver / sub document upload — public, token-based (lazy-loaded chunk)
+  if (onboardMatch) {
+    const token = onboardMatch[1];
+    return (
+      <Suspense fallback={<RouteLoading />}>
+        <OnboardingPage token={token} />
       </Suspense>
     );
   }
