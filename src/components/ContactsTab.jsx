@@ -375,6 +375,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
               draft={draft}
               setDraft={setDraft}
               kinds={draft.type === "driver" ? DRIVER_DOC_KINDS : SUB_DOC_KINDS}
+              onSave={onSave}
               onToast={onToast}
             />
           )}
@@ -405,11 +406,13 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
 // persisted to localStorage per contact type so the next driver / sub the
 // admin onboards uses the same checklist. Shows ✓/✗ for each required kind.
 //
-// "Share upload link" — generates a portal token and enables the contact's
-// portal_enabled flag, then offers a copyable URL that opens the public
-// OnboardingPage where the driver/sub can upload docs themselves.
+// "Share upload link" — generates a portal token, sets portal_enabled=true,
+// and PERSISTS that change to Supabase (via onSave) so the public link
+// actually works the moment it's generated. Without the persist step, the
+// dispatcher would have to remember to also click SAVE; many won't, and
+// the public link returns "Invalid or expired".
 const REQUIRED_KEY = (type) => `fbt:requiredDocs:${type}`;
-const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
+const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
   const [pendingKind, setPendingKind] = useState(kinds[0]?.v || "other");
   const [busy, setBusy] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -436,8 +439,8 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
   const labelFor = (k) => kinds.find((x) => x.v === k)?.label || k;
   const hasUploadedKind = (kindValue) => docs.some((d) => d.kind === kindValue);
 
-  const generateShareLink = () => {
-    if (!draft.id) {
+  const generateShareLink = async () => {
+    if (!draft.id || String(draft.id).startsWith("temp-")) {
       onToast?.("⚠ Save the contact first, then generate the link.");
       return;
     }
@@ -448,19 +451,39 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
       crypto.getRandomValues(bytes);
       token = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 20);
     }
-    setDraft({ ...draft, portalToken: token, portalEnabled: true });
+    const updated = { ...draft, portalToken: token, portalEnabled: true };
+    setDraft(updated);
+    // Persist immediately so the public RPC sees portal_enabled=true. Without
+    // this, the link only works after the admin remembers to click SAVE.
+    if (onSave) {
+      try {
+        await onSave({ ...updated, updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn("Persist share link failed:", e);
+        onToast?.("⚠ Couldn't save the link. Try again.");
+        return;
+      }
+    }
     const url = `${window.location.origin}${window.location.pathname}#/onboard/${token}`;
     try {
-      navigator.clipboard.writeText(url);
-      onToast?.("✓ Upload link copied to clipboard");
+      await navigator.clipboard.writeText(url);
+      onToast?.("✓ Upload link saved + copied to clipboard");
     } catch {
       // Fallback: show in a prompt the user can copy from
       window.prompt("Upload link (copy this):", url);
     }
   };
-  const revokeShareLink = () => {
+  const revokeShareLink = async () => {
     if (!confirm("Revoke the upload link? The contact won't be able to use the existing URL anymore.")) return;
-    setDraft({ ...draft, portalEnabled: false });
+    const updated = { ...draft, portalEnabled: false };
+    setDraft(updated);
+    if (onSave) {
+      try {
+        await onSave({ ...updated, updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn("Persist revoke failed:", e);
+      }
+    }
     onToast?.("Link revoked.");
   };
 
