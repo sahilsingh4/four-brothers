@@ -13,7 +13,7 @@ import {
   recoverDispatch, recoverFreightBill, recoverInvoice,
   hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice,
   autoPurgeDeleted,
-  fetchQuotes, insertQuote, subscribeToQuotes,
+  fetchQuotes, insertQuote, updateQuote, subscribeToQuotes,
   fetchDeletedQuotes, recoverQuote, hardDeleteQuote,
   fetchBids, insertBid, updateBid, deleteBid, subscribeToBids,
   logAudit, fetchAuditLog,
@@ -2333,7 +2333,7 @@ const PhotoGalleryModal = ({ title, onClose, ...galleryProps }) => {
 //   - freightBills, dispatches, contacts, projects, invoices  (data)
 //   - initialDispatchId / initialInvoiceId  (optional: lock filter to a specific context)
 //   - onClose  (optional: present as a modal if provided)
-const BidsTab = ({ bids = [], setBids, onToast }) => {
+const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
   const [editingBid, setEditingBid] = useState(null);  // null | bid object | {} for new
   const [showNew, setShowNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2586,6 +2586,7 @@ const BidsTab = ({ bids = [], setBids, onToast }) => {
           onClose={() => { setShowNew(false); setEditingBid(null); }}
           onSave={handleSaveBid}
           onDelete={handleDeleteBid}
+          onConvertToProject={onConvertToProject}
           onToast={onToast}
         />
       )}
@@ -5083,8 +5084,86 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} generateCustomerStatementPDF={generateCustomerStatementPDF} />}
         {tab === "hours" && <HoursTab logs={logs} setLogs={setLogs} onToast={onToast} />}
         {tab === "billing" && <BillingTab logs={logs} onToast={onToast} />}
-        {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onToast={onToast} />}
-        {tab === "bids" && <BidsTab bids={bids || []} setBids={setBids} onToast={onToast} />}
+        {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onConvertToBid={async (quote) => {
+          // Build a bid pre-filled from the quote, persist it, link the quote back, navigate to Bids tab.
+          const bidDraft = {
+            title: quote.company ? `${quote.company} — ${quote.material || quote.service || "Hauling"}` : (quote.service || "Untitled bid"),
+            agency: quote.company || "",
+            agencyContactName: quote.contactName || quote.name || "",
+            agencyContactEmail: quote.email || "",
+            agencyContactPhone: quote.phone || "",
+            estimatedValue: quote.totalEstimate ?? quote.estimatedTotal ?? null,
+            ourBidAmount: quote.totalEstimate ?? quote.estimatedTotal ?? null,
+            status: "submitted",
+            priority: "medium",
+            tags: ["from-quote"],
+            checklistItems: [],
+            quoteId: quote.id,
+            notes: `Created from quote ${quote.id}.${quote.notes ? "\n\nQuote notes: " + quote.notes : ""}`,
+          };
+          try {
+            const savedBid = await insertBid(bidDraft);
+            setBids((prev) => [savedBid, ...prev]);
+            // Mark the quote as linked
+            const patched = { ...quote, convertedToBidId: savedBid.id };
+            await updateQuote(quote.id, { convertedToBidId: savedBid.id }, quote.updatedAt);
+            setQuotes((prev) => prev.map((q) => q.id === quote.id ? patched : q));
+            logAudit({
+              actionType: "quote.convert_to_bid",
+              entityType: "quote", entityId: quote.id,
+              entityLabel: quote.company || quote.contactName || "Quote",
+              metadata: { bidId: savedBid.id, bidTitle: savedBid.title },
+            });
+            onToast("✓ BID CREATED — SEE BIDS TAB");
+            setTab("bids");
+          } catch (e) {
+            console.error("convert-to-bid failed:", e);
+            onToast("⚠ CONVERT FAILED");
+          }
+        }} onToast={onToast} />}
+        {tab === "bids" && <BidsTab bids={bids || []} setBids={setBids} onConvertToProject={async (bid) => {
+          // Create a project from an awarded bid, link the bid back, navigate to Projects.
+          const projectDraft = {
+            customerId: null, // user can pick after — we don't have a customer link from the bid alone
+            name: bid.title || "Untitled project",
+            description: bid.notes || "",
+            contractNumber: bid.rfbNumber || "",
+            poNumber: "",
+            location: "",
+            status: "active",
+            startDate: bid.outcomeAt ? bid.outcomeAt.slice(0, 10) : "",
+            endDate: "",
+            tonnageGoal: "",
+            budget: bid.ourBidAmount ?? "",
+            bidAmount: bid.ourBidAmount ?? "",
+            primeContractor: bid.agency || "",
+            fundingSource: "",
+            certifiedPayroll: false,
+            notes: `Created from bid ${bid.rfbNumber || bid.id}.`,
+            defaultRate: "",
+            minimumHours: "",
+            bidId: bid.id,
+            quoteId: bid.quoteId || null,
+          };
+          try {
+            const savedProject = await insertProject(projectDraft);
+            setProjects((prev) => [savedProject, ...prev]);
+            const patched = { ...bid, convertedToProjectId: savedProject.id };
+            await updateBid(bid.id, { convertedToProjectId: savedProject.id }, bid.updatedAt);
+            setBids((prev) => prev.map((b) => b.id === bid.id ? patched : b));
+            logAudit({
+              actionType: "bid.convert_to_project",
+              entityType: "bid", entityId: bid.id,
+              entityLabel: bid.rfbNumber || bid.title?.slice(0, 40),
+              metadata: { projectId: savedProject.id, projectName: savedProject.name },
+            });
+            onToast("✓ PROJECT CREATED — SEE PROJECTS TAB");
+            setTab("projects");
+          } catch (e) {
+            console.error("convert-to-project failed:", e);
+            onToast("⚠ CONVERT FAILED");
+          }
+        }} onToast={onToast} />}
         {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
         {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} logs={logs} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}

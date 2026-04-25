@@ -4,7 +4,7 @@ import { fmt$, BID_STATUSES, BID_STATUS_MAP, BID_PORTALS } from "../utils";
 import { BidDeadlineChip } from "./BidDeadlineChip";
 import { useFormDraft } from "../hooks/useFormDraft";
 
-export const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
+export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, onToast }) => {
   const isNew = !bid?.id;
   const initialDraft = bid ? { ...bid } : {
     rfbNumber: "",
@@ -502,11 +502,27 @@ export const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
 
           {/* Actions */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-            <div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {!isNew && onDelete && (
                 <button type="button" onClick={() => onDelete(bid)} className="btn-ghost" style={{ color: "var(--safety)", borderColor: "var(--safety)" }}>
                   <Trash2 size={14} /> DELETE
                 </button>
+              )}
+              {!isNew && draft.status === "awarded" && !bid?.convertedToProjectId && onConvertToProject && (
+                <button
+                  type="button"
+                  onClick={() => onConvertToProject(bid)}
+                  className="btn-primary"
+                  style={{ background: "var(--good)", color: "#FFF", borderColor: "var(--good)" }}
+                  title="Create a project record from this awarded bid (pre-fills name, contract #, bid amount, prime contractor)"
+                >
+                  <CheckCircle2 size={14} /> CREATE PROJECT
+                </button>
+              )}
+              {!isNew && bid?.convertedToProjectId && (
+                <span className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", padding: "6px 10px", border: "1.5px solid var(--good)", alignSelf: "center" }}>
+                  ▸ LINKED TO PROJECT
+                </span>
               )}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
