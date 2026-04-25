@@ -98,6 +98,8 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     loadCount: fb.loadCount || 1,
     pickupTime: fb.pickupTime || "",
     dropoffTime: fb.dropoffTime || "",
+    signedOutLoadedAt: fb.signedOutLoadedAt || "",
+    signedOutEmptyAt: fb.signedOutEmptyAt || "",
     hoursBilled: fb.hoursBilled || "",
     jobNameOverride: fb.jobNameOverride || "",
     description: fb.description || "",
@@ -1174,7 +1176,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       onClick={() => setTimeWithSync("pickupTime", nowHHMM())}
                       style={{ marginTop: 6, width: "100%", fontSize: 12 }}
                     >
-                      Signed out — loaded (now)
+                      Now
                     </button>
                   </div>
                   <div>
@@ -1186,7 +1188,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       onClick={() => setTimeWithSync("dropoffTime", nowHHMM())}
                       style={{ marginTop: 6, width: "100%", fontSize: 12 }}
                     >
-                      Signed out — empty (now)
+                      Now
                     </button>
                   </div>
                 </div>
@@ -1245,6 +1247,24 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 </div>
               );
             })()}
+          </div>
+
+          {/* Signed-out timestamps — separate from start/end time. Captured by the
+              driver at upload; admin can edit if needed. Independent of billing hours. */}
+          <div style={{ padding: 12, background: "#F8FAFC", border: "1.5px solid var(--line)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
+              ▸ SIGNED-OUT TIMES (DRIVER YARD CHECK)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+              <div>
+                <label className="fbt-label">Signed out — loaded</label>
+                <input className="fbt-input" type="time" value={draft.signedOutLoadedAt || ""} onChange={(e) => setDraft({ ...draft, signedOutLoadedAt: e.target.value })} />
+              </div>
+              <div>
+                <label className="fbt-label">Signed out — empty</label>
+                <input className="fbt-input" type="time" value={draft.signedOutEmptyAt || ""} onChange={(e) => setDraft({ ...draft, signedOutEmptyAt: e.target.value })} />
+              </div>
+            </div>
           </div>
 
           {/* Notes */}
