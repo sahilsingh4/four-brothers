@@ -14,9 +14,9 @@ describe("<FleetTab />", () => {
   beforeEach(() => { vi.clearAllMocks(); });
   afterEach(cleanup);
 
-  it("renders the ADD TRUCK button and the form fields", () => {
+  it("renders the Add unit button and the form fields", () => {
     render(<FleetTab fleet={[]} setFleet={vi.fn()} contacts={[]} onToast={vi.fn()} />);
-    expect(screen.getByRole("button", { name: /ADD UNIT/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add unit/i })).toBeInTheDocument();
     expect(screen.getByText(/Unit #/i)).toBeInTheDocument();
   });
 
@@ -25,12 +25,14 @@ describe("<FleetTab />", () => {
     const setFleet = vi.fn();
     const onToast = vi.fn();
     render(<FleetTab fleet={[]} setFleet={setFleet} contacts={[]} onToast={onToast} />);
-    await user.click(screen.getByRole("button", { name: /ADD UNIT/i }));
+    await user.click(screen.getByRole("button", { name: /add unit/i }));
     expect(onToast).toHaveBeenCalled();
     expect(setFleet).not.toHaveBeenCalled();
   });
 
-  it("renders existing trucks and lets user delete one", async () => {
+  it("renders existing trucks and lets user delete one (after confirm)", async () => {
+    // The new FleetTab uses window.confirm before deleting — stub it true
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     const setFleet = vi.fn();
     const fleet = [
@@ -40,7 +42,9 @@ describe("<FleetTab />", () => {
     expect(screen.getByText("T-01")).toBeInTheDocument();
     const buttons = screen.getAllByRole("button");
     await user.click(buttons[buttons.length - 1]);  // row trash
+    expect(confirmSpy).toHaveBeenCalled();
     expect(setFleet).toHaveBeenCalledTimes(1);
     expect(setFleet.mock.calls[0][0]).toHaveLength(0);
+    confirmSpy.mockRestore();
   });
 });
