@@ -54,6 +54,26 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
     return list.sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || ""));
   }, [freightBills, filter, dateFrom, dateTo, search, dispatches]);
 
+  // Build a duplicate-FB# index — keyed by (customerId | FBnum) so two
+  // different customers using the same FB# don't false-positive on each other.
+  // Rejected FBs are excluded since they're effectively voided.
+  const dupFbIds = useMemo(() => {
+    const counts = new Map();
+    (freightBills || []).forEach((fb) => {
+      if ((fb.status || "pending") === "rejected") return;
+      const num = (fb.freightBillNumber || "").trim();
+      if (!num) return;
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      const key = `${d?.clientId || "_"}::${num.toUpperCase()}`;
+      const arr = counts.get(key) || [];
+      arr.push(fb.id);
+      counts.set(key, arr);
+    });
+    const dupSet = new Set();
+    counts.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => dupSet.add(id)); });
+    return dupSet;
+  }, [freightBills, dispatches]);
+
   const approveBatch = async (fbs) => {
     if (fbs.length === 0) { onToast("NOTHING TO APPROVE"); return; }
     if (!confirm(`Approve ${fbs.length} pending freight bill${fbs.length !== 1 ? "s" : ""}? Customers will be able to see them.`)) return;
@@ -242,6 +262,11 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                       {fb.incidentReport && (
                         <span className="chip" title={`Incident: ${fb.incidentReport.kind || "—"} · ${fb.incidentReport.drivable === "no" ? "NOT drivable" : fb.incidentReport.drivable === "yes" ? "drivable" : "drivable unsure"}`} style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
                           ⚠ INCIDENT
+                        </span>
+                      )}
+                      {dupFbIds.has(fb.id) && (
+                        <span className="chip" title={`FB #${fb.freightBillNumber} is also on another non-rejected FB for the same customer. Possible double-bill.`} style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
+                          ⚠ DUP FB#
                         </span>
                       )}
                     </div>

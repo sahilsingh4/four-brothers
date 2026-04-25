@@ -510,6 +510,36 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
               <input className="fbt-input" type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
             </div>
           </div>
+          {/* Sum-check guard — flag when amount entered differs from the
+              FB net total by more than 1¢. Doesn't block; just makes drift
+              loud so the owner doesn't accidentally pay $5,000 against a
+              $4,923 statement and lose track of the gap. */}
+          {(() => {
+            const entered = Number(form.amount);
+            const expected = Number(target.net) || 0;
+            if (!entered || expected <= 0) return null;
+            const gap = entered - expected;
+            if (Math.abs(gap) <= 0.01) return null;
+            const overpay = gap > 0;
+            return (
+              <div className="fbt-mono" style={{
+                padding: 8,
+                fontSize: 11,
+                color: overpay ? "var(--hazard-deep)" : "var(--safety)",
+                background: overpay ? "#FEF3C7" : "#FEF2F2",
+                border: `1px solid ${overpay ? "var(--hazard)" : "var(--safety)"}`,
+                borderRadius: 4,
+              }}>
+                ⚠ AMOUNT {overpay ? "OVER" : "UNDER"} STATEMENT NET BY {fmt$(Math.abs(gap))}
+                <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 3, fontWeight: 400 }}>
+                  Statement net: {fmt$(expected)} · Amount entered: {fmt$(entered)}.
+                  {overpay
+                    ? " Continuing will overpay this batch. Make sure you didn't mean to fold in another FB."
+                    : " Continuing will underpay this batch. Make sure you didn't drop an FB."}
+                </div>
+              </div>
+            );
+          })()}
 
           <div>
             <label className="fbt-label">Method</label>
