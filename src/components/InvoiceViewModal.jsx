@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { Camera, Trash2, X } from "lucide-react";
 import { fmt$ } from "../utils";
 import { logAudit, updateInvoice } from "../db";
+import { FBPhotoGallery } from "./FBPhotoGallery";
 
-export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], projects = [], editFreightBill, setInvoices, invoices = [], onJumpToPayroll, onClose, onToast, FBPhotoGallery }) => {
+export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], projects = [], editFreightBill, setInvoices, invoices = [], onJumpToPayroll, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
   const history = invoice.paymentHistory || [];
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
