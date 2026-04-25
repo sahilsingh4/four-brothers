@@ -95,18 +95,40 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     const list = Array.from(files);
     setUploading(true);
     setPhotoProgress({ current: 0, total: list.length });
-    const next = [...photos];
+    // Process each file individually and track per-photo status. Failed photos
+    // stay in state with status:"failed" so the driver can retry just that one
+    // instead of re-uploading the whole batch on cellular.
+    let next = [...photos];
     for (let i = 0; i < list.length; i++) {
       const f = list[i];
       setPhotoProgress({ current: i + 1, total: list.length });
+      const id = Date.now() + Math.random();
       try {
         const dataUrl = await compressImage(f);
-        next.push({ id: Date.now() + Math.random(), dataUrl, name: f.name });
-      } catch (e) { console.warn("Photo compress failed:", f.name, e); }
+        next = [...next, { id, dataUrl, name: f.name, status: "done" }];
+      } catch (e) {
+        console.warn("Photo compress failed:", f.name, e);
+        // Stash the File object so retryPhoto() can re-attempt without
+        // asking the driver to pick the file again.
+        next = [...next, { id, name: f.name, status: "failed", error: e?.message || "Compression failed", file: f }];
+      }
+      setPhotos(next);
     }
-    setPhotos(next);
     setPhotoProgress({ current: 0, total: 0 });
     setUploading(false);
+  };
+
+  const retryPhoto = async (id) => {
+    const target = photos.find((p) => p.id === id);
+    if (!target?.file) return;
+    setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, status: "compressing", error: undefined } : p));
+    try {
+      const dataUrl = await compressImage(target.file);
+      setPhotos((prev) => prev.map((p) => p.id === id ? { id, dataUrl, name: target.name, status: "done" } : p));
+    } catch (e) {
+      console.warn("Photo retry failed:", target.name, e);
+      setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, status: "failed", error: e?.message || "Compression failed" } : p));
+    }
   };
 
   const removePhoto = (id) => setPhotos(photos.filter((p) => p.id !== id));
@@ -153,6 +175,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       setCaptchaInput("");
     }
 
+    // Block submit if any photos are still failed — force the driver to either
+    // retry them or remove them rather than silently dropping them.
+    const failedCount = photos.filter((p) => p.status === "failed").length;
+    if (failedCount > 0) {
+      setSubmitError(`${failedCount} photo${failedCount !== 1 ? "s" : ""} failed to compress. Tap RETRY on each, or remove them, before submitting.`);
+      return;
+    }
+
     setSubmitError("");
     setSubmitting(true);
     try {
@@ -162,12 +192,17 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       setSubmitProgress(isOnline ? "UPLOADING TO DISPATCH…" : "OFFLINE — QUEUING FOR LATER…");
       const cleanExtras = (form.extras || []).filter((x) => Number(x.amount) > 0);
       const submittedAt = new Date().toISOString();
+      // Only send photos that successfully compressed. status === "done" or
+      // legacy photos without a status field (pre-B2) are both included.
+      const photosToSend = photos
+        .filter((p) => !p.status || p.status === "done")
+        .map((p) => ({ id: p.id, dataUrl: p.dataUrl, name: p.name }));
       const result = await onSubmitTruck({
         ...form,
         extras: cleanExtras,
         id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
         dispatchId: dispatch.id,
-        photos,
+        photos: photosToSend,
         submittedAt,
       });
       const wasQueued = result?.status === "queued";
@@ -185,8 +220,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         loadCount: form.loadCount,
         pickupTime: form.pickupTime,
         dropoffTime: form.dropoffTime,
-        photoCount: photos.length,
-        photos: photos.slice(0, 8),  // v18 Session E: keep thumbnails for confirmation screen
+        photoCount: photosToSend.length,
+        photos: photosToSend.slice(0, 8),  // v18 Session E: keep thumbnails for confirmation screen
         extras: cleanExtras,
         extrasTotal: cleanExtras.reduce((s, x) => s + (Number(x.amount) || 0), 0),
         submittedAt,
@@ -672,14 +707,45 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
 
               {photos.length > 0 && (
                 <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}>
-                  {photos.map((p) => (
-                    <div key={p.id} style={{ position: "relative" }}>
-                      <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)" }} />
-                      <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -8, right: -8, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}>
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))}
+                  {photos.map((p) => {
+                    const isFailed = p.status === "failed";
+                    const isCompressing = p.status === "compressing";
+                    return (
+                      <div key={p.id} style={{ position: "relative" }}>
+                        {isFailed || isCompressing ? (
+                          <div style={{
+                            width: 100, height: 100,
+                            border: `2px solid ${isFailed ? "var(--safety)" : "var(--concrete)"}`,
+                            background: isFailed ? "#FEF2F2" : "#F5F5F4",
+                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                            padding: 6, gap: 4, textAlign: "center",
+                          }}>
+                            {isFailed ? <AlertCircle size={20} style={{ color: "var(--safety)" }} /> : <Clock size={20} style={{ color: "var(--concrete)" }} />}
+                            <div className="fbt-mono" style={{ fontSize: 9, color: isFailed ? "var(--safety)" : "var(--concrete)", letterSpacing: "0.05em", fontWeight: 700, lineHeight: 1.2 }}>
+                              {isFailed ? "FAILED" : "COMPRESSING…"}
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={p.name}>
+                              {p.name}
+                            </div>
+                            {isFailed && (
+                              <button
+                                type="button"
+                                onClick={() => retryPhoto(p.id)}
+                                style={{ padding: "2px 8px", fontSize: 9, fontWeight: 700, background: "var(--safety)", color: "#FFF", border: "none", cursor: "pointer", letterSpacing: "0.05em" }}
+                              >
+                                RETRY
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)" }} />
+                        )}
+                        <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -8, right: -8, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
