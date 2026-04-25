@@ -5546,7 +5546,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         </div>
       </div>
       <div className="fbt-page-content" style={{ maxWidth: 1400, margin: "0 auto", padding: "20px 12px 80px" }}>
-        {tab === "home" && <HomeTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} quotes={quotes || []} bids={bids || []} company={company} onJumpTab={(k, payload) => {
+        {tab === "home" && <HomeTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} quotes={quotes || []} bids={bids || []} fleet={fleet || []} company={company} onJumpTab={(k, payload) => {
           setTab(k);
           if (!payload) return;
           if (k === "dispatches") setPendingDispatch(payload);

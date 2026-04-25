@@ -1,14 +1,24 @@
 import { useState, useMemo } from "react";
 import {
   Activity, AlertTriangle, ClipboardList, Clock, DollarSign,
-  Mail, Receipt, Search, ShieldCheck,
+  Mail, Receipt, Search, ShieldCheck, Truck,
 } from "lucide-react";
 import { fmt$, bidDaysUntil, daysSince, hoursSince, minutesSince } from "../utils";
 import { BidDeadlineChip } from "./BidDeadlineChip";
 import { SectionCard, Row } from "./SectionCard";
 
+// daysUntil helper for fleet expiry chips (mirrors FleetTab's helper).
+const daysUntilDate = (dateStr) => {
+  if (!dateStr) return null;
+  const t = new Date(dateStr + "T12:00:00").getTime();
+  if (isNaN(t)) return null;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return Math.round((t - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
 export const HomeTab = ({
-  freightBills, dispatches, contacts, projects, invoices, quotes, bids = [], company,
+  freightBills, dispatches, contacts, projects, invoices, quotes, bids = [], fleet = [], company,
   onJumpTab,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -187,6 +197,41 @@ export const HomeTab = ({
   const totalUnpaid = unpaidInvoices.reduce((s, i) => s + ((Number(i.total) || 0) - (Number(i.amountPaid) || 0)), 0);
   const totalOverdue = overdueInvoices.reduce((s, i) => s + ((Number(i.total) || 0) - (Number(i.amountPaid) || 0)), 0);
   const totalReadyToPay = readyToPay.reduce((s, x) => s + x.net, 0);
+
+  // A/R aging mini-breakdown — same buckets the Reports tab uses, surfaced here
+  // as quick chips on the unpaid invoices card.
+  const arBuckets = useMemo(() => {
+    const acc = { current: 0, "30": 0, "60": 0, "90+": 0 };
+    invoices.forEach((inv) => {
+      const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
+      if (bal <= 0.01) return;
+      const days = inv.invoiceDate ? daysSince(inv.invoiceDate) || 0 : 0;
+      const k = days <= 30 ? "current" : days <= 60 ? "30" : days <= 90 ? "60" : "90+";
+      acc[k] += bal;
+    });
+    return acc;
+  }, [invoices]);
+
+  // Fleet alerts — units with insurance / registration / DOT expired or due in
+  // ≤30 days. Sorted by worst (most overdue first).
+  const fleetAlerts = useMemo(() => {
+    return (fleet || [])
+      .map((f) => {
+        const labels = [];
+        const days = (key) => daysUntilDate(f[key]);
+        const ins = days("insuranceExpiry");
+        const reg = days("registrationExpiry");
+        const dot = days("dotInspectionExpiry");
+        if (ins !== null && ins <= 30) labels.push({ kind: "INS", days: ins });
+        if (reg !== null && reg <= 30) labels.push({ kind: "REG", days: reg });
+        if (dot !== null && dot <= 30) labels.push({ kind: "DOT", days: dot });
+        if (labels.length === 0) return null;
+        const worst = Math.min(...labels.map((l) => l.days));
+        return { unit: f, labels, worst };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.worst - b.worst);
+  }, [fleet]);
 
   // v18 Dashboard rebuild: Money Out = approved + not-yet-paid FBs' pay nets by driver/sub.
   // Uses payingLines when available, falls back to paid snapshot.
@@ -779,7 +824,29 @@ export const HomeTab = ({
           {belowMinFbs.length > 5 && <Row left={`+ ${belowMinFbs.length - 5} more…`} />}
         </SectionCard>
 
-        {/* 3. Unpaid invoices (all) */}
+        {/* Fleet alerts — units with insurance/registration/DOT expiring ≤30d */}
+        <SectionCard
+          title="Fleet — attention needed"
+          icon={<Truck size={18} />}
+          count={fleetAlerts.length}
+          color={fleetAlerts.length > 0 ? "var(--safety)" : "var(--good)"}
+          bg={fleetAlerts.length > 0 ? "var(--danger-soft)" : "var(--good-soft)"}
+          onClick={() => onJumpTab("fleet")}
+          empty="No expiring documents ✓"
+        >
+          {fleetAlerts.slice(0, 5).map(({ unit, labels, worst }) => (
+            <Row
+              key={unit.id}
+              left={<><strong>{unit.unit}</strong> · {unit.type}</>}
+              sub={labels.map((l) => `${l.kind} ${l.days < 0 ? `${Math.abs(l.days)}d ago` : l.days === 0 ? "today" : `in ${l.days}d`}`).join(" · ")}
+              right={worst < 0 ? "EXPIRED" : worst <= 7 ? "URGENT" : "SOON"}
+              onClick={() => onJumpTab("fleet", unit.id)}
+            />
+          ))}
+          {fleetAlerts.length > 5 && <Row left={`+ ${fleetAlerts.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* 3. Unpaid invoices (all) — with A/R aging chip strip */}
         <SectionCard
           title="UNPAID INVOICES"
           icon={<Receipt size={18} />}
@@ -788,8 +855,23 @@ export const HomeTab = ({
           color={unpaidInvoices.length > 0 ? "var(--hazard)" : "var(--good)"}
           bg={unpaidInvoices.length > 0 ? "#FEF3C7" : "#F0FDF4"}
           onClick={() => onJumpTab("invoices")}
-          empty="ALL INVOICES PAID ✓"
+          empty="All invoices paid ✓"
         >
+          {/* A/R aging quick breakdown */}
+          {totalUnpaid > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "0 0 8px", fontSize: 11 }}>
+              {[
+                { k: "current", label: "0-30d", color: "var(--good)" },
+                { k: "30", label: "31-60d", color: "var(--warn-fg)" },
+                { k: "60", label: "61-90d", color: "var(--hazard-deep)" },
+                { k: "90+", label: "90+d", color: "var(--safety)" },
+              ].filter(({ k }) => arBuckets[k] > 0).map(({ k, label, color }) => (
+                <span key={k} className="chip" style={{ background: "#FFF", color, borderColor: color, fontSize: 10 }}>
+                  {label} · {fmt$(arBuckets[k])}
+                </span>
+              ))}
+            </div>
+          )}
           {unpaidInvoices.slice(0, 5).map((inv) => {
             const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
             const status = invoiceStatus(inv);
