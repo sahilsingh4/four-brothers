@@ -1661,19 +1661,22 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           </div>
 
 
-          {/* Pre-trip inspection — present on the FIRST FB submitted by a driver
-              for a given dispatch+day. Shows OK/DEFECT counts and lists each
-              defect inline. Read-only (driver-signed). */}
-          {fb.pretripInspection && (() => {
-            const insp = fb.pretripInspection;
+          {/* Pre-trip / post-trip inspections — present on the FIRST FB
+              of the day (pre) or the FB submitted right after end-of-shift
+              check (post). Shows OK/DEFECT counts and lists each defect inline.
+              Read-only (driver-signed). */}
+          {[
+            { label: "DOT PRE-TRIP", insp: fb.pretripInspection },
+            { label: "DOT POST-TRIP", insp: fb.posttripInspection },
+          ].filter((x) => x.insp).map(({ label, insp }) => {
             const items = Array.isArray(insp.items) ? insp.items : [];
             const okCount = items.filter((i) => i.result === "ok").length;
             const defects = items.filter((i) => i.result === "defect");
             const when = insp.completedAt ? new Date(insp.completedAt).toLocaleString() : "—";
             return (
-              <div style={{ padding: 10, border: `1.5px solid ${defects.length > 0 ? "var(--hazard)" : "var(--good)"}`, background: defects.length > 0 ? "#FEF3C7" : "#F0FDF4", borderRadius: 6 }}>
+              <div key={label} style={{ padding: 10, border: `1.5px solid ${defects.length > 0 ? "var(--hazard)" : "var(--good)"}`, background: defects.length > 0 ? "#FEF3C7" : "#F0FDF4", borderRadius: 6 }}>
                 <div className="fbt-mono" style={{ fontSize: 11, color: defects.length > 0 ? "var(--hazard-deep)" : "var(--good)", fontWeight: 700, marginBottom: 4 }}>
-                  ▸ DOT PRE-TRIP · {okCount}/{items.length} OK · {defects.length} DEFECT{defects.length !== 1 ? "S" : ""}
+                  ▸ {label} · {okCount}/{items.length} OK · {defects.length} DEFECT{defects.length !== 1 ? "S" : ""}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--steel)" }}>
                   Signed by <strong>{insp.signedBy || "—"}</strong> · {when} · Truck {insp.truckNumber || "—"}
@@ -1689,7 +1692,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 )}
               </div>
             );
-          })()}
+          })}
 
           {/* Photos — admin can add, view, or remove */}
           <div>

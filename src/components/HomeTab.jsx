@@ -233,6 +233,25 @@ export const HomeTab = ({
       .sort((a, b) => a.worst - b.worst);
   }, [fleet]);
 
+  // Driver compliance alerts — drivers/subs with CDL or medical card expiring
+  // within 30 days. Same shape as fleetAlerts so the panel can render either.
+  const driverDocAlerts = useMemo(() => {
+    return (contacts || [])
+      .filter((c) => c.type === "driver" || c.type === "sub")
+      .map((c) => {
+        const labels = [];
+        const cdl = daysUntilDate(c.cdlExpiry);
+        const med = daysUntilDate(c.medicalCardExpiry);
+        if (cdl !== null && cdl <= 30) labels.push({ kind: "CDL", days: cdl });
+        if (med !== null && med <= 30) labels.push({ kind: "MED", days: med });
+        if (labels.length === 0) return null;
+        const worst = Math.min(...labels.map((l) => l.days));
+        return { contact: c, labels, worst };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.worst - b.worst);
+  }, [contacts]);
+
   // v18 Dashboard rebuild: Money Out = approved + not-yet-paid FBs' pay nets by driver/sub.
   // Uses payingLines when available, falls back to paid snapshot.
   const moneyOut = useMemo(() => {
@@ -844,6 +863,28 @@ export const HomeTab = ({
             />
           ))}
           {fleetAlerts.length > 5 && <Row left={`+ ${fleetAlerts.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* Driver compliance — CDL / medical card expiring ≤30 days */}
+        <SectionCard
+          title="Driver docs — attention needed"
+          icon={<Truck size={18} />}
+          count={driverDocAlerts.length}
+          color={driverDocAlerts.length > 0 ? "var(--safety)" : "var(--good)"}
+          bg={driverDocAlerts.length > 0 ? "var(--danger-soft)" : "var(--good-soft)"}
+          onClick={() => onJumpTab("contacts")}
+          empty="No expiring driver docs ✓"
+        >
+          {driverDocAlerts.slice(0, 5).map(({ contact, labels, worst }) => (
+            <Row
+              key={contact.id}
+              left={<><strong>{contact.companyName || contact.contactName}</strong> · {contact.type}</>}
+              sub={labels.map((l) => `${l.kind} ${l.days < 0 ? `${Math.abs(l.days)}d ago` : l.days === 0 ? "today" : `in ${l.days}d`}`).join(" · ")}
+              right={worst < 0 ? "EXPIRED" : worst <= 7 ? "URGENT" : "SOON"}
+              onClick={() => onJumpTab("contacts", contact.id)}
+            />
+          ))}
+          {driverDocAlerts.length > 5 && <Row left={`+ ${driverDocAlerts.length - 5} more…`} />}
         </SectionCard>
 
         {/* 3. Unpaid invoices (all) — with A/R aging chip strip */}
