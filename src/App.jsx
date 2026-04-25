@@ -568,6 +568,59 @@ const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, q
   });
   const paidBySub = Array.from(bySub.values()).sort((a, b) => b.subPay - a.subPay);
 
+  // === Tonnage trend — one bucket per day in the range ===
+  // Build a sorted [{ date, tons, fbCount }] series. The chart then bins
+  // automatically (one bar per day). Empty days get zero rows so the chart
+  // shows a continuous timeline instead of skipping.
+  const tonnageByDay = (() => {
+    const map = new Map();
+    // Pre-fill every day in the range with zeros
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (let t = startOfDay(from).getTime(); t <= endOfDay(to).getTime(); t += dayMs) {
+      const key = toISODate(new Date(t));
+      map.set(key, { date: key, tons: 0, fbCount: 0 });
+    }
+    billsInRange.forEach((fb) => {
+      const d = fb.submittedAt ? toISODate(new Date(fb.submittedAt)) : null;
+      if (!d || !map.has(d)) return;
+      const e = map.get(d);
+      e.tons += Number(fb.tonnage) || 0;
+      e.fbCount += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  })();
+
+  // === Driver utilization — drivers only (skip subs since sub utilization is
+  // already in profitByCustomer/profitByProject). For each driver contact:
+  // unique dispatches, FBs, tonnage, computed hours from pickup/dropoff. ===
+  const driverUtilization = (() => {
+    const byDriver = new Map();
+    fbStats.forEach(({ fb, disp, assignment }) => {
+      if (!assignment || assignment.kind !== "driver" || !assignment.contactId) return;
+      const contact = contacts.find((c) => c.id === assignment.contactId);
+      const name = contact?.companyName || contact?.contactName || assignment.name || "(unknown)";
+      const e = byDriver.get(assignment.contactId) || { id: assignment.contactId, name, fbCount: 0, dispatchIds: new Set(), tonnage: 0, hoursBilled: 0 };
+      e.fbCount += 1;
+      if (disp) e.dispatchIds.add(disp.id);
+      e.tonnage += Number(fb.tonnage) || 0;
+      // Use hoursBilled if set, else compute from pickup/dropoff
+      let hrs = Number(fb.hoursBilled) || 0;
+      if (!hrs && fb.pickupTime && fb.dropoffTime) {
+        const [h1, m1] = String(fb.pickupTime).split(":").map(Number);
+        const [h2, m2] = String(fb.dropoffTime).split(":").map(Number);
+        if (!isNaN(h1) && !isNaN(h2)) {
+          const mins = (h2 * 60 + m2) - (h1 * 60 + m1);
+          if (mins > 0) hrs = mins / 60;
+        }
+      }
+      e.hoursBilled += hrs;
+      byDriver.set(assignment.contactId, e);
+    });
+    return Array.from(byDriver.values())
+      .map((e) => ({ ...e, dispatchCount: e.dispatchIds.size }))
+      .sort((a, b) => b.fbCount - a.fbCount);
+  })();
+
   return {
     from: toISODate(from),
     to: toISODate(to),
@@ -590,6 +643,8 @@ const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, q
     profitByProject,
     profitByCustomer,
     paidBySub,
+    tonnageByDay,
+    driverUtilization,
   };
 };
 
@@ -4314,6 +4369,114 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
   );
 };
 
+// Inline SVG bar chart of tonnage per day. No chart-library dependency.
+// `series` is [{ date: "YYYY-MM-DD", tons, fbCount }] sorted ascending.
+const TonnageTrendChart = ({ series = [] }) => {
+  if (!series || series.length === 0) {
+    return (
+      <div className="fbt-card" style={{ padding: 20 }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: "0 0 12px" }}>Tonnage trend</h3>
+        <div style={{ padding: 24, background: "var(--surface)", borderRadius: 6, fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>
+          No data in this range.
+        </div>
+      </div>
+    );
+  }
+  const maxTons = Math.max(1, ...series.map((d) => d.tons));
+  const totalTons = series.reduce((s, d) => s + d.tons, 0);
+  const W = 100; // viewBox width units; bars stretch to actual width via responsive svg
+  const barW = W / series.length;
+  // Pick label cadence so we don't render 30 overlapping x-axis labels.
+  // Show ~7 evenly-spaced labels max.
+  const labelEvery = Math.max(1, Math.ceil(series.length / 7));
+  return (
+    <div className="fbt-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>Tonnage trend</h3>
+        <div style={{ fontSize: 13, color: "var(--concrete)" }}>
+          {series.length} day{series.length !== 1 ? "s" : ""} · <strong style={{ color: "var(--steel)" }}>{totalTons.toFixed(1)} tons</strong> total · peak <strong style={{ color: "var(--steel)" }}>{maxTons.toFixed(1)}</strong>
+        </div>
+      </div>
+      <div style={{ position: "relative", paddingBottom: 24 }}>
+        <svg viewBox={`0 0 ${W} 60`} preserveAspectRatio="none" style={{ width: "100%", height: 160, overflow: "visible" }}>
+          {series.map((d, i) => {
+            const h = (d.tons / maxTons) * 50; // leave 10 units headroom for value chip
+            const x = i * barW + barW * 0.1;
+            const y = 60 - h;
+            const wBar = barW * 0.8;
+            return (
+              <g key={d.date}>
+                <rect x={x} y={y} width={wBar} height={h} fill={d.tons > 0 ? "var(--accent)" : "var(--line)"} rx={0.4}>
+                  <title>{`${d.date}: ${d.tons.toFixed(1)}t · ${d.fbCount} FB${d.fbCount !== 1 ? "s" : ""}`}</title>
+                </rect>
+              </g>
+            );
+          })}
+        </svg>
+        {/* X-axis labels */}
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 20, display: "flex", fontSize: 10, color: "var(--concrete)", fontFamily: "inherit" }}>
+          {series.map((d, i) => (
+            <div key={d.date} style={{ flex: 1, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap" }}>
+              {i % labelEvery === 0 ? d.date.slice(5) /* MM-DD */ : ""}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Driver utilization — fbCount, unique dispatches, tonnage, hours per driver.
+const DriverUtilizationPanel = ({ rows = [] }) => {
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="fbt-card" style={{ padding: 20 }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: "0 0 12px" }}>Driver utilization</h3>
+        <div style={{ padding: 24, background: "var(--surface)", borderRadius: 6, fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>
+          No driver activity in this range.
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="fbt-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>Driver utilization</h3>
+        <div style={{ fontSize: 13, color: "var(--concrete)" }}>{rows.length} driver{rows.length !== 1 ? "s" : ""}</div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table className="fbt-table" style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th style={{ textAlign: "right" }}>Orders</th>
+              <th style={{ textAlign: "right" }}>FBs</th>
+              <th style={{ textAlign: "right" }}>Tons</th>
+              <th style={{ textAlign: "right" }}>Hours</th>
+              <th style={{ textAlign: "right" }}>FB / day-on-job</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.id}>
+                <td><div style={{ fontWeight: 500 }}>{r.name}</div></td>
+                <td style={{ textAlign: "right" }}>{r.dispatchCount}</td>
+                <td style={{ textAlign: "right" }}>{r.fbCount}</td>
+                <td style={{ textAlign: "right" }}>{r.tonnage.toFixed(1)}</td>
+                <td style={{ textAlign: "right" }}>{r.hoursBilled.toFixed(1)}</td>
+                <td style={{ textAlign: "right", color: "var(--concrete)" }}>{r.dispatchCount > 0 ? (r.fbCount / r.dispatchCount).toFixed(1) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{ marginTop: 10, fontSize: 11, color: "var(--concrete)", lineHeight: 1.5 }}>
+        ▸ Hours = sum of FB hoursBilled (or computed from start/end times when blank). Orders = unique dispatches the driver had at least one FB on.
+      </div>
+    </div>
+  );
+};
+
 // Profitability table — used by ReportsTab for the per-project, per-customer,
 // and per-sub rollups. Sub-tab toggle shows one of the three at a time.
 const ProfitabilityPanel = ({ report }) => {
@@ -4729,6 +4892,12 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes,
 
       {/* Profitability — per-project / per-customer / per-sub for the date range */}
       <ProfitabilityPanel report={report} />
+
+      {/* Tonnage trend — one bar per day in the date range */}
+      <TonnageTrendChart series={report.tonnageByDay} />
+
+      {/* Driver utilization — drivers only */}
+      <DriverUtilizationPanel rows={report.driverUtilization} />
 
       {/* Top clients */}
       <div className="fbt-card" style={{ padding: 20 }}>
