@@ -25,7 +25,13 @@ const ITEMS = [
   { id: "emergency", label: "Emergency equipment (triangles, fire ext)" },
 ];
 
-export const PreTripModal = ({ truckNumber, driverName, onSubmit, onClose }) => {
+export const PreTripModal = ({ truckNumber, driverName, onSubmit, onClose, mode = "pretrip" }) => {
+  const isPostTrip = mode === "posttrip";
+  const heading = isPostTrip ? "Post-trip inspection" : "Pre-trip inspection";
+  const subhead = isPostTrip
+    ? "FMCSA Part 396 · End of shift · Truck "
+    : "FMCSA Part 396 · Truck ";
+  const submitLabel = isPostTrip ? "Submit post-trip" : "Submit pre-trip";
   // Each item starts unchecked — driver must explicitly mark every one
   const [results, setResults] = useState(() => Object.fromEntries(ITEMS.map((i) => [i.id, ""])));
   const [defectNotes, setDefectNotes] = useState({});
@@ -71,9 +77,9 @@ export const PreTripModal = ({ truckNumber, driverName, onSubmit, onClose }) => 
       <div className="modal-body" style={{ background: "#FFF", maxWidth: 560, width: "100%", borderRadius: 10, padding: 0, boxShadow: "0 8px 24px rgba(15,23,42,0.10)" }}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div className="fbt-display" style={{ fontSize: 16 }}>Pre-trip inspection</div>
+            <div className="fbt-display" style={{ fontSize: 16 }}>{heading}</div>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
-              FMCSA Part 396 · Truck {truckNumber || "—"}
+              {subhead}{truckNumber || "—"}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4 }} title="Close">
@@ -157,7 +163,7 @@ export const PreTripModal = ({ truckNumber, driverName, onSubmit, onClose }) => 
         <div style={{ padding: "12px 16px", borderTop: "1px solid var(--line)", display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onClose} className="btn-ghost" disabled={submitting}>Cancel</button>
           <button onClick={submit} className="btn-primary" disabled={!canSubmit || submitting}>
-            <CheckCircle2 size={14} /> {submitting ? "Submitting…" : "Submit pre-trip"}
+            <CheckCircle2 size={14} /> {submitting ? "Submitting…" : submitLabel}
           </button>
         </div>
       </div>

@@ -183,6 +183,33 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
                 ▸ THESE AUTO-FILL WHEN YOU ADD THIS DRIVER TO AN ORDER. EDITABLE PER-ORDER IF NEEDED.
               </div>
+              {/* Compliance expiration tracking — surfaced on the home dashboard
+                  when within 30 days of expiring. Optional. */}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--concrete)" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", fontWeight: 700, marginBottom: 6 }}>
+                  ▸ COMPLIANCE EXPIRATIONS (optional)
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+                  <div>
+                    <label className="fbt-label">CDL expiration</label>
+                    <input
+                      className="fbt-input"
+                      type="date"
+                      value={draft.cdlExpiry || ""}
+                      onChange={(e) => setDraft({ ...draft, cdlExpiry: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Medical card expiration</label>
+                    <input
+                      className="fbt-input"
+                      type="date"
+                      value={draft.medicalCardExpiry || ""}
+                      onChange={(e) => setDraft({ ...draft, medicalCardExpiry: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

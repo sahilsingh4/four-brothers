@@ -104,11 +104,27 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
   });
   const [pretripPending, setPretripPending] = useState(null); // inspection record awaiting next FB submit
   const [showPretrip, setShowPretrip] = useState(false);
+  // Post-trip — same checklist, end-of-shift. Driver opens AFTER they're done
+  // for the day. Stamped on the next FB submission like pre-trip; if there are
+  // no more FBs, we just keep it cached locally for the admin to retrieve via
+  // FB list (not implemented in this PR — future work).
+  const POSTTRIP_KEY = `posttrip:${dispatch?.code || "unknown"}:${assignment?.aid || "main"}:${todayKey}`;
+  const [posttripDone, setPosttripDone] = useState(() => {
+    try { return !!localStorage.getItem(POSTTRIP_KEY); } catch { return false; }
+  });
+  const [posttripPending, setPosttripPending] = useState(null);
+  const [showPosttrip, setShowPosttrip] = useState(false);
   const onPretripSubmit = (inspection) => {
     try { localStorage.setItem(PRETRIP_KEY, JSON.stringify(inspection)); } catch { /* noop */ }
     setPretripDone(true);
     setPretripPending(inspection);
     setShowPretrip(false);
+  };
+  const onPosttripSubmit = (inspection) => {
+    try { localStorage.setItem(POSTTRIP_KEY, JSON.stringify(inspection)); } catch { /* noop */ }
+    setPosttripDone(true);
+    setPosttripPending(inspection);
+    setShowPosttrip(false);
   };
 
   const handlePhotos = async (files) => {
@@ -248,8 +264,10 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         // Attach the pre-trip inspection only on the FIRST FB submission of
         // the day. Subsequent FBs the same shift don't carry it again.
         pretripInspection: pretripPending || undefined,
+        posttripInspection: posttripPending || undefined,
       });
       if (pretripPending) setPretripPending(null);
+      if (posttripPending) setPosttripPending(null);
       const wasQueued = result?.status === "queued";
 
       setSubmitProgress(wasQueued ? "✓ QUEUED" : "✓ SENT");
@@ -404,6 +422,15 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           driverName={form.driverName}
           onSubmit={onPretripSubmit}
           onClose={() => setShowPretrip(false)}
+        />
+      )}
+      {showPosttrip && (
+        <PreTripModal
+          mode="posttrip"
+          truckNumber={form.truckNumber}
+          driverName={form.driverName}
+          onSubmit={onPosttripSubmit}
+          onClose={() => setShowPosttrip(false)}
         />
       )}
       <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "20px 24px", borderBottom: "3px solid var(--hazard)" }}>
@@ -578,6 +605,41 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 </div>
               )}
             </div>
+
+            {/* Post-trip button — appears only AFTER the driver has submitted
+                at least one FB today (lastFB stamped) and pre-trip is done.
+                Once post-trip submitted, button flips to a green confirmation. */}
+            {pretripDone && (lastFB || pretripDone) && (
+              <div style={{ padding: 10, border: `1.5px solid ${posttripDone ? "var(--good)" : "var(--line)"}`, background: posttripDone ? "#F0FDF4" : "#F8FAFC", borderRadius: 6 }}>
+                {posttripDone ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <CheckCircle2 size={16} style={{ color: "var(--good)" }} />
+                    <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
+                      POST-TRIP COMPLETE · Have a safe drive home.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", fontWeight: 700 }}>
+                        DONE FOR THE DAY?
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--concrete)" }}>
+                        Run a quick post-trip check before parking the truck.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPosttrip(true)}
+                      className="btn-ghost"
+                      style={{ fontSize: 11 }}
+                    >
+                      Start post-trip
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="fbt-label">Freight Bill # * <span style={{ color: "var(--concrete)", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>(from the top of your paper bill)</span></label>
