@@ -3,6 +3,7 @@ import { AlertCircle, Camera, CheckCircle2, Clock, Plus, Trash2, Upload, X } fro
 import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
 import { compressImage, fmtDate } from "../utils";
+import { extractFromImage } from "../utils/ocr";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
 import { useFormDraft } from "../hooks/useFormDraft";
 
@@ -106,7 +107,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       const id = Date.now() + Math.random();
       try {
         const dataUrl = await compressImage(f);
-        next = [...next, { id, dataUrl, name: f.name, status: "done" }];
+        next = [...next, { id, dataUrl, name: f.name, status: "done", category: "scale_ticket" }];
       } catch (e) {
         console.warn("Photo compress failed:", f.name, e);
         // Stash the File object so retryPhoto() can re-attempt without
@@ -125,7 +126,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, status: "compressing", error: undefined } : p));
     try {
       const dataUrl = await compressImage(target.file);
-      setPhotos((prev) => prev.map((p) => p.id === id ? { id, dataUrl, name: target.name, status: "done" } : p));
+      setPhotos((prev) => prev.map((p) => p.id === id ? { id, dataUrl, name: target.name, status: "done", category: target.category || "scale_ticket" } : p));
     } catch (e) {
       console.warn("Photo retry failed:", target.name, e);
       setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, status: "failed", error: e?.message || "Compression failed" } : p));
@@ -133,6 +134,26 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
   };
 
   const removePhoto = (id) => setPhotos(photos.filter((p) => p.id !== id));
+
+  const setPhotoCategory = (id, category) => {
+    setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, category } : p));
+  };
+
+  // Run OCR on a photo (Tesseract.js, fully client-side). The OCR module
+  // returns raw text + best-effort fbNumber / tonnage from regex parsing.
+  // We display the suggestions inline; driver taps Apply to fill the form.
+  const runOcrOn = async (id) => {
+    const target = photos.find((p) => p.id === id);
+    if (!target || target.status !== "done") return;
+    setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, ocr: { status: "running" } } : p));
+    try {
+      const { text, fields } = await extractFromImage(target.dataUrl, { kind: target.category });
+      setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, ocr: { status: "done", text, fields } } : p));
+    } catch (e) {
+      console.warn("OCR failed:", e);
+      setPhotos((prev) => prev.map((p) => p.id === id ? { ...p, ocr: { status: "error", error: e?.message || "OCR failed" } } : p));
+    }
+  };
 
   const submit = async () => {
     if (!form.freightBillNumber || !form.driverName || !form.truckNumber) {
@@ -197,7 +218,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       // legacy photos without a status field (pre-B2) are both included.
       const photosToSend = photos
         .filter((p) => !p.status || p.status === "done")
-        .map((p) => ({ id: p.id, dataUrl: p.dataUrl, name: p.name }));
+        .map((p) => ({ id: p.id, dataUrl: p.dataUrl, name: p.name, category: p.category || "scale_ticket" }));
       const result = await onSubmitTruck({
         ...form,
         extras: cleanExtras,
@@ -840,43 +861,122 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               </div>
 
               {photos.length > 0 && (
-                <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
                   {photos.map((p) => {
                     const isFailed = p.status === "failed";
                     const isCompressing = p.status === "compressing";
+                    const isDone = p.status === "done";
+                    const ocrRunning = p.ocr?.status === "running";
+                    const ocrDone = p.ocr?.status === "done";
+                    const ocrError = p.ocr?.status === "error";
                     return (
-                      <div key={p.id} style={{ position: "relative" }}>
-                        {isFailed || isCompressing ? (
-                          <div style={{
-                            width: 100, height: 100,
-                            border: `2px solid ${isFailed ? "var(--safety)" : "var(--concrete)"}`,
-                            background: isFailed ? "#FEF2F2" : "#F5F5F4",
-                            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                            padding: 6, gap: 4, textAlign: "center",
-                          }}>
-                            {isFailed ? <AlertCircle size={20} style={{ color: "var(--safety)" }} /> : <Clock size={20} style={{ color: "var(--concrete)" }} />}
-                            <div className="fbt-mono" style={{ fontSize: 9, color: isFailed ? "var(--safety)" : "var(--concrete)", fontWeight: 700, lineHeight: 1.2 }}>
-                              {isFailed ? "FAILED" : "COMPRESSING…"}
+                      <div key={p.id} style={{ position: "relative", display: "flex", gap: 10, padding: 8, border: "1px solid var(--line)", background: "#FFF", borderRadius: 6 }}>
+                        <div style={{ position: "relative", flexShrink: 0 }}>
+                          {isFailed || isCompressing ? (
+                            <div style={{
+                              width: 100, height: 100,
+                              border: `2px solid ${isFailed ? "var(--safety)" : "var(--concrete)"}`,
+                              background: isFailed ? "#FEF2F2" : "#F5F5F4",
+                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                              padding: 6, gap: 4, textAlign: "center",
+                            }}>
+                              {isFailed ? <AlertCircle size={20} style={{ color: "var(--safety)" }} /> : <Clock size={20} style={{ color: "var(--concrete)" }} />}
+                              <div className="fbt-mono" style={{ fontSize: 9, color: isFailed ? "var(--safety)" : "var(--concrete)", fontWeight: 700, lineHeight: 1.2 }}>
+                                {isFailed ? "FAILED" : "COMPRESSING…"}
+                              </div>
+                              <div style={{ fontSize: 9, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={p.name}>
+                                {p.name}
+                              </div>
+                              {isFailed && (
+                                <button
+                                  type="button"
+                                  onClick={() => retryPhoto(p.id)}
+                                  style={{ padding: "2px 8px", fontSize: 9, fontWeight: 700, background: "var(--safety)", color: "#FFF", border: "none", cursor: "pointer" }}
+                                >
+                                  RETRY
+                                </button>
+                              )}
                             </div>
-                            <div style={{ fontSize: 9, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={p.name}>
-                              {p.name}
-                            </div>
-                            {isFailed && (
+                          ) : (
+                            <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)" }} />
+                          )}
+                          <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -8, right: -8, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}>
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        {/* Right column — category + OCR (only on successfully-uploaded photos) */}
+                        {isDone && (
+                          <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 6 }}>
+                            <label className="fbt-label" style={{ fontSize: 10, marginBottom: 0 }}>Document type</label>
+                            <select
+                              className="fbt-select"
+                              style={{ padding: "6px 8px", fontSize: 12 }}
+                              value={p.category || "scale_ticket"}
+                              onChange={(e) => setPhotoCategory(p.id, e.target.value)}
+                            >
+                              <option value="scale_ticket">Scale ticket</option>
+                              <option value="freight_bill">Freight bill</option>
+                              <option value="police_ticket">Police ticket</option>
+                              <option value="other">Other</option>
+                            </select>
+
+                            {/* Extract button — only shown for scale tickets / freight bills */}
+                            {(p.category === "scale_ticket" || p.category === "freight_bill") && !ocrDone && !ocrRunning && (
                               <button
                                 type="button"
-                                onClick={() => retryPhoto(p.id)}
-                                style={{ padding: "2px 8px", fontSize: 9, fontWeight: 700, background: "var(--safety)", color: "#FFF", border: "none", cursor: "pointer" }}
+                                onClick={() => runOcrOn(p.id)}
+                                className="btn-ghost"
+                                style={{ padding: "6px 8px", fontSize: 11, justifySelf: "start" }}
+                                title="Extract FB# and tonnage from this image (runs on your phone, no internet needed)"
                               >
-                                RETRY
+                                🔍 Extract FB# + tonnage
                               </button>
                             )}
+                            {ocrRunning && (
+                              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>⏳ Reading image…</div>
+                            )}
+                            {ocrError && (
+                              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)" }}>⚠ {p.ocr.error || "OCR failed"}</div>
+                            )}
+                            {ocrDone && (
+                              <div style={{ background: "#F0FDF4", border: "1px solid var(--good)", padding: 6, borderRadius: 4, display: "grid", gap: 4 }}>
+                                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", fontWeight: 700 }}>
+                                  ✓ EXTRACTED
+                                </div>
+                                {p.ocr.fields?.fbNumber && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, flexWrap: "wrap" }}>
+                                    <span>FB# <strong>{p.ocr.fields.fbNumber}</strong></span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setForm({ ...form, freightBillNumber: p.ocr.fields.fbNumber })}
+                                      className="btn-ghost"
+                                      style={{ padding: "2px 6px", fontSize: 10 }}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                )}
+                                {p.ocr.fields?.tonnage != null && (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, flexWrap: "wrap" }}>
+                                    <span>Tonnage <strong>{p.ocr.fields.tonnage}</strong></span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setForm({ ...form, tonnage: String(p.ocr.fields.tonnage) })}
+                                      className="btn-ghost"
+                                      style={{ padding: "2px 6px", fontSize: 10 }}
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                )}
+                                {!p.ocr.fields?.fbNumber && p.ocr.fields?.tonnage == null && (
+                                  <div style={{ fontSize: 11, color: "var(--concrete)" }}>Couldn't find FB# or tonnage. Type them in by hand.</div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        ) : (
-                          <img src={p.dataUrl} className="thumb" alt={p.name} onClick={() => setLightbox(p.dataUrl)} style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)" }} />
                         )}
-                        <button onClick={() => removePhoto(p.id)} style={{ position: "absolute", top: -8, right: -8, background: "var(--safety)", color: "#FFF", border: "2px solid var(--steel)", width: 28, height: 28, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, borderRadius: "50%" }}>
-                          <X size={14} />
-                        </button>
                       </div>
                     );
                   })}

@@ -1700,7 +1700,16 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               </div>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {draft.photos.map((p, idx) => (
+                {draft.photos.map((p, idx) => {
+                  const catLabel = p.category === "scale_ticket" ? "SCALE"
+                                 : p.category === "freight_bill" ? "FB"
+                                 : p.category === "police_ticket" ? "POLICE"
+                                 : p.category === "other" ? "OTHER"
+                                 : null;
+                  const catColor = p.category === "police_ticket" ? "var(--safety)"
+                                 : p.category === "freight_bill" ? "var(--good)"
+                                 : "var(--steel)";
+                  return (
                   <div key={p.id || idx} style={{ position: "relative" }}>
                     <img
                       src={p.dataUrl}
@@ -1708,6 +1717,14 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       style={{ width: 100, height: 100, objectFit: "cover", border: "2px solid var(--steel)", cursor: "pointer" }}
                       onClick={() => setLightbox(p.dataUrl)}
                     />
+                    {catLabel && (
+                      <span
+                        style={{ position: "absolute", top: 2, left: 2, background: catColor, color: "#FFF", fontSize: 8, padding: "1px 5px", fontWeight: 700 }}
+                        title={`Tagged as ${p.category}`}
+                      >
+                        {catLabel}
+                      </span>
+                    )}
                     {p.addedByAdmin && (
                       <span
                         style={{ position: "absolute", bottom: 2, left: 2, background: "var(--steel)", color: "var(--cream)", fontSize: 8, padding: "1px 4px" }}
@@ -1728,7 +1745,8 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       <X size={11} />
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
