@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   AlertCircle, Calendar, Camera, CheckCircle2, ClipboardList, Edit2, Eye,
   FileText, Link2, Lock, Mail, MessageSquare, Plus, Printer, RefreshCw,
@@ -193,6 +193,30 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
 
   const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
+
+  // Snapshot of the draft when the modal opens; used for dirty-state detection
+  // so an accidental backdrop-click or X doesn't wipe out a half-filled form.
+  const draftSnapshotRef = useRef(null);
+  useEffect(() => {
+    if (showNew) {
+      // Re-stringify on each open so the snapshot reflects edit-mode pre-fills
+      // (openEditDispatch sets the draft just before flipping showNew=true).
+      draftSnapshotRef.current = JSON.stringify(draft);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showNew]);
+
+  // Close handler for the New/Edit Order modal — confirms when dirty so the
+  // dispatcher doesn't lose a 2-minute order entry from a stray click.
+  const closeOrderModal = () => {
+    const isDirty = draftSnapshotRef.current && JSON.stringify(draft) !== draftSnapshotRef.current;
+    if (isDirty && !window.confirm("You have unsaved changes on this order.\n\nClose anyway?")) {
+      return;
+    }
+    setShowNew(false);
+    setEditingId(null);
+    resetDraft();
+  };
 
   // Open the modal pre-filled with an existing order's data (edit mode)
   const openEditDispatch = (d) => {
@@ -986,11 +1010,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       )}
 
       {showNew && (
-        <div className="modal-bg" onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }}>
+        <div className="modal-bg" onClick={closeOrderModal}>
           <div className="modal-body" onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>{editingId ? "EDIT ORDER" : "NEW ORDER"}</h3>
-              <button onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+              <button onClick={closeOrderModal} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
             </div>
 
             {/* Lock banner (only shown when editing a locked order) */}
@@ -1460,7 +1484,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               <div><label className="fbt-label">Notes</label><textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></div>
               <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                 <button onClick={createDispatch} className="btn-primary"><CheckCircle2 size={16} /> {editingId ? "SAVE CHANGES" : "CREATE & GET LINK"}</button>
-                <button onClick={() => { setShowNew(false); setEditingId(null); resetDraft(); }} className="btn-ghost">CANCEL</button>
+                <button onClick={closeOrderModal} className="btn-ghost">CANCEL</button>
               </div>
             </div>
           </div>
