@@ -528,55 +528,52 @@ export const deleteContact = async (id) => {
 
 // ========== CUSTOMER PORTAL LOOKUP ==========
 // Public read by portal_token. Returns customer + their approved FBs only.
-// Public read by portal_token for driver / sub document onboarding. Same
-// portal_token + portal_enabled fields the customer portal uses, but with
-// a type filter that allows driver and sub. Returns the contact (with
-// documents) plus only the public-safe fields the onboarding page needs
-// (no pay rates, no tax IDs, no internal notes).
+// Public read by portal_token for driver / sub document onboarding. RLS on
+// the contacts table restricts anon SELECT to customer-type rows (via the
+// fetch_customer_by_token RPC pattern), so we route through a parallel
+// SECURITY DEFINER RPC: fetch_contact_for_onboarding(text) returning a
+// TABLE row — see the SQL snippet in the PR description for the migration.
+//
+// Falls back to an empty result if the RPC isn't installed yet, so an
+// existing project that hasn't run the migration still gets a clear
+// "Invalid or expired link" page instead of a broken request.
 export const fetchContactForOnboarding = async (token) => {
-  const { data, error } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("portal_token", token)
-    .eq("portal_enabled", true)
-    .in("type", ["driver", "sub"])
-    .maybeSingle();
-  if (error) { console.error("fetchContactForOnboarding:", error); return null; }
-  if (!data) return null;
-  const c = contactFromDB(data);
-  // Strip sensitive fields before returning to the public page
+  const { data, error } = await supabase.rpc("fetch_contact_for_onboarding", { t: token });
+  if (error) {
+    console.warn("fetch_contact_for_onboarding RPC failed (run the SQL migration?):", error);
+    return null;
+  }
+  // RPC RETURNS TABLE → array result; LIMIT 1 in SQL means 0 or 1 row
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
   return {
-    id: c.id,
-    type: c.type,
-    companyName: c.companyName,
-    contactName: c.contactName,
-    documents: c.documents || [],
-    cdlExpiry: c.cdlExpiry || "",
-    medicalCardExpiry: c.medicalCardExpiry || "",
+    id: row.id,
+    type: row.type,
+    companyName: row.company_name || "",
+    contactName: row.contact_name || "",
+    documents: Array.isArray(row.documents) ? row.documents : [],
+    cdlExpiry: row.cdl_expiry || "",
+    medicalCardExpiry: row.medical_card_expiry || "",
   };
 };
 
 // Public update path — let the contact attach documents to themselves via
-// the onboarding link without needing admin auth. We only allow updates to
-// the documents[] array + the two expiry fields the OCR pre-fills (CDL,
-// medical card). Everything else is rejected.
+// the onboarding link without needing admin auth. Uses the SECURITY DEFINER
+// RPC update_contact_docs_by_token(text, jsonb, date, date) so anon writes
+// stay scoped to docs + expiry fields only (every other column is locked).
 export const updateContactDocsByToken = async (token, payload) => {
-  const allowed = {};
-  if (Array.isArray(payload.documents)) allowed.documents = payload.documents;
-  if (typeof payload.cdlExpiry === "string") allowed.cdl_expiry = payload.cdlExpiry || null;
-  if (typeof payload.medicalCardExpiry === "string") allowed.medical_card_expiry = payload.medicalCardExpiry || null;
-  if (Object.keys(allowed).length === 0) return null;
-  allowed.updated_at = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("contacts")
-    .update(allowed)
-    .eq("portal_token", token)
-    .eq("portal_enabled", true)
-    .in("type", ["driver", "sub"])
-    .select()
-    .maybeSingle();
-  if (error) { console.error("updateContactDocsByToken:", error); return null; }
-  return data ? contactFromDB(data) : null;
+  const params = {
+    t: token,
+    new_docs: Array.isArray(payload.documents) ? payload.documents : null,
+    new_cdl_expiry: typeof payload.cdlExpiry === "string" ? (payload.cdlExpiry || null) : null,
+    new_medical_card_expiry: typeof payload.medicalCardExpiry === "string" ? (payload.medicalCardExpiry || null) : null,
+  };
+  const { data, error } = await supabase.rpc("update_contact_docs_by_token", params);
+  if (error) { console.error("update_contact_docs_by_token:", error); return null; }
+  // RPC returns TABLE — array of one row with just { id }. We don't need
+  // the id; the OnboardingPage already has the documents in local state.
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ? { id: row.id } : null;
 };
 
 export const fetchCustomerByToken = async (token) => {
