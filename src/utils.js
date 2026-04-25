@@ -76,6 +76,74 @@ export const matchesClientToken = (dispatch, token) => {
   return clientToken(dispatch.clientName) === token || clientToken(dispatch.subContractor) === token;
 };
 
+// Generate a roughly-unique numeric id for client-side billing lines, etc.
+// Lives at module scope so callers in render bodies don't trip
+// react-hooks/purity (Date.now/Math.random called during render).
+export const nextLineId = () => Date.now() + Math.floor(Math.random() * 1000);
+
+// Soft expiry check for soft-deleted records (30-day window).
+export const isPastRecoveryWindow = (deletedAt, days = 30) => {
+  if (!deletedAt) return false;
+  return Date.now() - new Date(deletedAt).getTime() > days * 24 * 60 * 60 * 1000;
+};
+
+// Days remaining before a soft-deleted record purges. Negative when past.
+export const daysUntilPurge = (deletedAt, days = 30) => {
+  if (!deletedAt) return null;
+  const ageMs = Date.now() - new Date(deletedAt).getTime();
+  return days - Math.floor(ageMs / (24 * 60 * 60 * 1000));
+};
+
+// Days since an ISO timestamp; null when missing.
+export const daysSince = (iso) => {
+  if (!iso) return null;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24));
+};
+
+// Minutes since an ISO timestamp; null when missing.
+export const minutesSince = (iso) => {
+  if (!iso) return null;
+  return Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+};
+
+// Hours since an ISO timestamp; null when missing.
+export const hoursSince = (iso) => {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60);
+};
+
+// Days until an ISO timestamp. Negative = past.
+// Lives here (rather than next to BidDeadlineChip) so the component file
+// can satisfy the react-refresh "only export components" rule.
+export const bidDaysUntil = (iso) => {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+};
+
+// Build a goqr.me URL for a given data string. Used by both the in-app QR
+// renderer and the printable driver sheet.
+export const qrServiceUrl = (data, size = 300) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&margin=10&color=1C1917&bgcolor=FAFAF9`;
+
+// Pure status/total computation for a dispatch + its freight bills.
+// Used by DispatchTrackingCard and exposed here so it's unit-testable
+// without rendering.
+export const computeDispatchSummary = (d, bills) => {
+  const totalTons = bills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
+  const totalLoads = bills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
+  const pct = d.trucksExpected ? Math.min(100, (bills.length / d.trucksExpected) * 100) : 0;
+  const statusLabel = d.status === "closed"
+    ? "COMPLETE"
+    : (bills.length === 0
+      ? "OPEN · AWAITING TRUCKS"
+      : (bills.length >= d.trucksExpected ? "COMPLETE" : "IN PROGRESS"));
+  const statusColor = statusLabel === "COMPLETE"
+    ? "var(--good)"
+    : statusLabel.startsWith("OPEN") ? "var(--concrete)" : "var(--hazard-deep)";
+  return { totalTons, totalLoads, pct, statusLabel, statusColor };
+};
+
 // Compress an image File to a JPEG dataURL, scaled to fit `maxDim` on the
 // longer edge. Used wherever the app accepts photo uploads (driver freight
 // bills, company logos, etc.) — small enough payloads to fit in localStorage

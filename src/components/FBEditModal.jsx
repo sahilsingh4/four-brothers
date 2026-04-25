@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { AlertTriangle, Camera, Clock, Lock, Save, ShieldCheck, Trash2 } from "lucide-react";
-import { compressImage, fmt$ } from "../utils";
+import { compressImage, fmt$, nextLineId } from "../utils";
 import { deleteFreightBill, recoverFreightBill, logAudit } from "../db";
 
 export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, setDispatches, invoices = [], freightBills = [], onClose, onToast, currentUser }) => {
@@ -170,7 +170,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 : gross;
               // Prepend primary line at top so admin sees it first
               lines = [{
-                id: Date.now(),
+                id: nextLineId(),
                 code, item, qty, rate, gross,
                 brokerable: brokerableDefault,
                 brokeragePct: brokeragePctDefault,
@@ -204,7 +204,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
                 const gross = Number((qty * rate).toFixed(2));
                 return {
-                  id: Date.now() + 10000 + idx,
+                  id: nextLineId() + idx,
                   code, item, qty, rate, gross,
                   brokerable: false, brokeragePct: 0, net: gross,
                   copyToPay: false, isAdjustment: false,
@@ -245,7 +245,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               ? Number((gross - gross * brokeragePctDefault / 100).toFixed(2))
               : gross;
             baseLines.push({
-              id: Date.now(),
+              id: nextLineId(),
               code, item, qty, rate, gross,
               brokerable: brokerableDefault,
               brokeragePct: brokeragePctDefault,
@@ -272,7 +272,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             const rate = driverRate > 0 ? driverRate : (driverQty > 0 ? totalAmt / driverQty : totalAmt);
             const gross = Number((qty * rate).toFixed(2));
             return {
-              id: Date.now() + 10000 + idx,
+              id: nextLineId() + idx,
               code, item, qty, rate, gross,
               brokerable: false, brokeragePct: 0, net: gross,
               copyToPay: false, isAdjustment: false,
@@ -322,7 +322,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             const brokeragePct = brokerable ? Number(contactForPay?.brokeragePercent || 8) : 0;
             const net = Number((gross - (brokerable ? gross * brokeragePct / 100 : 0)).toFixed(2));
             return [{
-              id: Date.now() + 1,
+              id: nextLineId(),
               code, item, qty, rate, gross,
               brokerable, brokeragePct, net,
               sourceBillingLineId: null,
@@ -372,7 +372,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
   const addBillingLine = (seed = {}) => {
     const customerPct = getCustomerBrokeragePct(); // NEW: read from customer (not sub)
     const newLine = recomputeLine({
-      id: Date.now(),
+      id: nextLineId(),
       code: seed.code || "",
       item: seed.item || "",
       qty: seed.qty != null ? Number(seed.qty) : 0,
@@ -414,7 +414,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
   const addPayingLine = (seed = {}) => {
     const contactPct = getContactBrokeragePct();
     const newLine = recomputeLine({
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: nextLineId(),
       code: seed.code || "",
       item: seed.item || "",
       qty: seed.qty != null ? Number(seed.qty) : 0,
@@ -470,7 +470,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
         const isSub = assignment?.kind === "sub";
         const brokPct = getContactBrokeragePct();
         const newPayLine = recomputeLine({
-          id: Date.now() + Math.floor(Math.random() * 1000),
+          id: nextLineId(),
           code: bLine.code,
           item: bLine.item,
           qty: bLine.qty,
@@ -1536,7 +1536,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                     for (const f of Array.from(files)) {
                       try {
                         const dataUrl = await compressImage(f);
-                        next.push({ id: Date.now() + Math.random(), dataUrl, name: f.name, addedByAdmin: true });
+                        next.push({ id: nextLineId(), dataUrl, name: f.name, addedByAdmin: true });
                       } catch (err) { console.warn(err); }
                     }
                     setDraft({ ...draft, photos: next });

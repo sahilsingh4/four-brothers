@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { QRCodeBlock, qrServiceUrl } from "./QRCodeBlock";
+import { QRCodeBlock } from "./QRCodeBlock";
+import { qrServiceUrl } from "../utils";
 
 describe("qrServiceUrl", () => {
   it("URL-encodes the data and embeds the size in WxW format", () => {

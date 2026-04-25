@@ -4,10 +4,10 @@ import {
   DollarSign, Eye, FileText, Mail, Receipt, Search, ShieldCheck,
 } from "lucide-react";
 import { fetchCustomerByToken } from "../db";
-import { fmt$ } from "../utils";
+import { fmt$, bidDaysUntil, daysSince, minutesSince, hoursSince } from "../utils";
 import { GlobalStyles } from "./GlobalStyles";
 import { Logo } from "./Logo";
-import { BidDeadlineChip, bidDaysUntil } from "./BidDeadlineChip";
+import { BidDeadlineChip } from "./BidDeadlineChip";
 
 // Section header card with a colored bar, count + optional total, and a body.
 // Used for the "Pending Review", "Open Bids", "Recent Submissions" tiles
@@ -1151,7 +1151,7 @@ const HomeTab = ({
         >
           {overdueInvoices.slice(0, 5).map((inv) => {
             const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
-            const daysPast = inv.dueDate ? Math.floor((Date.now() - new Date(inv.dueDate)) / 86400000) : 0;
+            const daysPast = daysSince(inv.dueDate) || 0;
             return (
               <Row
                 key={inv.id || inv.invoiceNumber}
@@ -1234,7 +1234,7 @@ const HomeTab = ({
         <SectionCard
           title="RECENT FB SUBMISSIONS"
           icon={<Activity size={18} />}
-          count={freightBills.filter((fb) => fb.submittedAt && (Date.now() - new Date(fb.submittedAt)) < 48 * 3600 * 1000).length}
+          count={freightBills.filter((fb) => fb.submittedAt && hoursSince(fb.submittedAt) < 48).length}
           color="var(--steel)"
           bg="#F5F5F4"
           empty="NO RECENT SUBMISSIONS"
@@ -1245,7 +1245,7 @@ const HomeTab = ({
             .slice(0, 5)
             .map((fb) => {
               const d = dispatches.find((x) => x.id === fb.dispatchId);
-              const ago = Math.round((Date.now() - new Date(fb.submittedAt)) / 60000);
+              const ago = minutesSince(fb.submittedAt);
               const label = ago < 60 ? `${ago}m ago` : ago < 1440 ? `${Math.round(ago / 60)}h ago` : `${Math.round(ago / 1440)}d ago`;
               return (
                 <Row

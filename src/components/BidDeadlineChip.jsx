@@ -1,9 +1,4 @@
-// Days until an ISO timestamp. Negative = past.
-export const bidDaysUntil = (iso) => {
-  if (!iso) return null;
-  const diff = new Date(iso).getTime() - Date.now();
-  return Math.ceil(diff / (24 * 60 * 60 * 1000));
-};
+import { bidDaysUntil } from "../utils";
 
 // Color-coded deadline chip. Use on lists, home dashboard, customer portal.
 // Tiers: overdue (dark red) → today (red) → ≤3d (red) → ≤7d (amber) → future (gray).

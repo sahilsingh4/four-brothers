@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import { DispatchTrackingCard, computeDispatchSummary } from "./DispatchTrackingCard";
+import { DispatchTrackingCard } from "./DispatchTrackingCard";
+import { computeDispatchSummary } from "../utils";
 
 describe("computeDispatchSummary", () => {
   it("returns OPEN status when no bills are submitted yet", () => {
