@@ -1276,13 +1276,34 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                 type="button"
                 onClick={() => {
                   const isDriver = entry.kind === "driver";
+                  // Compute the smallest date window that includes every orphan FB
+                  // for this contact. This way, when the form loads, the date filter
+                  // shows ALL the orphan FBs (and only them) without the user needing
+                  // to remember the right range.
+                  const dates = entry.fbs.map((fb) => (fb.submittedAt || "").slice(0, 10)).filter(Boolean).sort();
+                  const fromD = dates[0] || "";
+                  const toD = dates[dates.length - 1] || "";
                   setPayScope(isDriver ? "drivers" : "subs");
-                  if (isDriver) setDrvContactId(entry.contact.id);
-                  else setSubContactId(entry.contact.id);
+                  if (isDriver) {
+                    setDrvContactId(entry.contact.id);
+                    setDrvFromDate(fromD);
+                    setDrvToDate(toD);
+                  } else {
+                    setSubContactId(entry.contact.id);
+                    setSubFromDate(fromD);
+                    setSubToDate(toD);
+                  }
+                  // Scroll the builder into view so the admin can act immediately
+                  // without hunting for it.
+                  setTimeout(() => {
+                    const el = document.getElementById(isDriver ? "payroll-builder" : "payroll-builder-subs");
+                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }, 80);
+                  onToast(`✓ LOADED ${entry.fbs.length} ORPHAN FB${entry.fbs.length !== 1 ? "S" : ""} FOR ${entry.contact.companyName || entry.contact.contactName}`);
                 }}
                 className="chip"
                 style={{ background: "#FFF", color: "var(--steel)", borderColor: "var(--hazard)", cursor: "pointer", fontSize: 11 }}
-                title={`${entry.fbs.length} unpaid approved FB${entry.fbs.length !== 1 ? "s" : ""} — click to load into ${entry.kind === "driver" ? "DRIVERS" : "SUBS"} form`}
+                title={`${entry.fbs.length} unpaid approved FB${entry.fbs.length !== 1 ? "s" : ""} — click to load into ${entry.kind === "driver" ? "DRIVERS" : "SUBS"} form (date range auto-set, scrolls down)`}
               >
                 <span style={{ fontWeight: 700 }}>{entry.contact.companyName || entry.contact.contactName}</span>
                 <span style={{ marginLeft: 6, color: "var(--hazard-deep)", fontWeight: 700 }}>· {entry.fbs.length}</span>
@@ -1329,7 +1350,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
         </div>
       </div>
 
-      <div style={{ display: payScope === "drivers" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
+      <div id="payroll-builder" style={{ display: payScope === "drivers" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
         {/* DRIVERS BUILDER */}
         <div className="fbt-card" style={{ padding: 18, background: "#F0F9FF", border: "2px solid #0369A1" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -1577,7 +1598,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
         </div>
       </div>
 
-      <div style={{ display: payScope === "subs" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
+      <div id="payroll-builder-subs" style={{ display: payScope === "subs" ? "grid" : "none", gridTemplateColumns: "1fr", gap: 14 }}>
         {/* SUBS BUILDER */}
         <div className="fbt-card" style={{ padding: 18, background: "#FEF3C7", border: "2px solid #9A3412" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
