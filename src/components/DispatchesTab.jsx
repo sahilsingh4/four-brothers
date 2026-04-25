@@ -211,6 +211,41 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showNew]);
 
+  // Persist a NEW (not edit) order draft to sessionStorage on every change so
+  // a tab close / refresh / OS update mid-form doesn't wipe a 2-min order entry.
+  // We only persist in create mode — edit mode's source of truth is the row.
+  // Restored on the next "NEW ORDER" click via a confirm prompt below.
+  const NEW_ORDER_DRAFT_KEY = "fbt:newOrderDraft";
+  useEffect(() => {
+    if (!showNew || editingId) return;
+    const t = setTimeout(() => {
+      try { sessionStorage.setItem(NEW_ORDER_DRAFT_KEY, JSON.stringify(draft)); }
+      catch { /* private mode / quota */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [draft, showNew, editingId]);
+  const clearNewOrderDraft = () => {
+    try { sessionStorage.removeItem(NEW_ORDER_DRAFT_KEY); } catch { /* noop */ }
+  };
+  const openNewOrder = () => {
+    setEditingId(null);
+    let restored = false;
+    try {
+      const saved = sessionStorage.getItem(NEW_ORDER_DRAFT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only prompt if the draft actually has user content (jobName / pickup / clientName)
+        const hasContent = parsed.jobName || parsed.clientName || parsed.pickup || parsed.dropoff || parsed.material;
+        if (hasContent && window.confirm("You have an unsaved order from earlier.\n\nContinue editing it?")) {
+          setDraft(parsed);
+          restored = true;
+        }
+      }
+    } catch { /* ignore parse errors */ }
+    if (!restored) { resetDraft(); clearNewOrderDraft(); }
+    setShowNew(true);
+  };
+
   // Close handler for the New/Edit Order modal — confirms when dirty so the
   // dispatcher doesn't lose a 2-minute order entry from a stray click.
   const closeOrderModal = () => {
@@ -221,6 +256,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     setShowNew(false);
     setEditingId(null);
     resetDraft();
+    clearNewOrderDraft();
   };
 
   // Open the modal pre-filled with an existing order's data (edit mode)
@@ -375,6 +411,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     const fresh = next.find((x) => x.code === code);
     if (fresh) setActiveDispatch(fresh.id);
     resetDraft();
+    clearNewOrderDraft();
     onToast("ORDER CREATED");
 
     // If order has assignments with contacts — open Send Links modal so admin can text/email the team
@@ -817,7 +854,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
           <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
           <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search freight bill #, driver, truck, job, sub…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <button onClick={() => { setEditingId(null); resetDraft(); setShowNew(true); }} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
+        <button onClick={openNewOrder} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
       </div>
 
       {/* Send Links modal — offered after order create / mark-dispatched */}
