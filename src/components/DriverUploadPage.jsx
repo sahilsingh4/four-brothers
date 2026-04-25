@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle, Camera, CheckCircle2, Clock, Plus, Trash2, Upload, X } from "lucide-react";
 import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
+import { PreTripModal } from "./PreTripModal";
 import { compressImage, fmtDate } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
@@ -91,6 +92,24 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     setCaptchaInput("");
   };
   const [submissionSummary, setSubmissionSummary] = useState(null); // full details of what was submitted
+
+  // DOT pre-trip inspection — gated per (dispatch, driver, day) via localStorage
+  // so a driver doesn't get prompted again on their 2nd/3rd FB the same day.
+  // The full inspection record is attached to the FIRST FB submission of the
+  // day so the admin sees it on the dispatch.
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const PRETRIP_KEY = `pretrip:${dispatch?.code || "unknown"}:${assignment?.aid || "main"}:${todayKey}`;
+  const [pretripDone, setPretripDone] = useState(() => {
+    try { return !!localStorage.getItem(PRETRIP_KEY); } catch { return false; }
+  });
+  const [pretripPending, setPretripPending] = useState(null); // inspection record awaiting next FB submit
+  const [showPretrip, setShowPretrip] = useState(false);
+  const onPretripSubmit = (inspection) => {
+    try { localStorage.setItem(PRETRIP_KEY, JSON.stringify(inspection)); } catch { /* noop */ }
+    setPretripDone(true);
+    setPretripPending(inspection);
+    setShowPretrip(false);
+  };
 
   const handlePhotos = async (files) => {
     if (!files || files.length === 0) return;
@@ -226,7 +245,11 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         dispatchId: dispatch.id,
         photos: photosToSend,
         submittedAt,
+        // Attach the pre-trip inspection only on the FIRST FB submission of
+        // the day. Subsequent FBs the same shift don't carry it again.
+        pretripInspection: pretripPending || undefined,
       });
+      if (pretripPending) setPretripPending(null);
       const wasQueued = result?.status === "queued";
 
       setSubmitProgress(wasQueued ? "✓ QUEUED" : "✓ SENT");
@@ -375,6 +398,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
   return (
     <div style={{ minHeight: "100vh", background: "var(--cream)" }} className="texture-paper">
       {lightbox && <Lightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      {showPretrip && (
+        <PreTripModal
+          truckNumber={form.truckNumber}
+          driverName={form.driverName}
+          onSubmit={onPretripSubmit}
+          onClose={() => setShowPretrip(false)}
+        />
+      )}
       <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "20px 24px", borderBottom: "3px solid var(--hazard)" }}>
         <div style={{ maxWidth: 720, margin: "0 auto" }}><Logo size="sm" /></div>
       </div>
@@ -508,6 +539,46 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 </button>
               </div>
             )}
+            {/* DOT pre-trip — required ONCE per shift before submitting any FB.
+                Shows a yellow banner if not yet done; flips to green confirmation
+                once submitted (cached in localStorage so subsequent FBs the same
+                day see the green state without re-prompting). */}
+            <div style={{ padding: 12, border: `2px solid ${pretripDone ? "var(--good)" : "var(--hazard)"}`, background: pretripDone ? "#F0FDF4" : "#FEF3C7", borderRadius: 6 }}>
+              {pretripDone ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <CheckCircle2 size={18} style={{ color: "var(--good)" }} />
+                  <div style={{ flex: 1 }}>
+                    <div className="fbt-mono" style={{ fontSize: 12, color: "var(--good)", fontWeight: 700 }}>
+                      PRE-TRIP COMPLETE
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--concrete)" }}>
+                      Today's inspection is on file for this dispatch.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <AlertCircle size={20} style={{ color: "var(--hazard-deep)" }} />
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div className="fbt-mono" style={{ fontSize: 12, color: "var(--hazard-deep)", fontWeight: 700 }}>
+                      DOT PRE-TRIP REQUIRED
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--steel)" }}>
+                      Walk around your truck and check it before your first load. Takes ~2 min.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowPretrip(true)}
+                    className="btn-primary"
+                    style={{ fontSize: 12 }}
+                  >
+                    Start pre-trip
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div>
               <label className="fbt-label">Freight Bill # * <span style={{ color: "var(--concrete)", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>(from the top of your paper bill)</span></label>
               <input className="fbt-input" value={form.freightBillNumber} onChange={(e) => setForm({ ...form, freightBillNumber: e.target.value })} placeholder="e.g. 45821" style={{ fontSize: 16 }} />
