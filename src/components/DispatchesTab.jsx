@@ -190,9 +190,9 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
+  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
 
-  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
+  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
 
   // Open the modal pre-filled with an existing order's data (edit mode)
   const openEditDispatch = (d) => {
@@ -211,6 +211,9 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       dropoff: d.dropoff || "",
       material: d.material || "",
       trucksExpected: d.trucksExpected || 1,
+      shift: d.shift || "day",
+      baseStartTime: d.baseStartTime || "",
+      staggerMin: d.staggerMin ?? 5,
       ratePerHour: d.ratePerHour || "",
       ratePerTon: d.ratePerTon || "",
       ratePerLoad: d.ratePerLoad || "",
@@ -1008,9 +1011,24 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               );
             })()}
             <div style={{ padding: 24, display: "grid", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
                 <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
+                <div>
+                  <label className="fbt-label">Shift</label>
+                  <select className="fbt-select" value={draft.shift || "day"} onChange={(e) => setDraft({ ...draft, shift: e.target.value })}>
+                    <option value="day">Day</option>
+                    <option value="night">Night</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="fbt-label">Base Start Time</label>
+                  <input className="fbt-input" type="time" value={draft.baseStartTime || ""} onChange={(e) => setDraft({ ...draft, baseStartTime: e.target.value })} />
+                </div>
+                <div>
+                  <label className="fbt-label">Stagger (min)</label>
+                  <input className="fbt-input" type="number" min="0" value={draft.staggerMin ?? 5} onChange={(e) => setDraft({ ...draft, staggerMin: e.target.value === "" ? "" : Number(e.target.value) })} title="Minutes between each truck's start time when 'Apply stagger' is clicked" />
+                </div>
               </div>
               <div><label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" locks={locks} /></label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} /></div>
               <div>
@@ -1263,6 +1281,24 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             )}
                           </div>
 
+                          {/* Row 2.5: Send-rates toggle (controls whether the dispatch SMS/email shows pay rate + min hours to this driver/sub) */}
+                          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                            <input
+                              type="checkbox"
+                              id={`send-rates-${idx}`}
+                              checked={a.sendRates !== false}
+                              onChange={(e) => {
+                                const next = [...draft.assignments];
+                                next[idx] = { ...next[idx], sendRates: e.target.checked };
+                                setDraft({ ...draft, assignments: next });
+                              }}
+                              style={{ cursor: "pointer" }}
+                            />
+                            <label htmlFor={`send-rates-${idx}`} className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.05em", cursor: "pointer", userSelect: "none" }}>
+                              ▸ INCLUDE PAY RATE + MIN HOURS IN {a.kind === "driver" ? "DRIVER" : "SUB"} SMS/EMAIL
+                            </label>
+                          </div>
+
                           {/* Row 3: Per-truck start times + locations */}
                           {(() => {
                             const truckCount = Math.max(1, Number(a.trucks) || 1);
@@ -1321,10 +1357,41 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1, payMethod: "hour", payRate: "" }] })}
+                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1, payMethod: "hour", payRate: "", sendRates: true }] })}
                   style={{ padding: "6px 12px", fontSize: 11 }}
                 >
                   <Plus size={12} style={{ marginRight: 4 }} /> ADD SUB / DRIVER
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={!draft.baseStartTime || !(draft.assignments || []).length}
+                  title={!draft.baseStartTime ? "Set a Base Start Time at the top first" : `Distribute start times across all truck slots ${draft.staggerMin || 5} min apart`}
+                  onClick={() => {
+                    const base = draft.baseStartTime;
+                    if (!base) return;
+                    const stepMin = Number(draft.staggerMin) || 5;
+                    const [h0, m0] = base.split(":").map(Number);
+                    if (Number.isNaN(h0) || Number.isNaN(m0)) return;
+                    let slotIdx = 0;
+                    const next = (draft.assignments || []).map((a) => {
+                      const truckCount = Math.max(1, Number(a.trucks) || 1);
+                      const existing = Array.isArray(a.startTimes) ? a.startTimes : [];
+                      const newTimes = Array.from({ length: truckCount }, (_, i) => {
+                        const totalMins = h0 * 60 + m0 + slotIdx * stepMin;
+                        slotIdx += 1;
+                        const hh = String(Math.floor(totalMins / 60) % 24).padStart(2, "0");
+                        const mm = String(totalMins % 60).padStart(2, "0");
+                        return { time: `${hh}:${mm}`, location: existing[i]?.location || "" };
+                      });
+                      return { ...a, startTimes: newTimes };
+                    });
+                    setDraft({ ...draft, assignments: next });
+                    onToast("STAGGER APPLIED");
+                  }}
+                  style={{ padding: "6px 12px", fontSize: 11, marginLeft: 8 }}
+                >
+                  ▶ APPLY STAGGER
                 </button>
 
                 {/* Total trucks calculation */}
