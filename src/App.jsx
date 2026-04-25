@@ -98,6 +98,7 @@ import {
 } from "./utils";
 import { Toast } from "./components/Toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { InstallAppButton } from "./components/InstallAppButton";
 import { Logo } from "./components/Logo";
 import { Lightbox } from "./components/Lightbox";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -5606,6 +5607,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
             >
               ☀ BRIEFING
             </button>
+            <InstallAppButton compact />
             <button onClick={onChangePassword} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }} title="Change password">
               <KeyRound size={12} style={{ marginRight: 4 }} /> PASSWORD
             </button>

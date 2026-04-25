@@ -4,6 +4,7 @@ import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
 import { PreTripModal } from "./PreTripModal";
 import { IncidentModal } from "./IncidentModal";
+import { InstallAppButton } from "./InstallAppButton";
 import { compressImage, fmtDate } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
@@ -453,7 +454,10 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         />
       )}
       <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "20px 24px", borderBottom: "3px solid var(--hazard)" }}>
-        <div style={{ maxWidth: 720, margin: "0 auto" }}><Logo size="sm" /></div>
+        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <Logo size="sm" />
+          <InstallAppButton compact />
+        </div>
       </div>
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px 80px" }}>
         <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 8 }}>
@@ -559,7 +563,12 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>JOB DETAILS</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 13 }}>
             <div><strong>JOB:</strong> {dispatch.jobName}</div>
+            {dispatch.clientName && <div><strong>CUSTOMER:</strong> {dispatch.clientName}</div>}
             <div><strong>DATE:</strong> {fmtDate(dispatch.date)}</div>
+            {(assignment?.startTime || dispatch.baseStartTime) && (
+              <div><strong>START TIME:</strong> {assignment?.startTime || dispatch.baseStartTime}</div>
+            )}
+            {dispatch.material && <div><strong>MATERIAL:</strong> {dispatch.material}</div>}
             {dispatch.pickup && <div><strong>PICKUP:</strong> {dispatch.pickup}</div>}
             {dispatch.dropoff && <div><strong>DROPOFF:</strong> {dispatch.dropoff}</div>}
             <div><strong>TRUCKS EXPECTED:</strong> {dispatch.trucksExpected}</div>
