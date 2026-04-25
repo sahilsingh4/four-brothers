@@ -134,6 +134,21 @@ export const BID_STATUSES = [
 ];
 export const BID_STATUS_MAP = Object.fromEntries(BID_STATUSES.map((s) => [s.value, s]));
 
+// Thin wrapper over the host-provided `window.storage` API (Claude harness).
+// Safely no-ops when the API isn't present. Used for small per-user prefs
+// that we deliberately don't want on the Supabase server.
+export const storageSet = async (key, value, shared = false) => {
+  try { await window.storage?.set(key, JSON.stringify(value), shared); }
+  catch (e) { console.warn("storage set failed", key, e); }
+};
+
+export const storageGet = async (key, shared = false) => {
+  try {
+    const r = await window.storage?.get(key, shared);
+    return r?.value ? JSON.parse(r.value) : null;
+  } catch { return null; }
+};
+
 // Build a phone-number SMS link. Returns null for empty / non-digit input.
 // iOS uses & as separator, Android uses ?, but most platforms now accept ? with encoded body.
 export const buildSMSLink = (phone, message) => {
