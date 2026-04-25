@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Activity, AlertCircle, AlertTriangle, ClipboardList, Clock,
-  DollarSign, Eye, FileText, Mail, Receipt, Search, ShieldCheck,
+  DollarSign, Eye, FileText, Mail, Receipt, Search, ShieldCheck, X,
 } from "lucide-react";
 import { fetchCustomerByToken } from "../db";
 import { GlobalStyles } from "./GlobalStyles";

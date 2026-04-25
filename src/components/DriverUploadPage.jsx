@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertCircle, Camera, CheckCircle2, Clock, Plus, Trash2, Upload } from "lucide-react";
+import { AlertCircle, Camera, CheckCircle2, Clock, Plus, Trash2, Upload, X } from "lucide-react";
 import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
 import { compressImage, fmtDate } from "../utils";
