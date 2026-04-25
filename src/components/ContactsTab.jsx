@@ -1,7 +1,30 @@
 import { useState, useEffect, useMemo } from "react";
-import { CheckCircle2, FileDown, Mail, MessageSquare, Phone, Search, Star, UserPlus, Users, X } from "lucide-react";
-import { buildSMSLink, buildEmailLink } from "../utils";
+import { CheckCircle2, FileDown, Mail, MessageSquare, Phone, Search, Star, Trash2, Upload, UserPlus, Users, X } from "lucide-react";
+import { buildSMSLink, buildEmailLink, compressImage } from "../utils";
+import { extractFromImage } from "../utils/ocr";
 import { ContactDetailModal } from "./ContactDetailModal";
+
+// Document kinds offered per contact type. CDL + medical_card trigger OCR
+// to suggest the expiration date; everything else is just upload + label.
+const DRIVER_DOC_KINDS = [
+  { v: "cdl", label: "CDL (driver's license)", ocrExpiry: true },
+  { v: "medical_card", label: "Medical card / DOT physical", ocrExpiry: true },
+  { v: "mvr", label: "Motor vehicle record" },
+  { v: "i9", label: "I-9" },
+  { v: "w4", label: "W-4" },
+  { v: "direct_deposit", label: "Direct deposit form" },
+  { v: "drug_test", label: "Drug test result" },
+  { v: "other", label: "Other" },
+];
+const SUB_DOC_KINDS = [
+  { v: "w9", label: "W-9" },
+  { v: "coi", label: "Certificate of insurance (COI)" },
+  { v: "operating_authority", label: "Operating authority / MC certificate" },
+  { v: "ic_agreement", label: "Independent contractor agreement" },
+  { v: "1099", label: "1099 (year-end)" },
+  { v: "workers_comp", label: "Workers' comp waiver/certificate" },
+  { v: "other", label: "Other" },
+];
 
 export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(contact || {
@@ -11,6 +34,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
     brokerageApplies: false, brokeragePercent: 8,
     defaultPayRate: "", defaultPayMethod: "hour", defaultTruckNumber: "",
     taxId: "", taxIdType: "", legalName: "", is1099Eligible: false,
+    documents: [],
   });
   const [showTaxId, setShowTaxId] = useState(false); // masked by default
 
@@ -346,6 +370,15 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
             </>
           )}
 
+          {(draft.type === "driver" || draft.type === "sub") && (
+            <ComplianceDocsSection
+              draft={draft}
+              setDraft={setDraft}
+              kinds={draft.type === "driver" ? DRIVER_DOC_KINDS : SUB_DOC_KINDS}
+              onToast={onToast}
+            />
+          )}
+
           <div>
             <label className="fbt-label">Internal Notes</label>
             <textarea className="fbt-textarea" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Reliability, strengths, quirks, preferences..." />
@@ -357,6 +390,151 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+
+// Compliance documents section for driver / sub contacts. Stores docs as
+// inline data URLs on the contact (kept simple — no separate file storage
+// table). For CDL + medical card kinds, uploading a photo also runs OCR
+// to suggest the expiration date and offers to populate the existing
+// cdlExpiry / medicalCardExpiry fields on the contact.
+const ComplianceDocsSection = ({ draft, setDraft, kinds, onToast }) => {
+  const [pendingKind, setPendingKind] = useState(kinds[0]?.v || "other");
+  const [busy, setBusy] = useState(false);
+  const docs = Array.isArray(draft.documents) ? draft.documents : [];
+  const labelFor = (k) => kinds.find((x) => x.v === k)?.label || k;
+
+  const addDoc = async (files) => {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      const file = files[0];
+      const dataUrl = await compressImage(file, 1800, 0.8);
+      const newDoc = {
+        id: Date.now() + Math.random(),
+        kind: pendingKind,
+        label: labelFor(pendingKind),
+        fileName: file.name,
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+        expiryDate: null,
+      };
+      // For CDL / medical card, kick off OCR and offer the detected date
+      const kindCfg = kinds.find((k) => k.v === pendingKind);
+      let nextDocs = [...docs, newDoc];
+      setDraft({ ...draft, documents: nextDocs });
+      if (kindCfg?.ocrExpiry) {
+        try {
+          const { fields } = await extractFromImage(dataUrl, { kind: pendingKind });
+          if (fields?.expiryDate) {
+            const ok = window.confirm(
+              `OCR found an expiration date on this ${kindCfg.label}: ${fields.expiryDate}.\n\nApply it to the ${pendingKind === "cdl" ? "CDL expiration" : "Medical card expiration"} field?`
+            );
+            if (ok) {
+              const expiryFieldKey = pendingKind === "cdl" ? "cdlExpiry" : "medicalCardExpiry";
+              nextDocs = nextDocs.map((d) => d.id === newDoc.id ? { ...d, expiryDate: fields.expiryDate } : d);
+              setDraft({ ...draft, [expiryFieldKey]: fields.expiryDate, documents: nextDocs });
+              onToast?.(`✓ Set ${pendingKind === "cdl" ? "CDL" : "medical card"} expiry to ${fields.expiryDate}`);
+            } else {
+              // User skipped — still stamp the OCR date on the doc itself for reference
+              nextDocs = nextDocs.map((d) => d.id === newDoc.id ? { ...d, expiryDate: fields.expiryDate } : d);
+              setDraft({ ...draft, documents: nextDocs });
+            }
+          } else {
+            onToast?.("OCR ran — no expiration date detected. Type it in by hand.");
+          }
+        } catch (e) {
+          console.warn("OCR failed:", e);
+        }
+      }
+    } catch (e) {
+      console.warn("Doc upload failed:", e);
+      onToast?.("⚠ Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeDoc = (id) => {
+    if (!confirm("Remove this document?")) return;
+    setDraft({ ...draft, documents: docs.filter((d) => d.id !== id) });
+  };
+
+  return (
+    <div style={{ padding: 12, background: "#F8FAFC", border: "1.5px solid var(--line)", borderRadius: 6 }}>
+      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--steel)", fontWeight: 700, marginBottom: 8 }}>
+        ▸ COMPLIANCE PACKET ({docs.length} {docs.length === 1 ? "document" : "documents"})
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        <select
+          className="fbt-select"
+          value={pendingKind}
+          onChange={(e) => setPendingKind(e.target.value)}
+          style={{ flex: 1, minWidth: 180 }}
+        >
+          {kinds.map((k) => (
+            <option key={k.v} value={k.v}>{k.label}{k.ocrExpiry ? " (OCR expiry)" : ""}</option>
+          ))}
+        </select>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", border: "2px dashed var(--concrete)", cursor: busy ? "wait" : "pointer", fontSize: 12 }}>
+          <Upload size={14} /> {busy ? "Processing…" : "Upload"}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: "none" }}
+            disabled={busy}
+            onChange={(e) => addDoc(e.target.files)}
+          />
+        </label>
+      </div>
+
+      {docs.length === 0 ? (
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+          ▸ NO DOCUMENTS UPLOADED YET. Pick a kind and upload a photo or PDF.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {docs.map((d) => (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, background: "#FFF", border: "1px solid var(--line)", borderRadius: 4 }}>
+              {d.dataUrl && /\.pdf$/i.test(d.fileName || "") === false ? (
+                <img src={d.dataUrl} alt="" style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid var(--line)" }} />
+              ) : (
+                <div style={{ width: 40, height: 40, background: "#F5F5F4", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <FileDown size={16} style={{ color: "var(--concrete)" }} />
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--steel)" }}>{d.label || labelFor(d.kind)}</div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {d.fileName || "—"}
+                  {d.expiryDate && <> · exp {d.expiryDate}</>}
+                  {d.uploadedAt && <> · uploaded {new Date(d.uploadedAt).toLocaleDateString()}</>}
+                </div>
+              </div>
+              <a
+                href={d.dataUrl}
+                download={d.fileName || `${d.kind}-${d.id}`}
+                className="btn-ghost"
+                style={{ padding: "4px 8px", fontSize: 10, textDecoration: "none" }}
+                title="Download"
+              >
+                <FileDown size={11} />
+              </a>
+              <button
+                type="button"
+                onClick={() => removeDoc(d.id)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, color: "var(--safety)" }}
+                title="Remove"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
