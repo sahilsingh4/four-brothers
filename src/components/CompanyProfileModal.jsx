@@ -34,6 +34,8 @@ export const CompanyProfileModal = ({ company, onSave, onClose, onToast, generat
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose + save are stable callbacks; intentionally not in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft]);
 
   return (

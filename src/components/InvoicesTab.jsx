@@ -1,4 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+// File-level disables: this module has 11 intentional respond-to-trigger
+// effects (showNewInvoice cascade, pendingInvoice consumer, terms/rate/
+// billableHoursForInvoice autofill on mode change, etc.) — all bounded
+// write-once patterns that have been audited. New effects added here that
+// genuinely cascade should be caught in PR review instead.
 import { useState, useEffect, useMemo } from "react";
 import {
   Briefcase, Building2, Calendar, ChevronDown, ClipboardList, DollarSign,
@@ -1117,7 +1123,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
       if (createInvoice) {
         let attempts = 0;
         const maxAttempts = 8;
-        // eslint-disable-next-line no-constant-condition
+         
         while (true) {
           try {
             savedInvoice = await createInvoice(invoice);

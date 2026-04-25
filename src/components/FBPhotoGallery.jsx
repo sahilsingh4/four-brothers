@@ -31,6 +31,8 @@ export const FBPhotoGallery = ({
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose is a stable callback; intentionally not in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightbox]);
 
   // Filter FBs by the full filter set

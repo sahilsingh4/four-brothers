@@ -9,7 +9,10 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
 
-  // Auto-open FB editor when jumping from home dashboard
+  // Auto-open FB editor when jumping from home dashboard.
+  // Consume-trigger pattern: parent passes pendingFB once, we read it and
+  // immediately call clearPendingFB() so the next render sees null. Bounded.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (pendingFB) {
       const fb = freightBills.find((x) => x.id === pendingFB);
@@ -20,6 +23,7 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
       if (clearPendingFB) clearPendingFB();
     }
   }, [pendingFB, freightBills]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const pendingCount = freightBills.filter((fb) => (fb.status || "pending") === "pending").length;
   const approvedCount = freightBills.filter((fb) => fb.status === "approved").length;

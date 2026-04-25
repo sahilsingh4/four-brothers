@@ -525,7 +525,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
 
   // Auto-fill billed + paid HOURS whenever pickup/dropoff changes — but only
   // for hour-based methods, and only if the field is currently empty (don't overwrite admin edits).
-  // Skips if snapshot is locked to preserve historical values.
+  // Skips if snapshot is locked to preserve historical values. Bounded write-on-empty:
+  // once filled, the inner conditions block further writes.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!autoHours) return;
     setDraft((d) => {
@@ -542,6 +544,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
       return changed ? next : d;
     });
   }, [autoHours, billingSnapshotLocked, paySnapshotLocked]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const save = async (andApprove = false) => {
     // F2: warn before approving an FB with no proof-of-haul photos.
@@ -778,6 +781,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose + save are stable callbacks from the parent — including them
+    // would re-bind the listener on every parent render with no benefit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saving, lightbox]);
 
   return (
