@@ -64,7 +64,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             </div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 900, color: "#1C1917", lineHeight: 1, letterSpacing: "-0.01em" }}>4 BROTHERS</div>
-              <div style={{ fontSize: 10, color: "#78716C", letterSpacing: "0.16em", marginTop: 3, fontWeight: 600 }}>TRUCKING, LLC</div>
+              <div style={{ fontSize: 10, color: "#78716C", marginTop: 3, fontWeight: 600 }}>TRUCKING, LLC</div>
             </div>
           </a>
           <div style={{ marginLeft: "auto", display: "flex", gap: 28, alignItems: "center", flexWrap: "wrap" }}>
@@ -72,7 +72,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             <a href="#fleet"    onClick={scrollTo("fleet")}    style={navLinkStyle}>Fleet</a>
             <a href="#about"    onClick={scrollTo("about")}    style={navLinkStyle}>About</a>
             <a href="#contact"  onClick={scrollTo("contact")}  style={navLinkStyle}>Contact</a>
-            <a href="#quote"    onClick={scrollTo("quote")}    style={{ padding: "10px 20px", background: "#F59E0B", color: "#1C1917", fontWeight: 700, fontSize: 13, letterSpacing: "0.04em", textDecoration: "none", borderRadius: 2 }}>GET A QUOTE</a>
+            <a href="#quote"    onClick={scrollTo("quote")}    style={{ padding: "10px 20px", background: "#F59E0B", color: "#1C1917", fontWeight: 700, fontSize: 13, textDecoration: "none", borderRadius: 2 }}>GET A QUOTE</a>
             <button onClick={onStaffLogin} style={{ background: "transparent", border: "none", color: "#78716C", fontSize: 12, fontWeight: 500, cursor: "pointer", padding: "6px 2px", display: "flex", alignItems: "center", gap: 4 }}>
               <Lock size={11} /> Staff
             </button>
@@ -84,7 +84,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <section id="top" style={{ position: "relative", background: "#1C1917", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, backgroundImage: `linear-gradient(rgba(28,25,23,0.55), rgba(28,25,23,0.75)), url(${HERO_IMG})`, backgroundSize: "cover", backgroundPosition: "center", zIndex: 0 }} />
         <div style={{ position: "relative", zIndex: 1, maxWidth: 1280, margin: "0 auto", padding: "120px 32px 140px", color: "#FFF" }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 20 }}>▸ SAN FRANCISCO BAY AREA · CENTRAL VALLEY</div>
+          <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 20 }}>▸ SAN FRANCISCO BAY AREA · CENTRAL VALLEY</div>
           <h1 style={{ fontSize: "clamp(44px, 7vw, 84px)", fontWeight: 900, lineHeight: 1.02, margin: "0 0 24px", letterSpacing: "-0.02em", maxWidth: 900 }}>
             Construction trucking you can count on.
           </h1>
@@ -92,17 +92,17 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             Aggregate supply, site support, and on-demand hauling with a modern fleet and a professional crew. Serving the Bay Area since 2022.
           </p>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-            <a href="#quote" onClick={scrollTo("quote")} style={{ padding: "16px 32px", background: "#F59E0B", color: "#1C1917", fontWeight: 800, fontSize: 14, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <a href="#quote" onClick={scrollTo("quote")} style={{ padding: "16px 32px", background: "#F59E0B", color: "#1C1917", fontWeight: 800, fontSize: 14, textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
               REQUEST A QUOTE <ArrowRight size={16} />
             </a>
-            <a href="tel:+16268145541" style={{ padding: "16px 32px", background: "transparent", color: "#FFF", border: "2px solid #FFF", fontWeight: 700, fontSize: 14, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <a href="tel:+16268145541" style={{ padding: "16px 32px", background: "transparent", color: "#FFF", border: "2px solid #FFF", fontWeight: 700, fontSize: 14, textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}>
               <Phone size={14} /> CALL DISPATCH
             </a>
             {/* v22 Session V: Capability statement download — for B2B/procurement visitors */}
             <a
               href="/capability-statement.pdf"
               download="4-Brothers-Trucking-Capability-Statement.pdf"
-              style={{ padding: "16px 24px", background: "transparent", color: "#D6D3D1", border: "1px solid #57534E", fontWeight: 600, fontSize: 13, letterSpacing: "0.05em", textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}
+              style={{ padding: "16px 24px", background: "transparent", color: "#D6D3D1", border: "1px solid #57534E", fontWeight: 600, fontSize: 13, textDecoration: "none", borderRadius: 2, display: "inline-flex", alignItems: "center", gap: 8 }}
             >
               <FileDown size={13} /> CAPABILITY STATEMENT
             </a>
@@ -121,7 +121,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
           ].map((s, i) => (
             <div key={i}>
               <div style={{ fontSize: 24, fontWeight: 900, color: "#1C1917", letterSpacing: "-0.02em" }}>{s.n}</div>
-              <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", marginTop: 4, fontWeight: 600 }}>{s.l}</div>
+              <div style={{ fontSize: 11, color: "#78716C", marginTop: 4, fontWeight: 600 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -130,7 +130,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       {/* ===== SERVICES ===== */}
       <section id="services" style={{ background: "#FFF", padding: "100px 32px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ WHAT WE DO</div>
+          <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ WHAT WE DO</div>
           <h2 style={{ fontSize: "clamp(32px, 4.5vw, 52px)", fontWeight: 900, margin: "0 0 20px", letterSpacing: "-0.02em", maxWidth: 900 }}>
             Full-service construction trucking.
           </h2>
@@ -159,7 +159,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       {/* ===== FLEET ===== */}
       <section id="fleet" style={{ background: "#1C1917", color: "#FFF", padding: "100px 32px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ OUR FLEET</div>
+          <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ OUR FLEET</div>
           <h2 style={{ fontSize: "clamp(32px, 4.5vw, 52px)", fontWeight: 900, margin: "0 0 20px", letterSpacing: "-0.02em", maxWidth: 900 }}>
             Modern trucks. Professional drivers.
           </h2>
@@ -188,7 +188,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <section id="about" style={{ background: "#FFF", padding: "100px 32px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 60, alignItems: "center" }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ ABOUT US</div>
+            <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ ABOUT US</div>
             <h2 style={{ fontSize: "clamp(32px, 4.5vw, 46px)", fontWeight: 900, margin: "0 0 24px", letterSpacing: "-0.02em" }}>
               Built by family. Run like a team.
             </h2>
@@ -200,19 +200,19 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 32 }}>
               <div>
-                <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 4 }}>CERTIFICATIONS</div>
+                <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 4 }}>CERTIFICATIONS</div>
                 <div style={{ fontSize: 14, color: "#1C1917", fontWeight: 600 }}>DBE · MBE · SB-PW</div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 4 }}>AUTHORITY</div>
+                <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 4 }}>AUTHORITY</div>
                 <div style={{ fontSize: 14, color: "#1C1917", fontWeight: 600 }}>USDOT · CA MCP</div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 4 }}>SERVICE AREA</div>
+                <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 4 }}>SERVICE AREA</div>
                 <div style={{ fontSize: 14, color: "#1C1917", fontWeight: 600 }}>Bay Area · Central Valley</div>
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 4 }}>INSURANCE</div>
+                <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 4 }}>INSURANCE</div>
                 <div style={{ fontSize: 14, color: "#1C1917", fontWeight: 600 }}>Fully insured & bonded</div>
               </div>
             </div>
@@ -228,7 +228,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
         <section id="portfolio" style={{ background: "#1C1917", color: "#FFF", padding: "100px 32px" }}>
           <div style={{ maxWidth: 1280, margin: "0 auto" }}>
             <div style={{ textAlign: "center", marginBottom: 50 }}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ SELECTED PROJECTS</div>
+              <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ SELECTED PROJECTS</div>
               <h2 style={{ fontSize: "clamp(32px, 4.5vw, 46px)", fontWeight: 900, margin: "0 0 16px", letterSpacing: "-0.02em", color: "#FFF" }}>
                 Work we've done.
               </h2>
@@ -243,7 +243,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
                 return (
                   <div key={proj.id} style={{ background: "#292524", padding: "28px 24px", display: "flex", flexDirection: "column", gap: 10, minHeight: 140 }}>
                     {proj.completionYear && (
-                      <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "#78716C", fontWeight: 700 }}>
+                      <div style={{ fontSize: 10, color: "#78716C", fontWeight: 700 }}>
                         ▸ {proj.completionYear}
                       </div>
                     )}
@@ -251,7 +251,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
                       {proj.name}
                     </div>
                     {customerName && (
-                      <div style={{ fontSize: 13, color: "#F59E0B", fontWeight: 600, letterSpacing: "0.02em" }}>
+                      <div style={{ fontSize: 13, color: "#F59E0B", fontWeight: 600 }}>
                         {customerName}
                       </div>
                     )}
@@ -261,7 +261,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             </div>
 
             <div style={{ textAlign: "center", marginTop: 40 }}>
-              <p style={{ fontSize: 13, color: "#78716C", margin: 0, letterSpacing: "0.05em" }}>
+              <p style={{ fontSize: 13, color: "#78716C", margin: 0 }}>
                 Looking for a reference? <a href="#quote" style={{ color: "#F59E0B", fontWeight: 700 }}>Reach out</a> and we'll connect you with a past customer.
               </p>
             </div>
@@ -274,7 +274,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
         <section id="testimonials" style={{ background: "#FAFAF9", padding: "100px 32px" }}>
           <div style={{ maxWidth: 1280, margin: "0 auto" }}>
             <div style={{ textAlign: "center", marginBottom: 50 }}>
-              <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ WHAT PARTNERS SAY</div>
+              <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ WHAT PARTNERS SAY</div>
               <h2 style={{ fontSize: "clamp(32px, 4.5vw, 46px)", fontWeight: 900, margin: "0 0 16px", letterSpacing: "-0.02em" }}>
                 In their words.
               </h2>
@@ -304,7 +304,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
 
                   {/* Attribution */}
                   <div style={{ borderTop: "1px solid #E7E5E4", paddingTop: 14, marginTop: 4 }}>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#1C1917", letterSpacing: "0.01em" }}>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: "#1C1917" }}>
                       {t.authorName}
                     </div>
                     {(t.authorRole || t.authorCompany) && (
@@ -324,7 +324,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <section id="quote" style={{ background: "#FAFAF9", padding: "100px 32px", borderTop: "1px solid #E7E5E4", borderBottom: "1px solid #E7E5E4" }}>
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 50 }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ REQUEST A QUOTE</div>
+            <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ REQUEST A QUOTE</div>
             <h2 style={{ fontSize: "clamp(32px, 4.5vw, 48px)", fontWeight: 900, margin: "0 0 16px", letterSpacing: "-0.02em" }}>
               Tell us about your job.
             </h2>
@@ -372,7 +372,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
                 <label style={publicLabelStyle}>Notes</label>
                 <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Anything else we should know — special access, scheduling constraints, etc." style={{ ...publicInputStyle, minHeight: 100, resize: "vertical" }} />
               </div>
-              <button onClick={handleSubmit} disabled={submitting} style={{ marginTop: 28, width: "100%", padding: "18px 32px", background: submitting ? "#A8A29E" : "#F59E0B", color: "#1C1917", fontWeight: 800, fontSize: 15, letterSpacing: "0.05em", border: "none", cursor: submitting ? "wait" : "pointer", borderRadius: 2 }}>
+              <button onClick={handleSubmit} disabled={submitting} style={{ marginTop: 28, width: "100%", padding: "18px 32px", background: submitting ? "#A8A29E" : "#F59E0B", color: "#1C1917", fontWeight: 800, fontSize: 15, border: "none", cursor: submitting ? "wait" : "pointer", borderRadius: 2 }}>
                 {submitting ? "SENDING..." : "SUBMIT QUOTE REQUEST"} <ArrowRight size={16} style={{ marginLeft: 8, verticalAlign: "middle" }} />
               </button>
             </div>
@@ -384,7 +384,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
       <section id="contact" style={{ background: "#FFF", padding: "100px 32px" }}>
         <div style={{ maxWidth: 1280, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 40 }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: "0.2em", color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ GET IN TOUCH</div>
+            <div style={{ fontSize: 11, color: "#F59E0B", fontWeight: 700, marginBottom: 16 }}>▸ GET IN TOUCH</div>
             <h2 style={{ fontSize: "clamp(28px, 4vw, 40px)", fontWeight: 900, margin: "0 0 20px", letterSpacing: "-0.02em" }}>Contact us.</h2>
             <p style={{ fontSize: 16, color: "#57534E", lineHeight: 1.6, margin: 0 }}>
               Dispatch is available during business hours. For urgent bids or after-hours work, leave a message and we'll get back to you fast.
@@ -392,20 +392,20 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
           </div>
           <div>
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>PHONE</div>
+              <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 8 }}>PHONE</div>
               <a href="tel:+16268145541" style={{ fontSize: 22, fontWeight: 800, color: "#1C1917", textDecoration: "none" }}>(626) 814-5541</a>
             </div>
             <div style={{ marginBottom: 24 }}>
-              <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>EMAIL</div>
+              <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 8 }}>EMAIL</div>
               <a href="mailto:office@4brotherstruck.com" style={{ fontSize: 16, fontWeight: 600, color: "#1C1917", textDecoration: "none" }}>office@4brotherstruck.com</a>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>ADDRESS</div>
+              <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 8 }}>ADDRESS</div>
               <div style={{ fontSize: 16, color: "#1C1917", fontWeight: 600, lineHeight: 1.5 }}>Bay Point, CA 94565</div>
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 11, color: "#78716C", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 12 }}>HOURS</div>
+            <div style={{ fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 12 }}>HOURS</div>
             <div style={{ fontSize: 15, color: "#1C1917", lineHeight: 1.8 }}>
               <div><strong>Mon–Fri</strong> &nbsp;&nbsp; 6:00 AM – 6:00 PM</div>
               <div><strong>Sat</strong> &nbsp;&nbsp; By appointment</div>
@@ -422,11 +422,11 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
             <div style={{ position: "relative", width: 36, height: 36, background: "#F59E0B", color: "#1C1917", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15, letterSpacing: "-0.06em", fontFamily: "Arial, sans-serif", borderRadius: 2 }}>
               4B
             </div>
-            <div style={{ fontSize: 12, color: "#D6D3D1", letterSpacing: "0.08em" }}>© 2026 · 4 BROTHERS TRUCKING, LLC</div>
+            <div style={{ fontSize: 12, color: "#D6D3D1" }}>© 2026 · 4 BROTHERS TRUCKING, LLC</div>
           </div>
           <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-            <button onClick={onStaffLogin} style={{ background: "transparent", border: "none", color: "#78716C", fontSize: 11, letterSpacing: "0.1em", cursor: "pointer", textTransform: "uppercase", fontWeight: 600 }}>Staff Login</button>
-            <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "#78716C" }}>USDOT · DBE · MBE · SB-PW CERTIFIED</div>
+            <button onClick={onStaffLogin} style={{ background: "transparent", border: "none", color: "#78716C", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>Staff Login</button>
+            <div style={{ fontSize: 11, color: "#78716C" }}>USDOT · DBE · MBE · SB-PW CERTIFIED</div>
           </div>
         </div>
       </footer>
@@ -436,7 +436,7 @@ export const PublicSite = ({ onQuoteSubmit, onStaffLogin }) => {
 
 // Styles reused across PublicSite form
 const navLinkStyle = { fontSize: 14, color: "#57534E", textDecoration: "none", fontWeight: 500, padding: "6px 2px" };
-const publicLabelStyle = { display: "block", fontSize: 11, letterSpacing: "0.08em", color: "#78716C", fontWeight: 700, marginBottom: 6, textTransform: "uppercase" };
+const publicLabelStyle = { display: "block", fontSize: 11, color: "#78716C", fontWeight: 700, marginBottom: 6 };
 const publicInputStyle = { width: "100%", padding: "11px 14px", fontSize: 15, border: "1.5px solid #D6D3D1", borderRadius: 2, fontFamily: "inherit", color: "#1C1917", background: "#FFF" };
 const publicField = (label, value, onChange, placeholder = "", type = "text") => (
   <div>

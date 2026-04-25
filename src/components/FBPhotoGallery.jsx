@@ -101,12 +101,12 @@ export const FBPhotoGallery = ({
     <div style={{ display: "grid", gap: 16 }}>
       {/* Header with contextual title */}
       {title && (
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ {title}</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>▸ {title}</div>
       )}
 
       {/* Filter bar */}
       <div className="fbt-card" style={{ padding: 14, display: "grid", gap: 10 }}>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ FILTERS</div>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>▸ FILTERS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
           {!initialDispatchId && (
             <div>
@@ -174,7 +174,7 @@ export const FBPhotoGallery = ({
       </div>
 
       {/* Summary */}
-      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.05em" }}>
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
         ▸ {filteredFBs.length} FB{filteredFBs.length !== 1 ? "S" : ""} · {totalPhotoCount} PHOTO{totalPhotoCount !== 1 ? "S" : ""} MATCHING
       </div>
 
@@ -194,7 +194,7 @@ export const FBPhotoGallery = ({
             const ts = fb.submittedAt || fb.approvedAt || fb.createdAt || null;
             return (
               <div key={fb.id} className="fbt-card" style={{ padding: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10, fontSize: 12 }}>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
                     <strong style={{ color: "var(--steel)", fontSize: 13 }}>FB#{fb.freightBillNumber || "—"}</strong>
                     <span style={{ color: "var(--concrete)" }}>

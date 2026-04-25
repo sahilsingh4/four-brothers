@@ -149,7 +149,7 @@ const PublicSite = lazy(() => import("./components/PublicSite").then((m) => ({ d
 // be visible longer than the load itself on most connections.
 const RouteLoading = () => (
   <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-    <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em", fontSize: 12 }}>▸ LOADING…</div>
+    <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", fontSize: 12 }}>▸ LOADING…</div>
   </div>
 );
 
@@ -1043,7 +1043,7 @@ const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, proj
           <Search size={18} />
           <div>
             <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1 }}>SEARCH FREIGHT BILLS</div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", marginTop: 2, letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", marginTop: 2 }}>
               ▸ BY FB# · DATE · CUSTOMER · PROJECT · STATUS — WITH PHOTOS
             </div>
           </div>
@@ -1223,7 +1223,7 @@ const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, proj
                                 style={{
                                   width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center",
                                   background: "var(--steel)", color: "var(--cream)", fontSize: 12, fontWeight: 700,
-                                  cursor: "pointer", fontFamily: "JetBrains Mono, monospace",
+                                  cursor: "pointer",
                                 }}
                                 onClick={() => setEditing(fb)}
                                 title="Open to see all photos"
@@ -1713,7 +1713,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
   const fieldCheckbox = (key, label) => (
     <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", background: fieldsInclude[key] ? "#FEF3C7" : "#F5F5F4", border: "1.5px solid " + (fieldsInclude[key] ? "var(--hazard-deep)" : "var(--concrete)"), cursor: "pointer", fontSize: 11 }}>
       <input type="checkbox" checked={!!fieldsInclude[key]} onChange={() => toggleField(key)} />
-      <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.05em" }}>{label}</span>
+      <span className="fbt-mono" style={{ fontSize: 10 }}>{label}</span>
     </label>
   );
 
@@ -1722,7 +1722,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
         <div style={{ padding: "16px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.12em" }}>▸ REPORTS</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>▸ REPORTS</div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "3px 0 0" }}>FB ARCHIVE PDF</h3>
           </div>
           <button onClick={onClose} className="btn-ghost" style={{ borderColor: "var(--cream)", color: "var(--cream)" }}>
@@ -1733,7 +1733,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
         <div style={{ padding: 20, display: "grid", gap: 16 }}>
           {/* Filters */}
           <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ FILTERS</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ FILTERS</div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
               <div>
@@ -1778,7 +1778,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
                 ].map(({ k, l }) => (
                   <label key={k} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", background: statusFilter[k] ? "#FEF3C7" : "#FFF", border: "1.5px solid " + (statusFilter[k] ? "var(--hazard-deep)" : "var(--concrete)"), cursor: "pointer", fontSize: 11 }}>
                     <input type="checkbox" checked={!!statusFilter[k]} onChange={() => toggleStatus(k)} />
-                    <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.05em" }}>{l}</span>
+                    <span className="fbt-mono" style={{ fontSize: 10 }}>{l}</span>
                   </label>
                 ))}
               </div>
@@ -1787,7 +1787,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
 
           {/* Field checkboxes */}
           <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ INCLUDE IN HEADER STRIP</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ INCLUDE IN HEADER STRIP</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {fieldCheckbox("date", "DATE")}
               {fieldCheckbox("fbNumber", "FB #")}
@@ -1812,7 +1812,7 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
               <div className="fbt-display" style={{ fontSize: 20 }}>
                 {matchedFbs.length} FB{matchedFbs.length !== 1 ? "s" : ""} MATCH
               </div>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.08em", marginTop: 2 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
                 {matchedFbs.length + totalPhotos} TOTAL PAGE{(matchedFbs.length + totalPhotos) !== 1 ? "S" : ""} · {totalPhotos} SCALE TICKET{totalPhotos !== 1 ? "S" : ""}
               </div>
             </div>
@@ -1922,18 +1922,18 @@ const RecoveryTab = ({ onToast }) => {
       <div key={`${type}-${id}`} style={{ padding: "12px 14px", background: expired ? "#FEF2F2" : "#FAFAF9", border: `1.5px solid ${expired ? "var(--safety)" : "var(--concrete)"}`, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 240 }}>
           <div className="fbt-display" style={{ fontSize: 14, margin: 0 }}>{title}</div>
-          {sub && <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3, letterSpacing: "0.04em" }}>{sub}</div>}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, color: "var(--concrete)", letterSpacing: "0.06em", marginTop: 6, textTransform: "uppercase" }}>
+          {sub && <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>{sub}</div>}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
             <span>DELETED {fmtDeletedAt(deletedAt)}</span>
             {deletedBy && <span>· BY {deletedBy}</span>}
             {deleteReason && <span>· "{deleteReason}"</span>}
           </div>
           {expired ? (
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginTop: 6, fontWeight: 700 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", marginTop: 6, fontWeight: 700 }}>
               ⚠ EXPIRED — WILL AUTO-PURGE ON NEXT APP BOOT
             </div>
           ) : days !== null && days <= 7 && (
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", marginTop: 6, fontWeight: 700 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginTop: 6, fontWeight: 700 }}>
               ⏱ PURGES IN {days} DAY{days !== 1 ? "S" : ""}
             </div>
           )}
@@ -1954,12 +1954,12 @@ const RecoveryTab = ({ onToast }) => {
     <div className="fbt-card" style={{ padding: 20 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14, paddingBottom: 8, borderBottom: "2px solid var(--steel)" }}>
         <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>{title}</h3>
-        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", fontWeight: 700 }}>
           {items.length} ITEM{items.length !== 1 ? "S" : ""}
         </span>
       </div>
       {items.length === 0 ? (
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.08em", padding: "16px 0", fontStyle: "italic" }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "16px 0", fontStyle: "italic" }}>
           NOTHING HERE — NO {title.replace("DELETED ", "")} DELETED
         </div>
       ) : (
@@ -1978,7 +1978,7 @@ const RecoveryTab = ({ onToast }) => {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
         <h2 className="fbt-display" style={{ fontSize: 22, margin: 0 }}>RECOVERY</h2>
-        <span className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+        <span className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)" }}>
           SOFT-DELETED ITEMS · RECOVERABLE FOR 30 DAYS
         </span>
         <button onClick={refreshAll} disabled={loading} className="btn-ghost" style={{ marginLeft: "auto", fontSize: 11, padding: "6px 12px" }}>
@@ -2014,13 +2014,13 @@ const RecoveryTab = ({ onToast }) => {
 
       {loading ? (
         <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
-          <div className="fbt-mono anim-roll" style={{ fontSize: 13, letterSpacing: "0.2em", color: "var(--hazard-deep)" }}>▸ LOADING RECOVERY DATA…</div>
+          <div className="fbt-mono anim-roll" style={{ fontSize: 13, color: "var(--hazard-deep)" }}>▸ LOADING RECOVERY DATA…</div>
         </div>
       ) : totalDeleted === 0 ? (
         <div className="fbt-card" style={{ padding: 48, textAlign: "center", color: "var(--concrete)" }}>
           <CheckCircle2 size={32} style={{ opacity: 0.4, marginBottom: 8, color: "var(--good)" }} />
           <div className="fbt-display" style={{ fontSize: 14 }}>NOTHING IN RECOVERY</div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.08em", marginTop: 6 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 6 }}>
             WHEN YOU DELETE DISPATCHES, FBS, INVOICES, OR QUOTES, THEY'LL APPEAR HERE FOR 30 DAYS
           </div>
         </div>
@@ -2227,7 +2227,7 @@ const PhotoGalleryPanel = ({
 
       {/* Summary + print */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.05em" }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
           ▸ {fbsWithPhotos.length} FB{fbsWithPhotos.length !== 1 ? "s" : ""} · {totalPhotos} photo{totalPhotos !== 1 ? "s" : ""}
         </div>
         {totalPhotos > 0 && (
@@ -2289,7 +2289,7 @@ const PhotoGalleryPanel = ({
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); downloadPhoto(photo, fb); }}
-                        style={{ position: "absolute", top: 4, right: 4, padding: "3px 6px", background: "rgba(0,0,0,0.6)", border: "none", color: "#FFF", cursor: "pointer", fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}
+                        style={{ position: "absolute", top: 4, right: 4, padding: "3px 6px", background: "rgba(0,0,0,0.6)", border: "none", color: "#FFF", cursor: "pointer", fontSize: 10 }}
                         title="Download"
                       >
                         <Download size={10} />
@@ -2319,7 +2319,7 @@ const PhotoGalleryModal = ({ title, onClose, ...galleryProps }) => {
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 980, maxHeight: "95vh", overflowY: "auto" }}>
         <div style={{ padding: "16px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>PHOTO GALLERY</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>PHOTO GALLERY</div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{title}</h3>
           </div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
@@ -2640,7 +2640,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
       {/* Analytics panel */}
       {showAnalytics && (
         <div className="fbt-card" style={{ padding: 20, background: "linear-gradient(135deg, #FFF, #F5F5F4)", border: "2px solid var(--steel)" }}>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 14, fontWeight: 700 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 14, fontWeight: 700 }}>
             ▸ PURSUIT ANALYTICS
           </div>
 
@@ -2653,7 +2653,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
               {/* Headline metrics */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 20 }}>
                 <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--good)", borderLeft: "4px solid var(--good)" }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>WIN RATE</div>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>WIN RATE</div>
                   <div className="fbt-display" style={{ fontSize: 26, color: "var(--good)", marginTop: 4 }}>
                     {analytics.winRatePct != null ? `${analytics.winRatePct.toFixed(0)}%` : "—"}
                   </div>
@@ -2663,7 +2663,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                 </div>
 
                 <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--steel)", borderLeft: "4px solid var(--steel)" }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>REVENUE WON</div>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>REVENUE WON</div>
                   <div className="fbt-display" style={{ fontSize: 22, color: "var(--steel)", marginTop: 4 }}>
                     {fmt$(analytics.revenueWon)}
                   </div>
@@ -2673,7 +2673,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                 </div>
 
                 <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--hazard-deep)", borderLeft: "4px solid var(--hazard-deep)" }}>
-                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>MARGIN CAPTURED</div>
+                  <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>MARGIN CAPTURED</div>
                   <div className="fbt-display" style={{ fontSize: 22, color: "var(--hazard-deep)", marginTop: 4 }}>
                     {fmt$(analytics.marginOnWins)}
                   </div>
@@ -2684,7 +2684,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
 
                 {analytics.avgLossGap != null && (
                   <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--safety)", borderLeft: "4px solid var(--safety)" }}>
-                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>AVG LOSS GAP</div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>AVG LOSS GAP</div>
                     <div className="fbt-display" style={{ fontSize: 20, color: "var(--safety)", marginTop: 4 }}>
                       {fmt$(analytics.avgLossGap)}
                     </div>
@@ -2697,20 +2697,20 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
 
               {/* Pipeline funnel */}
               <div style={{ marginBottom: 20 }}>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PIPELINE FUNNEL</div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ PIPELINE FUNNEL</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))", gap: 2 }}>
                   {BID_STATUSES.map((s) => {
                     const count = analytics.funnel[s.value] || 0;
                     return (
                       <div key={s.value} style={{ padding: 8, background: s.bg, borderLeft: `3px solid ${s.color}`, textAlign: "center" }}>
-                        <div style={{ fontSize: 18, color: s.color, fontWeight: 700, fontFamily: "Archivo Black, sans-serif" }}>{count}</div>
-                        <div className="fbt-mono" style={{ fontSize: 9, color: s.color, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>{s.label}</div>
+                        <div style={{ fontSize: 18, color: s.color, fontWeight: 700 }}>{count}</div>
+                        <div className="fbt-mono" style={{ fontSize: 9, color: s.color, fontWeight: 700, marginTop: 2 }}>{s.label}</div>
                       </div>
                     );
                   })}
                 </div>
                 {analytics.submissionToAwardPct != null && (
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 8, letterSpacing: "0.05em" }}>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 8 }}>
                     ▸ SUBMISSION → AWARD CONVERSION: <strong style={{ color: "var(--good)" }}>{analytics.submissionToAwardPct.toFixed(0)}%</strong>
                   </div>
                 )}
@@ -2719,16 +2719,16 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
               {/* Agency performance breakdown */}
               {analytics.agencyStats.length > 0 && (
                 <div>
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PERFORMANCE BY AGENCY</div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ PERFORMANCE BY AGENCY</div>
                   <div style={{ background: "#FFF", border: "1px solid var(--steel)" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                       <thead>
                         <tr style={{ background: "var(--steel)", color: "var(--cream)" }}>
-                          <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 10, letterSpacing: "0.05em" }}>AGENCY</th>
-                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>DECIDED</th>
-                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>WON</th>
-                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>WIN %</th>
-                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>REVENUE</th>
+                          <th style={{ padding: "8px 12px", textAlign: "left", fontSize: 10 }}>AGENCY</th>
+                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10 }}>DECIDED</th>
+                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10 }}>WON</th>
+                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10 }}>WIN %</th>
+                          <th style={{ padding: "8px 12px", textAlign: "right", fontSize: 10 }}>REVENUE</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2768,7 +2768,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
           type="button"
           onClick={() => setStatusFilter("all")}
           style={{
-            padding: "6px 12px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+            padding: "6px 12px", fontSize: 11, fontWeight: 700,
             background: statusFilter === "all" ? "var(--steel)" : "#FFF",
             color: statusFilter === "all" ? "var(--cream)" : "var(--steel)",
             border: "1.5px solid var(--steel)",
@@ -2783,7 +2783,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
             type="button"
             onClick={() => setStatusFilter(s.value)}
             style={{
-              padding: "6px 12px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              padding: "6px 12px", fontSize: 11, fontWeight: 700,
               background: statusFilter === s.value ? s.color : "#FFF",
               color: statusFilter === s.value ? "#FFF" : s.color,
               border: `1.5px solid ${s.color}`,
@@ -2801,7 +2801,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
         <div className="fbt-card" style={{ padding: 40, textAlign: "center" }}>
           <FileText size={40} style={{ color: "var(--concrete)", margin: "0 auto 12px", display: "block" }} />
           <div className="fbt-display" style={{ fontSize: 16, marginBottom: 6 }}>NO BIDS YET</div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.05em" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
             {bids.length === 0 ? "CLICK 'NEW BID' TO TRACK YOUR FIRST RFP" : "NO BIDS MATCH THESE FILTERS"}
           </div>
         </div>
@@ -2828,16 +2828,16 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 260 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-                      <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: s.color, color: "#FFF", fontWeight: 700, letterSpacing: "0.05em" }}>
+                      <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: s.color, color: "#FFF", fontWeight: 700 }}>
                         {s.label}
                       </span>
                       {b.priority === "high" && (
-                        <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: "var(--safety)", color: "#FFF", fontWeight: 700, letterSpacing: "0.05em" }}>
+                        <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: "var(--safety)", color: "#FFF", fontWeight: 700 }}>
                           ★ HIGH
                         </span>
                       )}
                       {b.rfbNumber && (
-                        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, letterSpacing: "0.05em" }}>
+                        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700 }}>
                           {b.rfbNumber}
                         </span>
                       )}
@@ -2848,7 +2848,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                     <div className="fbt-display" style={{ fontSize: 16, marginBottom: 2 }}>{b.title}</div>
                     {b.agency && <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>▸ {b.agency}</div>}
                   </div>
-                  <div style={{ textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
+                  <div style={{ textAlign: "right", fontSize: 11 }}>
                     {b.ourBidAmount ? (
                       <div style={{ fontSize: 14, fontWeight: 700, color: "var(--steel)" }}>{fmt$(b.ourBidAmount)}</div>
                     ) : b.estimatedValue ? (
@@ -2871,7 +2871,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                   const pct = Math.round((done / items.length) * 100);
                   const allDone = done === items.length;
                   return (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, fontSize: 11 }}>
                       <div style={{ flex: 1, maxWidth: 140, height: 4, background: "#E7E5E4", overflow: "hidden" }}>
                         <div style={{ height: "100%", width: `${pct}%`, background: allDone ? "var(--good)" : "var(--hazard)" }} />
                       </div>
@@ -2884,7 +2884,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
                 {(b.tags || []).length > 0 && (
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 8 }}>
                     {b.tags.map((t) => (
-                      <span key={t} style={{ padding: "1px 6px", background: "#F5F5F4", color: "var(--concrete)", fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>
+                      <span key={t} style={{ padding: "1px 6px", background: "#F5F5F4", color: "var(--concrete)", fontSize: 10 }}>
                         {t}
                       </span>
                     ))}
@@ -3101,7 +3101,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
             type="button"
             onClick={() => setBasis("accrual")}
             style={{
-              padding: "6px 12px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              padding: "6px 12px", fontSize: 10, fontWeight: 700,
               background: basis === "accrual" ? "var(--steel)" : "#FFF",
               color: basis === "accrual" ? "var(--cream)" : "var(--steel)",
               border: "none", cursor: "pointer",
@@ -3112,7 +3112,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
             type="button"
             onClick={() => setBasis("cash")}
             style={{
-              padding: "6px 12px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              padding: "6px 12px", fontSize: 10, fontWeight: 700,
               background: basis === "cash" ? "var(--steel)" : "#FFF",
               color: basis === "cash" ? "var(--cream)" : "var(--steel)",
               border: "none", borderLeft: "1.5px solid var(--steel)", cursor: "pointer",
@@ -3136,21 +3136,21 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
         return (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 16 }}>
             <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--good)", borderLeft: "4px solid var(--good)" }}>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>REVENUE · {monthCount}MO</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>REVENUE · {monthCount}MO</div>
               <div className="fbt-display" style={{ fontSize: 22, color: "var(--good)", marginTop: 4 }}>{fmt$(totalRevenue)}</div>
             </div>
             <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--safety)", borderLeft: "4px solid var(--safety)" }}>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>DIRECT COSTS</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>DIRECT COSTS</div>
               <div className="fbt-display" style={{ fontSize: 22, color: "var(--safety)", marginTop: 4 }}>{fmt$(totals.directCosts)}</div>
             </div>
             <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--steel)", borderLeft: `4px solid ${totalMargin >= 0 ? "var(--steel)" : "var(--safety)"}` }}>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>GROSS MARGIN</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>GROSS MARGIN</div>
               <div className="fbt-display" style={{ fontSize: 22, color: totalMargin >= 0 ? "var(--steel)" : "var(--safety)", marginTop: 4 }}>{fmt$(totalMargin)}</div>
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>{totalMarginPct.toFixed(1)}%</div>
             </div>
             {totals.brokerageCaptured > 0 && (
               <div style={{ padding: 12, background: "#FFF", border: "1.5px solid var(--hazard-deep)", borderLeft: "4px solid var(--hazard-deep)" }}>
-                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>BROKERAGE KEPT</div>
+                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>BROKERAGE KEPT</div>
                 <div className="fbt-display" style={{ fontSize: 22, color: "var(--hazard-deep)", marginTop: 4 }}>{fmt$(totals.brokerageCaptured)}</div>
               </div>
             )}
@@ -3160,16 +3160,16 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
 
       {/* Monthly table */}
       <div style={{ background: "#FFF", border: "1.5px solid var(--steel)", overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "JetBrains Mono, monospace", minWidth: 600 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 600 }}>
           <thead>
             <tr style={{ background: "var(--steel)", color: "var(--cream)" }}>
-              <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, letterSpacing: "0.05em" }}>MONTH</th>
-              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>REVENUE</th>
-              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>COSTS</th>
-              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>MARGIN</th>
-              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>%</th>
-              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>BROK</th>
-              <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em", width: 40 }}></th>
+              <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10 }}>MONTH</th>
+              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>REVENUE</th>
+              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>COSTS</th>
+              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>MARGIN</th>
+              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>%</th>
+              <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>BROK</th>
+              <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, width: 40 }}></th>
             </tr>
           </thead>
           <tbody>
@@ -3212,7 +3212,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
                         <div style={{ padding: 14, borderTop: "1px dashed var(--hazard-deep)" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                             <div>
-                              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6 }}>
+                              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>
                                 ▸ {expandedInvoices.length} INVOICE{expandedInvoices.length !== 1 ? "S" : ""} (ACCRUAL)
                               </div>
                               {expandedInvoices.length === 0 ? (
@@ -3232,7 +3232,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
                               )}
                             </div>
                             <div>
-                              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6 }}>
+                              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>
                                 ▸ {expandedFBs.length} FB PAYMENT{expandedFBs.length !== 1 ? "S" : ""}
                               </div>
                               {expandedFBs.length === 0 ? (
@@ -3262,7 +3262,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
           </tbody>
           <tfoot>
             <tr style={{ borderTop: "2px solid var(--steel)", background: "#F5F5F4" }}>
-              <td style={{ padding: "12px", fontWeight: 700, fontSize: 11, letterSpacing: "0.1em" }}>TOTALS</td>
+              <td style={{ padding: "12px", fontWeight: 700, fontSize: 11 }}>TOTALS</td>
               <td style={{ padding: "12px", textAlign: "right", fontWeight: 700, color: "var(--good)" }}>
                 {fmt$(basis === "accrual" ? totals.accrualRevenue : totals.cashRevenue)}
               </td>
@@ -3293,7 +3293,7 @@ const MonthlyPLPanel = ({ invoices = [], freightBills = [], dispatches = [], con
         </table>
       </div>
 
-      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.05em", lineHeight: 1.6 }}>
+      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, lineHeight: 1.6 }}>
         ▸ ACCRUAL = INVOICE DATE · CASH = CUSTOMER PAYMENT DATE<br/>
         ▸ DIRECT COSTS = SUMS OF FB PAID AMOUNTS (WHAT YOU PAID SUBS/DRIVERS)<br/>
         ▸ BROKERAGE KEPT = MARGIN CAPTURED FROM SUBS WITH BROKERAGE APPLIED · APPROXIMATE<br/>
@@ -3387,19 +3387,19 @@ const AuditLogRow = ({ entry, showEntity = true }) => {
   return (
     <div className="fbt-card" style={{ padding: "10px 12px", borderLeft: `4px solid ${colors.color}` }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ padding: "2px 8px", background: colors.bg, color: colors.color, fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "JetBrains Mono, monospace", whiteSpace: "nowrap" }}>
+        <span style={{ padding: "2px 8px", background: colors.bg, color: colors.color, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
           {label.toUpperCase()}
         </span>
         {showEntity && entry.entityLabel && (
-          <span style={{ fontWeight: 700, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>{entry.entityLabel}</span>
+          <span style={{ fontWeight: 700, fontSize: 12 }}>{entry.entityLabel}</span>
         )}
-        <span style={{ fontSize: 11, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginLeft: "auto" }}>
+        <span style={{ fontSize: 11, color: "var(--concrete)", marginLeft: "auto" }}>
           {when.toLocaleDateString()} {when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
           {entry.actor && entry.actor !== "admin" && <span> · {entry.actor}</span>}
         </span>
       </div>
       {meta && (
-        <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", marginTop: 6, paddingLeft: 2 }}>
+        <div style={{ fontSize: 11, color: "var(--steel)", marginTop: 6, paddingLeft: 2 }}>
           ▸ {meta}
         </div>
       )}
@@ -3456,7 +3456,7 @@ const TestimonialModal = ({ testimonial, onSave, onClose, onToast }) => {
               rows={4}
               autoFocus
             />
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
               ▸ KEEP IT CONCISE — 1-3 SENTENCES READS BEST ON CARDS
             </div>
           </div>
@@ -3501,8 +3501,8 @@ const TestimonialModal = ({ testimonial, onSave, onClose, onToast }) => {
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
               <input type="checkbox" checked={!!draft.showOnWebsite} onChange={(e) => setDraft({ ...draft, showOnWebsite: e.target.checked })} style={{ width: 18, height: 18, cursor: "pointer", marginTop: 2 }} />
               <div>
-                <div className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.08em", fontWeight: 700 }}>SHOW ON PUBLIC WEBSITE</div>
-                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, fontFamily: "JetBrains Mono, monospace" }}>
+                <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>SHOW ON PUBLIC WEBSITE</div>
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
                   Uncheck to keep private (draft mode).
                 </div>
               </div>
@@ -3517,7 +3517,7 @@ const TestimonialModal = ({ testimonial, onSave, onClose, onToast }) => {
                   onChange={(e) => setDraft({ ...draft, displayOrder: Number(e.target.value) || 0 })}
                   style={{ width: 140 }}
                 />
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
                   ▸ LOWER NUMBERS SHOW FIRST
                 </div>
               </div>
@@ -3525,7 +3525,7 @@ const TestimonialModal = ({ testimonial, onSave, onClose, onToast }) => {
           </div>
 
           <details>
-            <summary style={{ cursor: "pointer", fontFamily: "Oswald, sans-serif", fontSize: 12, letterSpacing: "0.1em", color: "var(--concrete)", textTransform: "uppercase", fontWeight: 600 }}>▸ INTERNAL NOTES (admin only)</summary>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--concrete)", fontWeight: 600 }}>▸ INTERNAL NOTES (admin only)</summary>
             <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
@@ -3654,7 +3654,7 @@ const TestimonialsTab = ({ onToast }) => {
       </div>
 
       {loading ? (
-        <div className="fbt-card" style={{ padding: 40, textAlign: "center", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--concrete)" }}>
+        <div className="fbt-card" style={{ padding: 40, textAlign: "center", fontSize: 12, color: "var(--concrete)" }}>
           LOADING...
         </div>
       ) : filtered.length === 0 ? (
@@ -3664,7 +3664,7 @@ const TestimonialsTab = ({ onToast }) => {
             {items.length === 0 ? "NO TESTIMONIALS YET" : "NO MATCHES"}
           </div>
           {items.length === 0 && (
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.05em" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
               CLICK NEW TO ADD A CUSTOMER QUOTE
             </div>
           )}
@@ -3677,9 +3677,9 @@ const TestimonialsTab = ({ onToast }) => {
                 <div style={{ flex: 1, minWidth: 240 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
                     {t.showOnWebsite ? (
-                      <span style={{ padding: "2px 8px", background: "#DCFCE7", color: "#166534", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", fontFamily: "JetBrains Mono, monospace" }}>ON WEBSITE</span>
+                      <span style={{ padding: "2px 8px", background: "#DCFCE7", color: "#166534", fontSize: 9, fontWeight: 700 }}>ON WEBSITE</span>
                     ) : (
-                      <span style={{ padding: "2px 8px", background: "#F5F5F4", color: "var(--concrete)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", fontFamily: "JetBrains Mono, monospace" }}>DRAFT</span>
+                      <span style={{ padding: "2px 8px", background: "#F5F5F4", color: "var(--concrete)", fontSize: 9, fontWeight: 700 }}>DRAFT</span>
                     )}
                     {t.rating > 0 && (
                       <span style={{ fontSize: 12, color: "var(--hazard-deep)", letterSpacing: "0.5px" }}>
@@ -3690,7 +3690,7 @@ const TestimonialsTab = ({ onToast }) => {
                   <blockquote style={{ margin: 0, fontSize: 13, color: "var(--steel)", fontStyle: "italic", lineHeight: 1.5 }}>
                     "{t.quoteText.length > 180 ? t.quoteText.slice(0, 180) + "…" : t.quoteText}"
                   </blockquote>
-                  <div style={{ marginTop: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>
+                  <div style={{ marginTop: 8, fontSize: 12, color: "var(--concrete)" }}>
                     ▸ <strong style={{ color: "var(--steel)" }}>{t.authorName}</strong>
                     {t.authorRole && <span> · {t.authorRole}</span>}
                     {t.authorCompany && <span> · {t.authorCompany}</span>}
@@ -3843,14 +3843,14 @@ const AuditTab = ({ onToast }) => {
 
       {/* Feed */}
       {loading ? (
-        <div className="fbt-card" style={{ padding: 40, textAlign: "center", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--concrete)" }}>
+        <div className="fbt-card" style={{ padding: 40, textAlign: "center", fontSize: 12, color: "var(--concrete)" }}>
           LOADING AUDIT LOG...
         </div>
       ) : filtered.length === 0 ? (
         <div className="fbt-card" style={{ padding: 40, textAlign: "center" }}>
           <FileText size={40} style={{ color: "var(--concrete)", margin: "0 auto 12px", display: "block" }} />
           <div className="fbt-display" style={{ fontSize: 16, marginBottom: 6 }}>NO AUDIT ENTRIES</div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.05em" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
             {entries.length === 0 ? "ACTIONS WILL SHOW HERE AS YOU USE THE APP" : "NO ENTRIES MATCH FILTERS"}
           </div>
         </div>
@@ -4043,7 +4043,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
             type="button"
             onClick={() => setScope("drivers")}
             style={{
-              padding: "6px 14px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              padding: "6px 14px", fontSize: 10, fontWeight: 700,
               background: scope === "drivers" ? "var(--steel)" : "#FFF",
               color: scope === "drivers" ? "var(--cream)" : "var(--steel)",
               border: "none", cursor: "pointer",
@@ -4053,7 +4053,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
             type="button"
             onClick={() => setScope("subs")}
             style={{
-              padding: "6px 14px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em",
+              padding: "6px 14px", fontSize: 10, fontWeight: 700,
               background: scope === "subs" ? "var(--steel)" : "#FFF",
               color: scope === "subs" ? "var(--cream)" : "var(--steel)",
               border: "none", borderLeft: "1.5px solid var(--steel)", cursor: "pointer",
@@ -4085,17 +4085,17 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
         </div>
       ) : (
         <div style={{ background: "#FFF", border: "1.5px solid var(--steel)", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, fontFamily: "JetBrains Mono, monospace", minWidth: 720 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
             <thead>
               <tr style={{ background: "var(--steel)", color: "var(--cream)" }}>
-                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10, letterSpacing: "0.05em" }}>{scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"}</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>LOADS</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>TONS</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>REVENUE</th>
-                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10, letterSpacing: "0.05em" }}>MARGIN</th>
-                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em" }}>RELIABILITY</th>
-                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em" }}>PHOTOS</th>
-                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.05em", width: 40 }}></th>
+                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10 }}>{scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"}</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>LOADS</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>TONS</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>REVENUE</th>
+                <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>MARGIN</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10 }}>RELIABILITY</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10 }}>PHOTOS</th>
+                <th style={{ padding: "10px 12px", textAlign: "center", fontSize: 10, width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -4155,7 +4155,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
                       <tr>
                         <td colSpan={8} style={{ padding: 0, background: "#FFFBEB" }}>
                           <div style={{ padding: 14, borderTop: "1px dashed var(--hazard-deep)" }}>
-                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
                               ▸ RECENT LOADS ({Math.min(r.fbs.length, 15)} OF {r.fbs.length})
                             </div>
                             <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
@@ -4173,7 +4173,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
                                     <span style={{ flex: 1, minWidth: 140 }}>{d?.jobName?.slice(0, 40) || "—"}</span>
                                     {fb.tonnage > 0 && <span style={{ color: "var(--steel)" }}>{Number(fb.tonnage).toFixed(1)} tn</span>}
                                     {grossFromBilling > 0 && <span style={{ color: "var(--good)", fontWeight: 700, minWidth: 80, textAlign: "right" }}>{fmt$(grossFromBilling)}</span>}
-                                    <span style={{ padding: "1px 6px", fontSize: 9, background: fb.status === "approved" ? "#DCFCE7" : "#FEF3C7", color: fb.status === "approved" ? "#166534" : "#92400E", fontWeight: 700, letterSpacing: "0.05em" }}>
+                                    <span style={{ padding: "1px 6px", fontSize: 9, background: fb.status === "approved" ? "#DCFCE7" : "#FEF3C7", color: fb.status === "approved" ? "#166534" : "#92400E", fontWeight: 700 }}>
                                       {fb.status?.toUpperCase()}
                                     </span>
                                   </div>
@@ -4195,7 +4195,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
         </div>
       )}
 
-      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.05em", lineHeight: 1.6 }}>
+      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, lineHeight: 1.6 }}>
         ▸ REVENUE = WHAT CUSTOMER WAS BILLED FOR THIS {scope === "drivers" ? "DRIVER'S" : "SUB'S"} WORK (FROM BILLING LINES)<br/>
         ▸ MARGIN = REVENUE − DIRECT PAY COST (NOT INCLUDING OVERHEAD OR FUEL)<br/>
         ▸ RELIABILITY = SUBMITTED ÷ EXPECTED TRUCKS ON DISPATCHES THEY WERE ASSIGNED TO<br/>
@@ -4279,7 +4279,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
         <FileDown size={28} style={{ color: "var(--hazard-deep)" }} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <div className="fbt-display" style={{ fontSize: 18 }}>📂 FB ARCHIVE PDF</div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
             EXPORT FREIGHT BILLS + SCALE TICKETS BY CUSTOMER · DATE · PROJECT
           </div>
         </div>
@@ -4294,7 +4294,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
           <Receipt size={24} style={{ color: "var(--good)" }} />
           <div style={{ flex: 1, minWidth: 200 }}>
             <div className="fbt-display" style={{ fontSize: 18 }}>📄 CUSTOMER STATEMENT</div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
               EXPORT A/R STATEMENT FOR A CUSTOMER · RUNNING BALANCE · OPEN OR ALL INVOICES
             </div>
           </div>
@@ -4430,7 +4430,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
           <Calendar size={18} style={{ color: "var(--hazard-deep)" }} />
           <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>REPORT RANGE</h3>
-          <span className="fbt-mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--concrete)", letterSpacing: "0.08em" }}>
+          <span className="fbt-mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--concrete)" }}>
             {toISODate(from)} → {toISODate(to)}
           </span>
         </div>
@@ -4466,7 +4466,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
 
       {/* Core metrics */}
       <div>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ HEADLINE METRICS</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ HEADLINE METRICS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
           <div className="fbt-card" style={{ padding: 18 }}><div className="stat-num" style={{ fontSize: 36 }}>{report.openedCount}</div><div className="stat-label">Opened</div></div>
           <div className="fbt-card" style={{ padding: 18 }}><div className="stat-num" style={{ fontSize: 36 }}>{report.closedCount}</div><div className="stat-label">Closed</div></div>
@@ -4486,7 +4486,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
           <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>TOP CLIENTS BY TONNAGE</h3>
         </div>
         {report.topClients.length === 0 ? (
-          <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}>No data in this range</div>
+          <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No data in this range</div>
         ) : (
           <div style={{ display: "grid", gap: 6 }}>
             {(() => {
@@ -4495,7 +4495,7 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
                 <div key={i} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", gap: 10, alignItems: "center" }}>
                   <div className="fbt-display" style={{ fontSize: 16, color: i === 0 ? "var(--hazard-deep)" : "var(--concrete)" }}>{i + 1}</div>
                   <div>
-                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, marginBottom: 3 }}>{c.name}</div>
+                    <div style={{ fontSize: 13, marginBottom: 3 }}>{c.name}</div>
                     <div style={{ height: 6, background: "#E7E5E4" }}>
                       <div style={{ width: `${(c.tons / max) * 100}%`, height: "100%", background: i === 0 ? "var(--hazard)" : "var(--concrete)" }} />
                     </div>
@@ -4516,11 +4516,11 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
             <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>TOP SUB-CONTRACTORS</h3>
           </div>
           {report.topSubs.length === 0 ? (
-            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}>No sub-contractor activity</div>
+            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No sub-contractor activity</div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {report.topSubs.map((s, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i === report.topSubs.length - 1 ? "none" : "1px solid #E7E5E4", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i === report.topSubs.length - 1 ? "none" : "1px solid #E7E5E4", fontSize: 13 }}>
                   <span>{s.name}</span>
                   <strong>{s.count} dispatches</strong>
                 </div>
@@ -4535,11 +4535,11 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
             <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>QUARRY USAGE</h3>
           </div>
           {report.quarryUsage.length === 0 ? (
-            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}>No quarry-sourced jobs</div>
+            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No quarry-sourced jobs</div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {report.quarryUsage.map((q, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i === report.quarryUsage.length - 1 ? "none" : "1px solid #E7E5E4", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i === report.quarryUsage.length - 1 ? "none" : "1px solid #E7E5E4", fontSize: 13 }}>
                   <span>{q.name}</span>
                   <strong>{q.tons.toFixed(1)} tons</strong>
                 </div>
@@ -4557,11 +4557,11 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
             <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>NEW QUOTES ({report.quotesCount})</h3>
           </div>
           {report.quotesList.length === 0 ? (
-            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}>No new quotes</div>
+            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No new quotes</div>
           ) : (
             <div style={{ display: "grid", gap: 6 }}>
               {report.quotesList.slice(0, 8).map((q, i) => (
-                <div key={i} style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", padding: "6px 0", borderBottom: "1px solid #E7E5E4" }}>
+                <div key={i} style={{ fontSize: 12, padding: "6px 0", borderBottom: "1px solid #E7E5E4" }}>
                   <strong>{q.name}</strong>{q.company && ` · ${q.company}`}
                   <div style={{ color: "var(--concrete)", fontSize: 11, marginTop: 2 }}>{q.service} · {new Date(q.submittedAt).toLocaleDateString()}</div>
                 </div>
@@ -4576,11 +4576,11 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
             <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>INVOICES ({report.invoicesCount})</h3>
           </div>
           {report.invoicesList.length === 0 ? (
-            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", textAlign: "center" }}>No invoices generated</div>
+            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No invoices generated</div>
           ) : (
             <div style={{ display: "grid", gap: 6 }}>
               {report.invoicesList.map((inv, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: "JetBrains Mono, monospace", padding: "6px 0", borderBottom: "1px solid #E7E5E4" }}>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "6px 0", borderBottom: "1px solid #E7E5E4" }}>
                   <div><strong>{inv.num}</strong> · {inv.billTo}</div>
                   <div style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{fmt$(inv.total)}</div>
                 </div>
@@ -4597,11 +4597,11 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, logs, invoices, q
           <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>INCOMPLETE DISPATCHES</h3>
         </div>
         {report.incomplete.length === 0 ? (
-          <div style={{ padding: 14, background: "#D1FAE5", fontSize: 13, color: "var(--good)", fontFamily: "JetBrains Mono, monospace", textAlign: "center", fontWeight: 700 }}>✓ ALL DISPATCHES ACCOUNTED FOR</div>
+          <div style={{ padding: 14, background: "#D1FAE5", fontSize: 13, color: "var(--good)", textAlign: "center", fontWeight: 700 }}>✓ ALL DISPATCHES ACCOUNTED FOR</div>
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
             {report.incomplete.map((d, i) => (
-              <div key={i} style={{ padding: 10, border: "1.5px solid var(--safety)", background: "#FEE2E2", fontFamily: "JetBrains Mono, monospace", fontSize: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+              <div key={i} style={{ padding: 10, border: "1.5px solid var(--safety)", background: "#FEE2E2", fontSize: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                 <div>
                   <strong>#{d.code}</strong> · {d.jobName} · <span style={{ color: "var(--concrete)" }}>{fmtDate(d.date)}</span>
                 </div>
@@ -4792,7 +4792,7 @@ const DataTab = ({ state, setters, onToast }) => {
           ].map((s, i) => (
             <div key={i} style={{ padding: 14, border: "2px solid var(--steel)", background: "#FFF" }}>
               <div className="fbt-display" style={{ fontSize: 28, lineHeight: 1 }}>{s.v}</div>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 4 }}>{s.l}</div>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>{s.l}</div>
             </div>
           ))}
         </div>
@@ -4815,7 +4815,7 @@ const DataTab = ({ state, setters, onToast }) => {
             <p style={{ fontSize: 13, color: "var(--concrete)", margin: "0 0 14px", lineHeight: 1.5 }}>
               Everything in one file — can be restored later to bring all your data back exactly as it was.
             </p>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", cursor: "pointer", marginBottom: 14 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--concrete)", cursor: "pointer", marginBottom: 14 }}>
               <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} />
               INCLUDE {photosCount} SCALE TICKET PHOTOS {!includePhotos && photosCount > 0 && <span style={{ color: "var(--safety)" }}>(WILL BE LOST)</span>}
             </label>
@@ -4850,9 +4850,9 @@ const DataTab = ({ state, setters, onToast }) => {
           <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>RESTORE FROM BACKUP</h3>
         </div>
         <p style={{ fontSize: 13, color: "var(--concrete)", margin: "0 0 16px", lineHeight: 1.5 }}>
-          Load a <code style={{ background: "#F5F5F4", padding: "1px 6px", fontFamily: "JetBrains Mono, monospace" }}>.json</code> backup file to restore all data. Your current data will be <strong>replaced</strong>.
+          Load a <code style={{ background: "#F5F5F4", padding: "1px 6px" }}>.json</code> backup file to restore all data. Your current data will be <strong>replaced</strong>.
         </p>
-        <div style={{ padding: 12, background: "#FEE2E2", border: "1px solid var(--safety)", color: "var(--safety)", fontSize: 12, fontFamily: "JetBrains Mono, monospace", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ padding: 12, background: "#FEE2E2", border: "1px solid var(--safety)", color: "var(--safety)", fontSize: 12, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <AlertCircle size={14} /> WARNING: THIS OVERWRITES EVERYTHING. BACK UP CURRENT DATA FIRST IF YOU WANT TO KEEP IT.
         </div>
         <input ref={fileInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleFilePick} />
@@ -4863,7 +4863,7 @@ const DataTab = ({ state, setters, onToast }) => {
 
       {/* Info */}
       <div className="fbt-card" style={{ padding: 20, background: "#F5F5F4" }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ HOW BACKUPS WORK</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ HOW BACKUPS WORK</div>
         <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, lineHeight: 1.8, color: "var(--concrete)" }}>
           <li>A backup <strong>auto-downloads every time you tap Log Out</strong> — so you always have a recent copy</li>
           <li>Save backup files to <strong>Google Drive, iCloud, or Dropbox</strong> for off-device safety</li>
@@ -4904,7 +4904,7 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
             minWidth: 18, height: 18, padding: "0 5px",
             borderRadius: 9, fontSize: 10, fontWeight: 700,
             display: "flex", alignItems: "center", justifyContent: "center",
-            border: "2px solid var(--steel)", fontFamily: "JetBrains Mono, monospace",
+            border: "2px solid var(--steel)",
           }}>
             {count > 99 ? "99+" : count}
           </span>
@@ -4922,7 +4922,7 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
           }}>
             <div className="hazard-stripe-thin" style={{ height: 5 }} />
             <div style={{ padding: "14px 16px", borderBottom: "2px solid var(--steel)", display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--steel)", color: "var(--cream)" }}>
-              <div className="fbt-display" style={{ fontSize: 14, letterSpacing: "0.05em" }}>NOTIFICATIONS</div>
+              <div className="fbt-display" style={{ fontSize: 14 }}>NOTIFICATIONS</div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button
                   onClick={onToggleSound}
@@ -4944,7 +4944,7 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
             {count === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--concrete)" }}>
                 <Bell size={28} style={{ opacity: 0.3, marginBottom: 10 }} />
-                <div className="fbt-mono" style={{ fontSize: 11, letterSpacing: "0.1em" }}>ALL CAUGHT UP</div>
+                <div className="fbt-mono" style={{ fontSize: 11 }}>ALL CAUGHT UP</div>
                 <div style={{ fontSize: 11, marginTop: 4 }}>You'll be notified when subs upload freight bills.</div>
               </div>
             ) : (
@@ -4970,7 +4970,7 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
                       >
                         <div style={{ width: 8, height: 8, background: "var(--safety)", borderRadius: "50%", marginTop: 6, flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontFamily: "Archivo Black, sans-serif", fontSize: 13 }}>
+                          <div style={{ fontSize: 13 }}>
                             FB #{fb.freightBillNumber}
                             {fb.photos?.length > 0 && <span style={{ color: "var(--good)", fontSize: 11, marginLeft: 6 }}>📎{fb.photos.length}</span>}
                           </div>
@@ -5046,7 +5046,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
       <div style={{ background: "var(--steel)", color: "var(--cream)", borderBottom: "3px solid var(--hazard)" }}>
         <div style={{ maxWidth: 1400, margin: "0 auto", padding: "10px 12px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <Logo size="sm" />
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.15em", borderLeft: "1px solid var(--concrete)", paddingLeft: 16 }}>▸ INTERNAL CONSOLE · LIVE</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", borderLeft: "1px solid var(--concrete)", paddingLeft: 16 }}>▸ INTERNAL CONSOLE · LIVE</div>
           <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <NotificationBell
               unreadIds={unreadIds || []}
@@ -5924,7 +5924,7 @@ export default function App() {
     return (
       <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <GlobalStyles />
-        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em" }}>▸ LOADING…</div>
+        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)" }}>▸ LOADING…</div>
       </div>
     );
   }
@@ -5976,7 +5976,7 @@ export default function App() {
             <p style={{ color: "var(--concrete)", margin: "0 0 16px" }}>
               This dispatch has been closed. If you have a freight bill for this job, contact dispatch.
             </p>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ #{code}</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>▸ #{code}</div>
           </div>
         </div>
       );
@@ -6094,17 +6094,17 @@ export default function App() {
           <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
             <div style={{ padding: "16px 20px", background: "var(--safety)", color: "#FFF", display: "flex", alignItems: "center", gap: 10 }}>
               <AlertCircle size={22} />
-              <h3 className="fbt-display" style={{ fontSize: 17, margin: 0, letterSpacing: "0.05em" }}>SESSION IDLE</h3>
+              <h3 className="fbt-display" style={{ fontSize: 17, margin: 0 }}>SESSION IDLE</h3>
             </div>
             <div style={{ padding: 20, display: "grid", gap: 14 }}>
               <p style={{ fontSize: 14, margin: 0, lineHeight: 1.5 }}>
                 You've been inactive for 30 minutes. For security, we'll log you out in:
               </p>
               <div style={{ textAlign: "center", padding: "14px 0" }}>
-                <div style={{ fontFamily: "Archivo Black, sans-serif", fontSize: 56, color: idleCountdown <= 10 ? "var(--safety)" : "var(--steel)", lineHeight: 1 }}>
+                <div style={{ fontSize: 56, color: idleCountdown <= 10 ? "var(--safety)" : "var(--steel)", lineHeight: 1 }}>
                   {idleCountdown}
                 </div>
-                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginTop: 4 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
                   SECONDS
                 </div>
               </div>

@@ -72,11 +72,11 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
                       <div className="fbt-display" style={{ fontSize: 24 }}>{f.unit}</div>
-                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", textTransform: "uppercase", letterSpacing: "0.1em" }}>{f.type}</div>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>{f.type}</div>
                     </div>
-                    <div style={{ padding: "4px 10px", background: statusColor(f.status), color: "#FFF", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace", textTransform: "uppercase", letterSpacing: "0.1em" }}>● {f.status}</div>
+                    <div style={{ padding: "4px 10px", background: statusColor(f.status), color: "#FFF", fontSize: 10, fontWeight: 700 }}>● {f.status}</div>
                   </div>
-                  <div style={{ marginTop: 14, fontSize: 13, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>DRIVER ▸ {f.driver || "unassigned"}{f.driverId ? " · LINKED" : ""}</div>
+                  <div style={{ marginTop: 14, fontSize: 13, color: "var(--concrete)" }}>DRIVER ▸ {f.driver || "unassigned"}{f.driverId ? " · LINKED" : ""}</div>
                   {driverContacts.length > 0 && (
                     <div style={{ marginTop: 6 }}>
                       <select

@@ -831,7 +831,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
             <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680 }}>
               <div style={{ padding: "16px 22px", background: "var(--good)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>SEND DISPATCH TO TEAM</div>
+                  <div className="fbt-mono" style={{ fontSize: 10 }}>SEND DISPATCH TO TEAM</div>
                   <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>Order #{dispatch.code}</h3>
                   <div className="fbt-mono" style={{ fontSize: 10, opacity: 0.9, marginTop: 2 }}>
                     {dispatch.jobName} · {dispatch.date}
@@ -841,7 +841,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               </div>
 
               <div style={{ padding: 18 }}>
-                <div style={{ padding: 10, background: "#FEF3C7", border: "1px solid var(--hazard)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", marginBottom: 14, color: "var(--hazard-deep)", letterSpacing: "0.05em" }}>
+                <div style={{ padding: 10, background: "#FEF3C7", border: "1px solid var(--hazard)", fontSize: 11, marginBottom: 14, color: "var(--hazard-deep)" }}>
                   ▸ TAP TEXT OR EMAIL BELOW TO SEND EACH DRIVER/SUB THEIR DISPATCH INFO · MESSAGE IS PRE-FILLED · YOU STILL TAP SEND
                 </div>
 
@@ -933,7 +933,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                 return (
                                   <a
                                     href={uploadSmsHref}
-                                    style={{ padding: "8px 14px", fontSize: 11, background: "var(--good)", color: "#FFF", textDecoration: "none", fontFamily: "Oswald, sans-serif", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--good)" }}
+                                    style={{ padding: "8px 14px", fontSize: 11, background: "var(--good)", color: "#FFF", textDecoration: "none", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4, border: "2px solid var(--good)" }}
                                     title="Send just the FB upload link — shorter message"
                                   >
                                     <Upload size={12} /> UPLOAD LINK
@@ -966,7 +966,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
           <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div style={{ padding: "16px 22px", background: "var(--safety)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>OVERRIDE LOCK</div>
+                <div className="fbt-mono" style={{ fontSize: 10 }}>OVERRIDE LOCK</div>
                 <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{overrideTarget.label}</h3>
               </div>
               <button onClick={() => setOverrideTarget(null)} style={{ background: "transparent", border: "none", color: "#FFF", cursor: "pointer" }}><X size={20} /></button>
@@ -1196,7 +1196,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   }}
                   onClick={() => openOverride("assignments", "Assignments")}
                   >
-                    <div style={{ padding: 14, background: "#FFF", border: "2px solid var(--safety)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, textAlign: "center" }}>
+                    <div style={{ padding: 14, background: "#FFF", border: "2px solid var(--safety)", fontSize: 12, textAlign: "center" }}>
                       <Lock size={20} style={{ color: "var(--safety)", marginBottom: 6 }} />
                       <div style={{ fontWeight: 700, color: "var(--safety)" }}>ASSIGNMENTS LOCKED</div>
                       <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>CLICK TO OVERRIDE WITH REASON</div>
@@ -1357,7 +1357,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                               }}
                               style={{ cursor: "pointer" }}
                             />
-                            <label htmlFor={`send-rates-${idx}`} className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.05em", cursor: "pointer", userSelect: "none" }}>
+                            <label htmlFor={`send-rates-${idx}`} className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", cursor: "pointer", userSelect: "none" }}>
                               ▸ INCLUDE PAY RATE + MIN HOURS IN {a.kind === "driver" ? "DRIVER" : "SUB"} SMS/EMAIL
                             </label>
                           </div>
@@ -1370,7 +1370,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             const displayRows = Array.from({ length: truckCount }, (_, i) => startTimes[i] || { time: "", location: "" });
                             return (
                               <div style={{ marginTop: 8, padding: 8, background: "#FAFAF9", border: "1px dashed var(--concrete)" }}>
-                                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 6, fontWeight: 700 }}>
                                   ▸ START TIMES · {truckCount} TRUCK{truckCount !== 1 ? "S" : ""} (INCLUDED IN DISPATCH TEXT)
                                 </div>
                                 <div style={{ display: "grid", gap: 4 }}>
@@ -1477,7 +1477,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
 
               {/* CUSTOMER BILL RATE — what we charge the customer. Sub/driver pay rate is set per-assignment below. */}
               <div style={{ padding: 10, background: "#F0F9FF", border: "2px solid #0EA5E9", marginTop: 4 }}>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", fontWeight: 700, marginBottom: 8 }}>
                   ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {draft.projectId ? "(AUTO-FILLED FROM PROJECT DEFAULT WHERE APPLICABLE)" : ""}
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
@@ -1494,7 +1494,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     <input className="fbt-input" type="number" step="0.01" value={draft.ratePerLoad} onChange={(e) => setDraft({ ...draft, ratePerLoad: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 450.00" />
                   </div>
                 </div>
-                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6, letterSpacing: "0.05em" }}>
+                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6 }}>
                   ▸ SUB/DRIVER PAY RATE IS SET PER-ASSIGNMENT BELOW (SEPARATE FROM WHAT WE BILL CUSTOMER)
                 </div>
               </div>
@@ -1561,7 +1561,6 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         textDecoration: "none",
                         color: "var(--steel)",
                         fontSize: 13,
-                        fontFamily: "JetBrains Mono, monospace",
                       }}
                     >
                       <div style={{ flex: 1 }}>
@@ -1571,7 +1570,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         </div>
                         <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>{item.phone}</div>
                       </div>
-                      <div style={{ background: isSent ? "var(--good)" : "var(--hazard)", color: isSent ? "#FFF" : "var(--steel)", padding: "6px 10px", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em" }}>
+                      <div style={{ background: isSent ? "var(--good)" : "var(--hazard)", color: isSent ? "#FFF" : "var(--steel)", padding: "6px 10px", fontSize: 10, fontWeight: 700 }}>
                         {isSent ? "SENT ✓" : <><MessageSquare size={11} style={{ marginRight: 4, verticalAlign: "middle" }} /> TAP TO SEND</>}
                       </div>
                     </a>
@@ -1605,7 +1604,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
             <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 900 }}>
               <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>ORDER #{d.code}</div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>ORDER #{d.code}</div>
                   <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{d.jobName}</h3>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -1637,13 +1636,13 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               </div>
               <div style={{ padding: 24 }}>
                 <div style={{ background: "#FEF3C7", border: "2px solid var(--hazard)", padding: 16, marginBottom: 20 }}>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ MASTER LINK (ANYONE CAN UPLOAD)</div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ MASTER LINK (ANYONE CAN UPLOAD)</div>
                   <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
                     <QRCodeBlock url={shareUrl} size={150} label={`order-${d.code}`} onToast={onToast} />
                     <div style={{ flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 10 }}>
                       <div>
-                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>▸ LINK</div>
-                        <code style={{ display: "block", padding: "8px 12px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all" }}>{shareUrl}</code>
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 4 }}>▸ LINK</div>
+                        <code style={{ display: "block", padding: "8px 12px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 11, wordBreak: "break-all" }}>{shareUrl}</code>
                       </div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button className="btn-primary" onClick={() => copyLink(d.code)} style={{ padding: "8px 16px", fontSize: 11 }}><Share2 size={12} /> COPY LINK</button>
@@ -1690,7 +1689,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   return (
                     <div style={{ background: "#FFF", border: "2px solid var(--steel)", padding: 16, marginBottom: 20 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
                           ▸ PER-ASSIGNMENT LINKS ({assignmentRows.length})
                         </div>
                         {/* Send to All button */}
@@ -1748,7 +1747,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                 )}
                               </div>
                             </div>
-                            <code style={{ display: "block", padding: "6px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 8 }}>
+                            <code style={{ display: "block", padding: "6px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, wordBreak: "break-all", marginBottom: 8 }}>
                               {subUrl}
                             </code>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1783,7 +1782,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                               {smsLink && (
                                 <a
                                   href={smsLink}
-                                  style={{ padding: "5px 12px", fontSize: 10, textDecoration: "none", background: "var(--good)", color: "#FFF", fontFamily: "Oswald, sans-serif", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 3, border: "2px solid var(--good)" }}
+                                  style={{ padding: "5px 12px", fontSize: 10, textDecoration: "none", background: "var(--good)", color: "#FFF", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 3, border: "2px solid var(--good)" }}
                                   title="Texts just the FB upload link — no dispatch details. Use mid-day to remind drivers to upload."
                                 >
                                   <Upload size={11} style={{ marginRight: 3 }} /> SEND UPLOAD LINK
@@ -1809,13 +1808,13 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
 
                 {/* Client tracking links */}
                 <div style={{ background: "#FFF", border: "2px solid var(--steel)", padding: 16, marginBottom: 20 }}>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ CLIENT TRACKING LINKS (SEND TO CUSTOMER)</div>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ CLIENT TRACKING LINKS (SEND TO CUSTOMER)</div>
                   <div style={{ display: "grid", gap: 10 }}>
                     {/* Per-dispatch tracking link */}
                     <div>
-                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>▸ THIS JOB ONLY</div>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 4 }}>▸ THIS JOB ONLY</div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                        <code style={{ flex: 1, padding: "6px 10px", background: "var(--cream)", border: "1px solid var(--steel)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all" }}>
+                        <code style={{ flex: 1, padding: "6px 10px", background: "var(--cream)", border: "1px solid var(--steel)", fontSize: 11, wordBreak: "break-all" }}>
                           {`${window.location.origin}${window.location.pathname}#/track/${d.code}`}
                         </code>
                         <button
@@ -1836,11 +1835,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                       if (!ct) return null;
                       return (
                         <div>
-                          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 4 }}>
+                          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 4 }}>
                             ▸ ALL JOBS FOR {(d.clientName || d.subContractor).toUpperCase()}
                           </div>
                           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                            <code style={{ flex: 1, padding: "6px 10px", background: "var(--cream)", border: "1px solid var(--steel)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all" }}>
+                            <code style={{ flex: 1, padding: "6px 10px", background: "var(--cream)", border: "1px solid var(--steel)", fontSize: 11, wordBreak: "break-all" }}>
                               {`${window.location.origin}${window.location.pathname}#/client/${ct}`}
                             </code>
                             <button
@@ -1863,7 +1862,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 13, fontFamily: "JetBrains Mono, monospace", marginBottom: 20 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 13, marginBottom: 20 }}>
                   <div><strong>DATE:</strong> {fmtDate(d.date)}</div>
                   <div><strong>CLIENT:</strong> {d.clientName || "—"}</div>
                   <div><strong>SUB:</strong> {d.subContractor || "internal"}</div>
@@ -1939,10 +1938,10 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                       border: "2px solid " + (isReconciled ? "var(--good)" : mathBalances ? "var(--hazard)" : "var(--safety)"),
                       marginBottom: 20,
                     }}>
-                      <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700, color: isReconciled ? "var(--good)" : mathBalances ? "var(--hazard-deep)" : "var(--safety)" }}>
+                      <div className="fbt-mono" style={{ fontSize: 10, marginBottom: 8, fontWeight: 700, color: isReconciled ? "var(--good)" : mathBalances ? "var(--hazard-deep)" : "var(--safety)" }}>
                         {isReconciled ? "✓ ORDER RECONCILED" : mathBalances ? "▸ READY TO RECONCILE" : "▸ TRUCKS NEED RESOLUTION"}
                       </div>
-                      <div style={{ fontSize: 13, fontFamily: "JetBrains Mono, monospace", marginBottom: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
+                      <div style={{ fontSize: 13, marginBottom: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
                         <div><strong>EXPECTED:</strong> {expected}</div>
                         <div><strong>SUBMITTED:</strong> {submittedCount}</div>
                         <div><strong>NO-SHOW:</strong> {noShow}</div>
@@ -2006,7 +2005,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     </div>
                   );
                 })()}
-                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ SUBMITTED FREIGHT BILLS ({bills.length})</div>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ SUBMITTED FREIGHT BILLS ({bills.length})</div>
                 {bills.length === 0 ? (
                   <div style={{ padding: 32, textAlign: "center", border: "2px dashed var(--concrete)", color: "var(--concrete)" }}>
                     <FileText size={32} style={{ opacity: 0.4, marginBottom: 8 }} />
@@ -2024,7 +2023,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         <div style={{ padding: "12px 16px", background: "var(--surface)", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                           <div>
                             <div className="fbt-display" style={{ fontSize: 18 }}>FB #{fb.freightBillNumber}</div>
-                            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{fmtDateTime(fb.submittedAt)}</div>
+                            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>{fmtDateTime(fb.submittedAt)}</div>
                           </div>
                           <button className="btn-danger" onClick={() => removeFreightBill(fb.id)}><Trash2 size={12} /></button>
                         </div>
@@ -2054,7 +2053,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             </span>
                           )}
                         </div>
-                        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                        <div style={{ padding: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 12 }}>
                           <div><strong>DRIVER:</strong> {fb.driverName}</div>
                           <div><strong>TRUCK:</strong> {fb.truckNumber}</div>
                           {fb.material && <div><strong>MAT:</strong> {fb.material}</div>}
@@ -2066,7 +2065,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         {fb.notes && <div style={{ margin: "0 16px 14px", padding: 10, background: "var(--surface)", fontSize: 12, borderLeft: "3px solid var(--hazard)" }}>{fb.notes}</div>}
                         {fb.photos && fb.photos.length > 0 && (
                           <div style={{ padding: "0 16px 16px" }}>
-                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ {fb.photos.length} ATTACHMENT{fb.photos.length !== 1 ? "S" : ""}</div>
+                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ {fb.photos.length} ATTACHMENT{fb.photos.length !== 1 ? "S" : ""}</div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                               {fb.photos.map((p) => <img key={p.id} src={p.dataUrl} className="thumb" alt={p.name || "ticket"} onClick={() => setLightbox(p.dataUrl)} />)}
                             </div>
@@ -2095,11 +2094,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               {/* Day header */}
               <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10, paddingBottom: 8, borderBottom: "2px solid var(--steel)" }}>
                 <Calendar size={16} style={{ color: "var(--hazard-deep)" }} />
-                <h3 className="fbt-display" style={{ fontSize: 16, margin: 0, letterSpacing: "0.02em" }}>{dayLabel(group.date)}</h3>
-                <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>{dayLabel(group.date)}</h3>
+                <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
                   {group.date}
                 </span>
-                <span className="fbt-mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                <span className="fbt-mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--concrete)", fontWeight: 700 }}>
                   {group.orders.length} ORDER{group.orders.length !== 1 ? "S" : ""}
                 </span>
               </div>
@@ -2116,8 +2115,8 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     position: "absolute", top: 14, right: 14, zIndex: 2,
                     background: "var(--safety)", color: "#FFF",
                     padding: "4px 10px", border: "2px solid var(--steel)",
-                    fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700,
-                    letterSpacing: "0.08em", display: "flex", alignItems: "center", gap: 4,
+                    fontSize: 11, fontWeight: 700,
+                    display: "flex", alignItems: "center", gap: 4,
                     animation: "slideUp 0.3s ease-out",
                   }}>
                     <span style={{ width: 6, height: 6, background: "#FFF", borderRadius: "50%" }} />
@@ -2178,7 +2177,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     </div>
                   </div>
                   <div style={{ marginTop: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, color: "var(--concrete)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4, color: "var(--concrete)" }}>
                       <span>▸ {bills.length} / {d.trucksExpected} FREIGHT BILLS IN</span>
                       {bills.length >= d.trucksExpected && <span style={{ color: "var(--good)", fontWeight: 700 }}>✓ COMPLETE</span>}
                     </div>

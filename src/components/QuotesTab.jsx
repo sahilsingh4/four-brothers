@@ -63,7 +63,7 @@ export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConve
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
         <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>QUOTE</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>QUOTE</div>
             <h3 className="fbt-display" style={{ fontSize: 20, margin: "2px 0 0" }}>{quote.name}{quote.company ? ` · ${quote.company}` : ""}</h3>
             <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
               {fmtDate(quote.submittedAt)} · {quote.service || "—"} · rev {(quote.revisions?.length || 0) + 1}
@@ -144,7 +144,7 @@ export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConve
                 style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                 onClick={() => setShowRevisions(!showRevisions)}
               >
-                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
                   ▸ REVISION HISTORY ({quote.revisions.length} PRIOR VERSION{quote.revisions.length !== 1 ? "S" : ""})
                 </div>
                 <ChevronDown size={14} style={{ transform: showRevisions ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.2s" }} />
@@ -152,7 +152,7 @@ export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConve
               {showRevisions && (
                 <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
                   {[...quote.revisions].reverse().map((rev, idx) => (
-                    <div key={idx} style={{ padding: 10, background: "#F5F5F4", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+                    <div key={idx} style={{ padding: 10, background: "#F5F5F4", fontSize: 11 }}>
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>
                         REV {rev.revNumber} · {new Date(rev.savedAt).toLocaleString()}
                       </div>
@@ -421,13 +421,13 @@ export const QuotesTab = ({ quotes, setQuotes, dispatches = [], setDispatches, c
                           </span>
                         )}
                       </div>
-                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
                         {fmtDate(q.submittedAt)} · {q.service} {q.needDate && `· needed ${fmtDate(q.needDate)}`}
                       </div>
                       {linkedOrder && (
                         <div
                           onClick={() => onJumpTab && onJumpTab("dispatches", linkedOrder.id)}
-                          style={{ marginTop: 6, padding: "4px 8px", background: "var(--good)", color: "#FFF", display: "inline-block", fontSize: 10, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.08em", cursor: "pointer", fontWeight: 700 }}
+                          style={{ marginTop: 6, padding: "4px 8px", background: "var(--good)", color: "#FFF", display: "inline-block", fontSize: 10, cursor: "pointer", fontWeight: 700 }}
                         >
                           ✓ CONVERTED → ORDER #{linkedOrder.code} ▸
                         </div>
@@ -462,7 +462,7 @@ export const QuotesTab = ({ quotes, setQuotes, dispatches = [], setDispatches, c
                       <button className="btn-danger" onClick={() => remove(q.id)}><Trash2 size={12} /></button>
                     </div>
                   </div>
-                  <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
+                  <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 12 }}>
                     {q.email && <div><span style={{ color: "var(--concrete)" }}>EMAIL ▸</span> {q.email}</div>}
                     {q.phone && <div><span style={{ color: "var(--concrete)" }}>PHONE ▸</span> {q.phone}</div>}
                     {q.pickup && <div><span style={{ color: "var(--concrete)" }}>PICKUP ▸</span> {q.pickup}</div>}
@@ -548,14 +548,14 @@ const QuoteConversionForm = ({ quote, draft, dispatches, setDispatches, projects
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
         <div style={{ padding: "18px 22px", background: "var(--good)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>CONVERT QUOTE → ORDER</div>
+            <div className="fbt-mono" style={{ fontSize: 10 }}>CONVERT QUOTE → ORDER</div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{quote.name}{quote.company ? ` · ${quote.company}` : ""}</h3>
           </div>
           <button onClick={onCancel} style={{ background: "transparent", border: "none", color: "#FFF", cursor: "pointer" }}><X size={20} /></button>
         </div>
 
         <div style={{ padding: 22, display: "grid", gap: 12 }}>
-          <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--hazard-deep)" }}>
+          <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11, color: "var(--hazard-deep)" }}>
             ⚠ FILL IN <strong>DATE</strong> AND <strong>TRUCKS EXPECTED</strong> TO CONTINUE · OTHER FIELDS PRE-FILLED FROM QUOTE
           </div>
 

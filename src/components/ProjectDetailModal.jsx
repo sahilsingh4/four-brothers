@@ -20,7 +20,7 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>
               PROJECT · {project.status?.toUpperCase().replace("_", " ")}
             </div>
             <h3 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>{project.name}</h3>
@@ -54,8 +54,8 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
             </div>
           </div>
 
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ PROJECT INFO</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ PROJECT INFO</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13 }}>
             {project.contractNumber && <div><strong>CONTRACT:</strong> {project.contractNumber}</div>}
             {project.poNumber && <div><strong>PO #:</strong> {project.poNumber}</div>}
             {project.location && <div style={{ gridColumn: "1 / -1" }}><strong>LOCATION:</strong> {project.location}</div>}
@@ -71,14 +71,14 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
 
           {project.description && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ DESCRIPTION</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ DESCRIPTION</div>
               <div style={{ padding: 12, background: "#F5F5F4", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>{project.description}</div>
             </>
           )}
 
           {project.notes && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ INTERNAL NOTES</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ INTERNAL NOTES</div>
               <div style={{ padding: 12, background: "#FEF3C7", borderLeft: "3px solid var(--hazard)", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>{project.notes}</div>
             </>
           )}
@@ -86,7 +86,7 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
           {/* Progress bar if tonnage goal set */}
           {project.tonnageGoal > 0 && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>
                 ▸ PROGRESS · {totalTons.toFixed(1)} / {Number(project.tonnageGoal).toFixed(0)} TONS
               </div>
               <div style={{ height: 14, background: "#E7E5E4", border: "1px solid var(--steel)", marginBottom: 20 }}>
@@ -101,12 +101,12 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
 
           {projectDispatches.length > 0 && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ ORDERS ON THIS PROJECT ({projectDispatches.length})</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ ORDERS ON THIS PROJECT ({projectDispatches.length})</div>
               <div style={{ display: "grid", gap: 6 }}>
                 {projectDispatches.slice(0, 15).map((d) => {
                   const bills = freightBills.filter((fb) => fb.dispatchId === d.id);
                   return (
-                    <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", fontSize: 12, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", fontSize: 12, display: "flex", justifyContent: "space-between", gap: 8 }}>
                       <div><strong>#{d.code}</strong> · {d.jobName}</div>
                       <div style={{ color: "var(--concrete)" }}>{fmtDate(d.date)} · {bills.length}/{d.trucksExpected} FB</div>
                     </div>

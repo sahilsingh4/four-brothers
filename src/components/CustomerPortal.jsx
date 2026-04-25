@@ -59,7 +59,7 @@ export const CustomerPortal = ({ token }) => {
     return (
       <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <GlobalStyles />
-        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em" }}>▸ LOADING YOUR PORTAL…</div>
+        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)" }}>▸ LOADING YOUR PORTAL…</div>
       </div>
     );
   }
@@ -100,7 +100,7 @@ export const CustomerPortal = ({ token }) => {
               <button onClick={() => setSelectedFB(null)} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
             </div>
             <div style={{ padding: 22 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 13, fontFamily: "JetBrains Mono, monospace", marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, fontSize: 13, marginBottom: 16 }}>
                 <div><strong>DRIVER:</strong> {selectedFB.driverName || "—"}</div>
                 <div><strong>TRUCK:</strong> {selectedFB.truckNumber || "—"}</div>
                 <div><strong>MATERIAL:</strong> {selectedFB.material || "—"}</div>
@@ -148,7 +148,7 @@ export const CustomerPortal = ({ token }) => {
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "16px 24px", display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <Logo size="sm" />
           <div style={{ flex: 1 }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em" }}>CUSTOMER PORTAL</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>CUSTOMER PORTAL</div>
             <div className="fbt-display" style={{ fontSize: 18 }}>{customer.companyName}</div>
           </div>
           <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1" }}>VIEW-ONLY ACCESS</div>
@@ -250,7 +250,7 @@ export const CustomerPortal = ({ token }) => {
                               cursor: "pointer", gap: 10, flexWrap: "wrap",
                             }}
                           >
-                            <div style={{ flex: 1, minWidth: 150, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                            <div style={{ flex: 1, minWidth: 150, fontSize: 12 }}>
                               <strong>FB #{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"} · Truck {fb.truckNumber || "—"}
                               <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
                                 {fb.tonnage ? `${fb.tonnage}T` : ""}{fb.loadCount ? ` · ${fb.loadCount} load${fb.loadCount !== 1 ? "s" : ""}` : ""}{fb.hoursBilled ? ` · ${fb.hoursBilled}hrs` : ""}
@@ -276,7 +276,7 @@ export const CustomerPortal = ({ token }) => {
           </div>
         )}
 
-        <div style={{ textAlign: "center", padding: "30px 0 20px", color: "var(--concrete)", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+        <div style={{ textAlign: "center", padding: "30px 0 20px", color: "var(--concrete)", fontSize: 11 }}>
           ▸ 4 BROTHERS TRUCKING, LLC · BAY POINT, CA · QUESTIONS? CONTACT YOUR DISPATCHER
         </div>
       </div>

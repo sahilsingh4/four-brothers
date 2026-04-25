@@ -1364,7 +1364,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
     return (
       <div style={{ padding: `8px 10px 10px ${indent}px`, background: "#FAFAF9", borderTop: "1px dashed var(--concrete)" }}>
         {/* Header row for alignment */}
-        <div style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", fontSize: 9, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 4, paddingRight: 4 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "60px 1fr 70px 80px 60px 90px 28px", gap: 6, alignItems: "center", fontSize: 9, color: "var(--concrete)", marginBottom: 4, paddingRight: 4 }}>
           <div>CODE</div>
           <div>DESCRIPTION</div>
           <div style={{ textAlign: "right" }}>QTY</div>
@@ -1395,7 +1395,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                   e.target.value === "FUEL" ? "Fuel Surcharge" :
                   (ln.item || "")
                 ) })}
-                style={{ padding: "3px 4px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF" }}
+                style={{ padding: "3px 4px", fontSize: 11, border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF" }}
               >
                 <option value="H">H</option>
                 <option value="T">T</option>
@@ -1410,7 +1410,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                 type="text"
                 value={ln.item || ""}
                 onChange={(e) => builderUpdateLine(fb.id, ln.id, { item: e.target.value })}
-                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: "100%" }}
+                style={{ padding: "3px 6px", fontSize: 11, border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: "100%" }}
               />
               <input
                 disabled={locked}
@@ -1418,7 +1418,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                 step="0.01"
                 value={ln.qty ?? ""}
                 onChange={(e) => builderUpdateLine(fb.id, ln.id, { qty: e.target.value })}
-                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
+                style={{ padding: "3px 6px", fontSize: 11, border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
               />
               <input
                 disabled={locked}
@@ -1426,7 +1426,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                 step="0.01"
                 value={ln.rate ?? ""}
                 onChange={(e) => builderUpdateLine(fb.id, ln.id, { rate: e.target.value })}
-                style={{ padding: "3px 6px", fontSize: 11, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
+                style={{ padding: "3px 6px", fontSize: 11, border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", textAlign: "right", width: "100%" }}
               />
               <div style={{ display: "flex", alignItems: "center", gap: 2, justifyContent: "center" }}>
                 <input
@@ -1443,11 +1443,11 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                     step="1"
                     value={ln.brokeragePct ?? ""}
                     onChange={(e) => builderUpdateLine(fb.id, ln.id, { brokeragePct: e.target.value })}
-                    style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: 38, textAlign: "right" }}
+                    style={{ padding: "2px 4px", fontSize: 10, border: "1px solid var(--concrete)", background: locked ? "#F5F5F4" : "#FFF", width: 38, textAlign: "right" }}
                   />
                 )}
               </div>
-              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: "var(--good)", textAlign: "right" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--good)", textAlign: "right" }}>
                 ${net.toFixed(2)}
               </div>
               <button
@@ -1489,7 +1489,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
             border: `1.5px solid ${dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)"}`,
             flexWrap: "wrap",
           }}>
-            <span className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.08em", fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
+            <span className="fbt-mono" style={{ fontSize: 10, fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
               {status === "saving" ? "▸ SAVING…" :
                status === "saved" ? "✓ SAVED" :
                status === "error" ? "⚠ SAVE FAILED — TRY AGAIN" :
@@ -1584,7 +1584,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
       {/* NEW INVOICE launcher bar (session C: replaces the always-visible builder with a modal) */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>INVOICES</h3>
-        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+        <span className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
           · {invoices.length} TOTAL · {invoices.filter((i) => (i.amountPaid || 0) > 0 && (i.amountPaid || 0) < (i.total || 0)).length} PARTIAL · {invoices.filter((i) => (i.amountPaid || 0) >= (i.total || 0) && (i.total || 0) > 0).length} PAID
         </span>
         <button onClick={() => setShowNewInvoice(true)} className="btn-primary" style={{ marginLeft: "auto" }}>
@@ -1614,7 +1614,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         </div>
 
         {/* v18 Multi-mode intake — pick one of 3 intake modes before filters show */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ HOW WOULD YOU LIKE TO BUILD THIS INVOICE?</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ HOW WOULD YOU LIKE TO BUILD THIS INVOICE?</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 22 }}>
           {[
             { k: "select",  t: "BY SELECTING",  d: "Cherry-pick individual FBs",          ico: <ClipboardList size={18} /> },
@@ -1649,7 +1649,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                   {m.ico}
                   <span className="fbt-display" style={{ fontSize: 14 }}>{m.t}</span>
                 </div>
-                <div className="fbt-mono" style={{ fontSize: 10, color: active ? "var(--steel)" : "var(--concrete)", letterSpacing: "0.05em", lineHeight: 1.4 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: active ? "var(--steel)" : "var(--concrete)", lineHeight: 1.4 }}>
                   {m.d}
                 </div>
               </button>
@@ -1660,7 +1660,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         {!builderMode && (
           <div style={{ padding: 32, background: "#F5F5F4", border: "2px dashed var(--concrete)", textAlign: "center" }}>
             <FileText size={28} style={{ color: "var(--concrete)", marginBottom: 10 }} />
-            <div className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 12, color: "var(--concrete)" }}>
               ▸ PICK A MODE ABOVE TO START BUILDING THIS INVOICE
             </div>
           </div>
@@ -1668,7 +1668,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
 
         {builderMode && (<>
         {/* Filters */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>
           ▸ 01 / {builderMode === "select" ? "FILTERS (OPTIONAL) — THEN CHECK FBS BELOW" :
                    builderMode === "range"  ? "PICK CUSTOMER + DATE RANGE (REQUIRED)" :
                                               "PICK CUSTOMER + PROJECT (REQUIRED)"}
@@ -1738,7 +1738,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
 
         {/* Approval filter */}
         <div style={{ padding: 10, background: includeUnapproved ? "#FEF2F2" : "#F0FDF4", border: "2px solid " + (includeUnapproved ? "var(--safety)" : "var(--good)"), marginBottom: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}>
             <input
               type="checkbox"
               checked={!includeUnapproved}
@@ -1749,7 +1749,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
             <strong>APPROVED FREIGHT BILLS ONLY</strong>
           </label>
           {includeUnapproved && (
-            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em", marginLeft: "auto" }}>
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", marginLeft: "auto" }}>
               ⚠ INCLUDING PENDING FBs
             </span>
           )}
@@ -1774,7 +1774,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           if (lockedFbs.length === 0) return null;
           return (
             <div style={{ padding: 10, background: "#F5F5F4", border: "2px dashed var(--concrete)", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.1em" }}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}
                 onClick={() => setShowAlreadyInvoiced(!showAlreadyInvoiced)}>
                 <Lock size={14} style={{ color: "var(--concrete)" }} />
                 <strong>{lockedFbs.length} FB{lockedFbs.length !== 1 ? "S" : ""} ALREADY ON ANOTHER INVOICE (BLOCKED)</strong>
@@ -1790,7 +1790,6 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                         background: "#FFF",
                         border: "1px solid var(--concrete)",
                         fontSize: 11,
-                        fontFamily: "JetBrains Mono, monospace",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
@@ -1816,7 +1815,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         {/* v18: FB selection list with click-to-expand billing lines */}
         {builderMode === "select" && selectableBills.length > 0 && (
           <div style={{ marginBottom: 18 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>
               ▸ CHECK FBs TO INCLUDE · {selectedFbIds.size} OF {selectableBills.length} SELECTED
               {selectableBills.length > 0 && (
                 <button
@@ -1827,7 +1826,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                       setSelectedFbIds(new Set(selectableBills.map((fb) => fb.id)));
                     }
                   }}
-                  style={{ marginLeft: 12, background: "transparent", border: "none", color: "var(--hazard-deep)", fontSize: 10, letterSpacing: "0.08em", cursor: "pointer", fontWeight: 700, textTransform: "uppercase" }}
+                  style={{ marginLeft: 12, background: "transparent", border: "none", color: "var(--hazard-deep)", fontSize: 10, cursor: "pointer", fontWeight: 700 }}
                 >
                   {selectedFbIds.size === selectableBills.length ? "UNCHECK ALL" : "CHECK ALL"}
                 </button>
@@ -1857,7 +1856,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                         if (e.target.checked) next.add(fb.id); else next.delete(fb.id);
                         setSelectedFbIds(next);
                       }} style={{ width: 16, height: 16 }} />
-                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12 }}>
                         <span style={{ fontWeight: 700 }}>
                           FB#{fb.freightBillNumber || "—"}
                           {dirty && <span title="Unsaved changes" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
@@ -1886,14 +1885,14 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           if (noPhoto.length === 0) return null;
           return (
             <div style={{ marginBottom: 14, padding: 12, background: "#FEF2F2", border: "1px solid var(--safety)", borderRadius: 6 }}>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 4 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700, marginBottom: 4 }}>
                 ⚠ {noPhoto.length} FB{noPhoto.length !== 1 ? "S" : ""} HAVE NO PROOF-OF-HAUL PHOTOS
               </div>
-              <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace" }}>
+              <div style={{ fontSize: 11, color: "var(--steel)" }}>
                 {noPhoto.slice(0, 6).map((fb) => `FB#${fb.freightBillNumber || "—"}`).join(" · ")}
                 {noPhoto.length > 6 ? ` · +${noPhoto.length - 6} more` : ""}
               </div>
-              <div style={{ fontSize: 10, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>
+              <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
                 ▸ THIS INVOICE WILL HAVE NO TICKET PHOTOS FOR THESE LINES — REVIEW BEFORE SENDING.
               </div>
             </div>
@@ -1932,10 +1931,10 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           if (drift.length === 0) return null;
           return (
             <div style={{ marginBottom: 14, padding: 12, background: "#FEF3C7", border: "1px solid var(--hazard)", borderRadius: 6 }}>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 6 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
                 ⚠ MIXED RATES · {drift.length} FB{drift.length !== 1 ? "S" : ""} STAMPED AT A DIFFERENT RATE THAN THEIR DISPATCH'S CURRENT RATE
               </div>
-              <div style={{ display: "grid", gap: 4, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)" }}>
+              <div style={{ display: "grid", gap: 4, fontSize: 11, color: "var(--steel)" }}>
                 {drift.slice(0, 6).map((d) => (
                   <div key={d.fb.id}>
                     FB#{d.fb.freightBillNumber || "—"} · ORDER #{d.dispCode || "—"} · stamped <strong>${d.fbRate.toFixed(2)}/{d.method.charAt(0)}</strong> · dispatch now <strong>${d.dispRate.toFixed(2)}/{d.method.charAt(0)}</strong>
@@ -1943,7 +1942,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                 ))}
                 {drift.length > 6 && <div style={{ color: "var(--concrete)" }}>+ {drift.length - 6} more</div>}
               </div>
-              <div style={{ fontSize: 10, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>
+              <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
                 ▸ INVOICE USES EACH FB'S STAMPED RATE (SAFER — THAT'S WHAT WAS AGREED AT REVIEW). TO RE-RATE A FB AT THE NEW RATE, OPEN IT FROM REVIEW AND EDIT THE BILLING LINE.
               </div>
             </div>
@@ -1953,7 +1952,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         {/* Auto-include preview for range + project modes */}
         {(builderMode === "range" || builderMode === "project") && matchedBills.length > 0 && (
           <div style={{ marginBottom: 18 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>
               ▸ {matchedBills.length} FBs AUTO-INCLUDED · CLICK ANY ROW TO SEE LINE BREAKDOWN
             </div>
             <div style={{ display: "grid", gap: 6, maxHeight: 340, overflowY: "auto", padding: 4, background: "#F5F5F4", border: "1.5px solid var(--concrete)" }}>
@@ -1971,7 +1970,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                            if (expanded) next.delete(fb.id); else next.add(fb.id);
                            setExpandedFbIds(next);
                          }}>
-                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: "auto auto auto 1fr auto", gap: 12, alignItems: "center", fontSize: 12 }}>
                         <span style={{ fontWeight: 700 }}>
                           FB#{fb.freightBillNumber || "—"}
                           {dirty && <span title="Unsaved changes" style={{ marginLeft: 4, color: "var(--hazard-deep)" }}>●</span>}
@@ -2014,12 +2013,12 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         {/* Reconciliation warning banner — lists any unreconciled orders */}
         {matchedBills.length > 0 && reconcileIssues.length > 0 && (
           <div style={{ padding: 14, background: "#FEF3C7", border: "2px solid var(--hazard)", marginBottom: 18 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 8 }}>
               ⚠ {reconcileIssues.length} UNRECONCILED ORDER{reconcileIssues.length !== 1 ? "S" : ""} — REVIEW BEFORE INVOICING
             </div>
             <div style={{ display: "grid", gap: 6 }}>
               {reconcileIssues.map((r) => (
-                <div key={r.dispatch.id} style={{ padding: 8, background: "#FFF", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                <div key={r.dispatch.id} style={{ padding: 8, background: "#FFF", fontSize: 12 }}>
                   <strong>ORDER #{r.dispatch.code}</strong> · {r.dispatch.jobName}
                   <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>
                     Expected: {r.expected} · Submitted: {r.total} · No-show: {r.noShow}
@@ -2042,10 +2041,10 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
             above already shows the breakdown read-only. */}
 
         {/* Bill-to — read-only display of auto-pulled customer + PO/ref fields */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 03 / BILL TO (AUTO-PULLED FROM CUSTOMER PICKED ABOVE)</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ 03 / BILL TO (AUTO-PULLED FROM CUSTOMER PICKED ABOVE)</div>
         <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
           {!billTo.name ? (
-            <div style={{ padding: 14, background: "#F5F5F4", border: "2px dashed var(--concrete)", textAlign: "center", fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>
+            <div style={{ padding: 14, background: "#F5F5F4", border: "2px dashed var(--concrete)", textAlign: "center", fontSize: 12, color: "var(--concrete)" }}>
               PICK A CUSTOMER IN SECTION 01 TO AUTO-FILL BILL-TO
             </div>
           ) : (
@@ -2053,7 +2052,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
               <div style={{ fontSize: 14, fontWeight: 700 }}>{billTo.name}</div>
               {billTo.contact && <div style={{ fontSize: 12, color: "var(--concrete)" }}>Attn: {billTo.contact}</div>}
               {billTo.address && <div style={{ fontSize: 12, color: "var(--concrete)" }}>{billTo.address}</div>}
-              <div style={{ fontSize: 10, color: "var(--good)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.1em", marginTop: 4 }}>
+              <div style={{ fontSize: 10, color: "var(--good)", marginTop: 4 }}>
                 ▸ AUTO-PULLED FROM CONTACT · EDIT IN CONTACTS TAB IF NEEDED
               </div>
             </div>
@@ -2072,7 +2071,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         </div>
 
         {/* Terms / notes */}
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ 04 / DETAILS</div>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ 04 / DETAILS</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 14 }}>
           <div><label className="fbt-label">Due Date</label><input className="fbt-input" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} /></div>
           <div><label className="fbt-label">Discount $</label><input className="fbt-input" type="number" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} /></div>
@@ -2080,7 +2079,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
 
         {/* Multi-row extras (tolls / dump fees / fuel surcharge / other) */}
         <div style={{ marginBottom: 14, padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8, fontWeight: 700 }}>
             ▸ ADDITIONAL LINE ITEMS (TOLLS · DUMP FEES · FUEL · OTHER)
           </div>
           {(extras || []).length > 0 && (
@@ -2178,7 +2177,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         {/* v18 Fix 2b: Removed per-invoice Payment Terms field. Terms come from Company Profile
             → Default Terms, which applies to all invoices. Edit it once there. */}
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", cursor: "pointer", marginBottom: 18 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--concrete)", cursor: "pointer", marginBottom: 18 }}>
           <input type="checkbox" checked={includePhotos} onChange={(e) => setIncludePhotos(e.target.checked)} />
           INCLUDE SCALE TICKET THUMBNAILS ON INVOICE
         </label>
@@ -2210,8 +2209,8 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                 </tr>
               )}
               <tr style={{ background: "var(--hazard)" }}>
-                <td style={{ fontWeight: 700, fontSize: 16, fontFamily: "Archivo Black, sans-serif" }}>TOTAL DUE</td>
-                <td style={{ textAlign: "right", fontWeight: 700, fontSize: 16, fontFamily: "Archivo Black, sans-serif" }}>{fmt$(previewTotals.total)}</td>
+                <td style={{ fontWeight: 700, fontSize: 16 }}>TOTAL DUE</td>
+                <td style={{ textAlign: "right", fontWeight: 700, fontSize: 16 }}>{fmt$(previewTotals.total)}</td>
               </tr>
             </tbody>
           </table>
@@ -2231,7 +2230,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
             if (!billTo.name) issues.push("Select a customer — its bill-to info auto-fills");
             if (issues.length === 0) return null;
             return (
-              <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
+              <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, color: "var(--safety)" }}>
                 <strong>⚠ FIX BEFORE GENERATING:</strong>
                 <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>
                   {issues.map((i, idx) => <li key={idx}>{i}</li>)}

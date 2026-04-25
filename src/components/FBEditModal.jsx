@@ -796,7 +796,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
         )}
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>
               FREIGHT BILL · #{fb.freightBillNumber || "—"} · <span style={{ color: statusColor }}>● {statusLabel}</span>
             </div>
             <h3 className="fbt-display" style={{ fontSize: 20, margin: "4px 0 0" }}>{dispatch?.jobName || "—"}</h3>
@@ -821,10 +821,10 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             }}>
               <AlertTriangle size={20} style={{ color: "var(--hazard-deep)", flexShrink: 0, marginTop: 2 }} />
               <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.06em", color: "var(--hazard-deep)", marginBottom: 6 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "var(--hazard-deep)", marginBottom: 6 }}>
                   ⚠ POSSIBLE DUPLICATE — FB #{fb.freightBillNumber} MATCHES {duplicates.length} OTHER FB{duplicates.length !== 1 ? "S" : ""}
                 </div>
-                <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1.6 }}>
+                <div style={{ fontSize: 11, color: "var(--steel)", lineHeight: 1.6 }}>
                   {duplicates.slice(0, 5).map((dup) => (
                     <div key={dup.fb.id} style={{ marginBottom: 4 }}>
                       ▸ <strong>FB #{dup.fb.freightBillNumber}</strong> ·{" "}
@@ -856,7 +856,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             }}>
               <Lock size={18} style={{ color: unlocked ? "var(--hazard-deep)" : "var(--safety)" }} />
               <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.08em" }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>
                   {unlocked ? "⚠ LOCK OVERRIDDEN — EDITS WILL CHANGE BILLED INVOICE/PAYROLL" : "🔒 FB LOCKED — DOWNSTREAM RECORDS EXIST"}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, lineHeight: 1.4 }}>
@@ -953,7 +953,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             return (
               <div style={{ padding: 14, background: "#F0F9FF", border: "2px solid " + kindColor }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                  <div className="fbt-mono" style={{ fontSize: 11, color: kindColor, letterSpacing: "0.1em", fontWeight: 700 }}>
+                  <div className="fbt-mono" style={{ fontSize: 11, color: kindColor, fontWeight: 700 }}>
                     🚚 ASSIGNED TO · {currentAssignment ? kindLabel : "UNASSIGNED"}
                   </div>
                 </div>
@@ -961,7 +961,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 {/* v18: cascading Kind → Contact pickers */}
                 <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8, marginBottom: 12, padding: 10, background: "#FFF", border: "1.5px dashed " + kindColor }}>
                   <div>
-                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>1. KIND</div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>1. KIND</div>
                     <select
                       className="fbt-select"
                       value={currentAssignment?.kind || ""}
@@ -974,7 +974,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                         // Actually simpler: store pending kind in draft and let the contact picker filter on it.
                         setDraft((d) => ({ ...d, _pendingKind: newKind }));
                       }}
-                      style={{ padding: "6px 8px", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}
+                      style={{ padding: "6px 8px", fontSize: 12 }}
                     >
                       <option value="">— Choose —</option>
                       <option value="driver">DRIVER</option>
@@ -982,7 +982,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                     </select>
                   </div>
                   <div>
-                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>2. CONTACT</div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>2. CONTACT</div>
                     {(() => {
                       const kindInPicker = draft._pendingKind || currentAssignment?.kind || "";
                       const filteredContacts = contacts.filter((c) => c.type === kindInPicker);
@@ -997,7 +997,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                             reassign(kindInPicker, newContactId);
                             setDraft((d) => { const { _pendingKind, ...rest } = d; return rest; });
                           }}
-                          style={{ padding: "6px 8px", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}
+                          style={{ padding: "6px 8px", fontSize: 12 }}
                         >
                           <option value="">{kindInPicker ? `— Pick a ${kindInPicker === "sub" ? "subcontractor" : "driver"} —` : "— Pick kind first —"}</option>
                           {filteredContacts.map((c) => (
@@ -1015,38 +1015,38 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 </div>
 
                 {currentContact ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, fontSize: 12 }}>
                     <div>
-                      <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>NAME</div>
+                      <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>NAME</div>
                       <div style={{ fontWeight: 700 }}>{currentContact.contactName || currentAssignment?.name || "—"}</div>
                     </div>
                     {currentContact.companyName && (
                       <div>
-                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>COMPANY</div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>COMPANY</div>
                         <div>{currentContact.companyName}</div>
                       </div>
                     )}
                     {currentContact.phone && (
                       <div>
-                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>PHONE</div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>PHONE</div>
                         <a href={`tel:${currentContact.phone}`} style={{ color: kindColor, textDecoration: "none", fontWeight: 600 }}>{currentContact.phone}</a>
                       </div>
                     )}
                     {currentContact.email && (
                       <div>
-                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>EMAIL</div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>EMAIL</div>
                         <a href={`mailto:${currentContact.email}`} style={{ color: kindColor, textDecoration: "none", fontWeight: 600, fontSize: 11 }}>{currentContact.email}</a>
                       </div>
                     )}
                     {currentAssignment?.kind === "sub" && currentContact.brokerageApplies && (
                       <div>
-                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>BROKERAGE</div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>BROKERAGE</div>
                         <div style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{currentContact.brokeragePercent || 10}% applied</div>
                       </div>
                     )}
                     {currentAssignment?.payRate && (
                       <div>
-                        <div style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 2 }}>PAY RATE</div>
+                        <div style={{ fontSize: 9, color: "var(--concrete)", marginBottom: 2 }}>PAY RATE</div>
                         <div>${currentAssignment.payRate} / {currentAssignment.payMethod || "hour"}</div>
                       </div>
                     )}
@@ -1059,7 +1059,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                   </div>
                 )}
 
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.04em" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10 }}>
                   ▸ Picking a new contact creates a new assignment on this order and reassigns this FB to it. Pay rate pulls from the contact's default rate.
                 </div>
               </div>
@@ -1107,7 +1107,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 if (!expected || !actual || actual <= expected * 1.2) return null;
                 const pctOver = Math.round(((actual / expected) - 1) * 100);
                 return (
-                  <div className="fbt-mono" style={{ marginTop: 4, fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700 }}>
+                  <div className="fbt-mono" style={{ marginTop: 4, fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700 }}>
                     ⚠ OVERAGE +{pctOver}% · EXPECTED {expected}T/TRUCK · VERIFY SCALE TICKET
                   </div>
                 );
@@ -1121,7 +1121,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
 
           {/* Hours */}
           <div style={{ padding: 12, background: "#FEF3C7", border: "1.5px solid var(--hazard)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", marginBottom: 8 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginBottom: 8 }}>
               ▸ HOURS (FOR BILLING)
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
@@ -1199,7 +1199,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       ▸ CUSTOMER WILL BE INVOICED FOR {minH} HRS · SUB PAID FOR {actualH.toFixed(2)} HRS (ACTUAL)
                     </div>
                   </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     <input
                       type="checkbox"
                       checked={!!draft.minHoursApplied}
@@ -1237,7 +1237,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               Combined billing + pay entry like DumpTruckSoftware TRLoDTS
               ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
           <div style={{ borderTop: "3px double var(--steel)", paddingTop: 14 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--steel)", fontWeight: 700, marginBottom: 10 }}>
               ▸ BILLING &amp; PAY LINES (NEW STRUCTURE)
             </div>
 
@@ -1245,7 +1245,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             {/* ─── BILLING LINES ─── */}
             <div style={{ padding: 12, background: billingSnapshotLocked ? "#F0F9FF" : "#FFF", border: "2px solid " + (billingSnapshotLocked ? "#0EA5E9" : "#0369A1"), marginBottom: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
-                <div className="fbt-mono" style={{ fontSize: 11, color: "#0369A1", letterSpacing: "0.1em", fontWeight: 700 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "#0369A1", fontWeight: 700 }}>
                   🏢 BILLING LINES (BILL TO CUSTOMER)
                 </div>
                 {billingSnapshotLocked && (
@@ -1258,7 +1258,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               {/* Quick-add buttons — when LOCKED, new rows become adjustments */}
               <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {billingSnapshotLocked && (
-                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.08em", marginRight: 6 }}>
+                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", marginRight: 6 }}>
                     + POST-LOCK ADJUSTMENT:
                   </span>
                 )}
@@ -1280,9 +1280,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
 
               {/* Lines table */}
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", fontSize: 11, fontFamily: "JetBrains Mono, monospace", borderCollapse: "collapse", minWidth: 760 }}>
+                <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", minWidth: 760 }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid #0369A1", color: "#0369A1", fontSize: 9, letterSpacing: "0.05em" }}>
+                    <tr style={{ borderBottom: "2px solid #0369A1", color: "#0369A1", fontSize: 9 }}>
                       <th style={{ textAlign: "left", padding: "4px 6px", width: 50 }}>CODE</th>
                       <th style={{ textAlign: "left", padding: "4px 6px" }}>ITEM</th>
                       <th style={{ textAlign: "right", padding: "4px 6px", width: 70 }}>QTY</th>
@@ -1388,7 +1388,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             {/* ─── PAYING LINES ─── */}
             <div style={{ padding: 12, background: paySnapshotLocked ? "#F0FDF4" : "#FFF", border: "2px solid " + (paySnapshotLocked ? "var(--good)" : "var(--good)") }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 4 }}>
-                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
                   🚚 PAYING LINES (PAY TO SUB / DRIVER)
                 </div>
                 {paySnapshotLocked && (
@@ -1401,7 +1401,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               {/* Quick-add buttons — when LOCKED, new rows become adjustments */}
               <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {paySnapshotLocked && (
-                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.08em", marginRight: 6 }}>
+                  <span className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", marginRight: 6 }}>
                     + POST-LOCK ADJUSTMENT:
                   </span>
                 )}
@@ -1420,9 +1420,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               </div>
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", fontSize: 11, fontFamily: "JetBrains Mono, monospace", borderCollapse: "collapse", minWidth: 720 }}>
+                <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", minWidth: 720 }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid var(--good)", color: "var(--good)", fontSize: 9, letterSpacing: "0.05em" }}>
+                    <tr style={{ borderBottom: "2px solid var(--good)", color: "var(--good)", fontSize: 9 }}>
                       <th style={{ textAlign: "left", padding: "4px 6px", width: 50 }}>CODE</th>
                       <th style={{ textAlign: "left", padding: "4px 6px" }}>ITEM</th>
                       <th style={{ textAlign: "right", padding: "4px 6px", width: 70 }}>QTY</th>
@@ -1524,9 +1524,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             {/* MARGIN summary */}
             {billingTotals.net > 0 && payingTotals.net > 0 && (
               <div style={{ marginTop: 10, padding: "10px 14px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-                <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>▸ FB MARGIN</div>
+                <div className="fbt-mono" style={{ fontSize: 10 }}>▸ FB MARGIN</div>
                 <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div style={{ fontSize: 11 }}>
                     BILLED <strong style={{ color: "#7DD3FC" }}>{fmt$(billingTotals.net)}</strong> − PAID <strong style={{ color: "#86EFAC" }}>{fmt$(payingTotals.net)}</strong>
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: "var(--hazard)" }}>
@@ -1535,7 +1535,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 </div>
               </div>
             )}
-            <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 8, letterSpacing: "0.05em" }}>
+            <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 8 }}>
               ▸ CHECK CP? ON A BILLING LINE TO AUTO-ADD A MATCHING PAY LINE (EDIT PAY RATE AFTER)
             </div>
           </div>
@@ -1544,7 +1544,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           {/* Photos — admin can add, view, or remove */}
           <div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em" }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)" }}>
                 ▸ SCALE TICKETS ({draft.photos?.length || 0})
               </div>
               <label
@@ -1575,7 +1575,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               </label>
             </div>
             {(draft.photos || []).length === 0 ? (
-              <div style={{ padding: 16, border: "2px dashed var(--concrete)", textAlign: "center", color: "var(--concrete)", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+              <div style={{ padding: 16, border: "2px dashed var(--concrete)", textAlign: "center", color: "var(--concrete)", fontSize: 12 }}>
                 NO PHOTOS ATTACHED · TAP ADD PHOTOS TO UPLOAD
               </div>
             ) : (
@@ -1590,7 +1590,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                     />
                     {p.addedByAdmin && (
                       <span
-                        style={{ position: "absolute", bottom: 2, left: 2, background: "var(--steel)", color: "var(--cream)", fontSize: 8, padding: "1px 4px", letterSpacing: "0.08em", fontFamily: "JetBrains Mono, monospace" }}
+                        style={{ position: "absolute", bottom: 2, left: 2, background: "var(--steel)", color: "var(--cream)", fontSize: 8, padding: "1px 4px" }}
                         title="Added by admin"
                       >
                         ADMIN
