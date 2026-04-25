@@ -190,9 +190,9 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
+  const [draft, setDraft] = useState({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, expectedTonnagePerTruck: "", shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [] });
 
-  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
+  const resetDraft = () => setDraft({ date: todayISO(), jobName: "", clientName: "", clientId: "", projectId: null, subContractor: "", subContractorId: "", pickup: "", dropoff: "", material: "", trucksExpected: 1, expectedTonnagePerTruck: "", shift: "day", baseStartTime: "", staggerMin: 5, ratePerHour: "", ratePerTon: "", ratePerLoad: "", notes: "", assignedDriverIds: [], assignments: [] });
 
   // Snapshot of the draft when the modal opens; used for dirty-state detection
   // so an accidental backdrop-click or X doesn't wipe out a half-filled form.
@@ -235,6 +235,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       dropoff: d.dropoff || "",
       material: d.material || "",
       trucksExpected: d.trucksExpected || 1,
+      expectedTonnagePerTruck: d.expectedTonnagePerTruck ?? "",
       shift: d.shift || "day",
       baseStartTime: d.baseStartTime || "",
       staggerMin: d.staggerMin ?? 5,
@@ -1045,6 +1046,19 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
                 <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
+                <div>
+                  <label className="fbt-label">Expected Tons/Truck</label>
+                  <input
+                    className="fbt-input"
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="e.g. 24"
+                    value={draft.expectedTonnagePerTruck ?? ""}
+                    onChange={(e) => setDraft({ ...draft, expectedTonnagePerTruck: e.target.value })}
+                    title="Expected tonnage per truck/load. Used to flag overage on FB review (>20% over expected)."
+                  />
+                </div>
                 <div>
                   <label className="fbt-label">Shift</label>
                   <select className="fbt-select" value={draft.shift || "day"} onChange={(e) => setDraft({ ...draft, shift: e.target.value })}>

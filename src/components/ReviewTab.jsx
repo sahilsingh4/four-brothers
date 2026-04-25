@@ -151,6 +151,18 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                           ⚠ NO PHOTOS
                         </span>
                       )}
+                      {/* F6: tonnage overage chip — flag when submitted tonnage is >20% over the dispatch's expected tons/truck. */}
+                      {(() => {
+                        const expected = Number(d?.expectedTonnagePerTruck);
+                        const actual = Number(fb.tonnage);
+                        if (!expected || !actual || actual <= expected * 1.2) return null;
+                        const pctOver = Math.round(((actual / expected) - 1) * 100);
+                        return (
+                          <span className="chip" title={`Submitted ${actual}T vs expected ${expected}T per truck — ${pctOver}% over. Verify with driver / scale ticket.`} style={{ background: "var(--hazard-deep)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--hazard-deep)" }}>
+                            ⚠ OVERAGE +{pctOver}%
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="fbt-display" style={{ fontSize: 15, lineHeight: 1.2 }}>
                       {fb.driverName || "Unknown driver"} · Truck {fb.truckNumber || "—"}
