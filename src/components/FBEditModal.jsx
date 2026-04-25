@@ -544,6 +544,17 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
   }, [autoHours, billingSnapshotLocked, paySnapshotLocked]);
 
   const save = async (andApprove = false) => {
+    // F2: warn before approving an FB with no proof-of-haul photos.
+    // The approval still proceeds if the admin confirms — just makes the
+    // missing-photo case loud instead of silent.
+    if (andApprove && (!fb.photos || fb.photos.length === 0)) {
+      const ok = window.confirm(
+        `FB #${fb.freightBillNumber || "—"} has NO photos attached.\n\nApprove anyway?\n\n` +
+        `(There will be no proof-of-haul if the customer disputes tonnage, pickup/dropoff, ` +
+        `or load count. Cancel to add photos first.)`
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     try {
       const actualH = draft.hoursBilled ? Number(draft.hoursBilled) : (autoHours ? Number(autoHours) : null);

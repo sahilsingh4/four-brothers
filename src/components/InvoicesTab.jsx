@@ -1873,6 +1873,27 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           </div>
         )}
 
+        {/* F2: Photo-required warning banner — surfaces FBs that lack proof-of-haul
+            so the admin can decide before generating an invoice that may get disputed. */}
+        {matchedBills.length > 0 && (() => {
+          const noPhoto = matchedBills.filter((fb) => !fb.photos || fb.photos.length === 0);
+          if (noPhoto.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 14, padding: 12, background: "#FEF2F2", border: "1px solid var(--safety)", borderRadius: 6 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 4 }}>
+                ⚠ {noPhoto.length} FB{noPhoto.length !== 1 ? "S" : ""} HAVE NO PROOF-OF-HAUL PHOTOS
+              </div>
+              <div style={{ fontSize: 11, color: "var(--steel)", fontFamily: "JetBrains Mono, monospace" }}>
+                {noPhoto.slice(0, 6).map((fb) => `FB#${fb.freightBillNumber || "—"}`).join(" · ")}
+                {noPhoto.length > 6 ? ` · +${noPhoto.length - 6} more` : ""}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>
+                ▸ THIS INVOICE WILL HAVE NO TICKET PHOTOS FOR THESE LINES — REVIEW BEFORE SENDING.
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Auto-include preview for range + project modes */}
         {(builderMode === "range" || builderMode === "project") && matchedBills.length > 0 && (
           <div style={{ marginBottom: 18 }}>
