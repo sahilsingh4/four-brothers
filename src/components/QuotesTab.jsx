@@ -3,7 +3,7 @@ import { AlertCircle, ArrowRight, CheckCircle2, ChevronDown, Eye, Save, Trash2, 
 import { fmtDate } from "../utils";
 import { logAudit, updateQuote, deleteQuote } from "../db";
 
-export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConvertToOrder, onClose, onToast }) => {
+export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConvertToOrder, onConvertToBid, onClose, onToast }) => {
   const [draft, setDraft] = useState({ ...quote });
   const [showRevisions, setShowRevisions] = useState(false);
   const [revReason, setRevReason] = useState("");
@@ -188,6 +188,22 @@ export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConve
                 <ArrowRight size={14} /> CONVERT TO ORDER
               </button>
             )}
+            {/* Convert to Bid — for public-works / RFB quotes that need bid tracking */}
+            {(draft.status === "won" || quote.status === "won") && !quote.convertedToBidId && onConvertToBid && (
+              <button
+                onClick={() => onConvertToBid(quote)}
+                className="btn-ghost"
+                style={{ color: "var(--hazard-deep)", borderColor: "var(--hazard-deep)" }}
+                title="Track this as a competitive bid (RFB/RFP) with deadlines, bonds, and outcome tracking"
+              >
+                <ArrowRight size={14} /> CONVERT TO BID
+              </button>
+            )}
+            {quote.convertedToBidId && (
+              <span className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", padding: "6px 10px", border: "1.5px solid var(--hazard-deep)", alignSelf: "center" }}>
+                ▸ LINKED TO BID
+              </span>
+            )}
             {/* Show warning if trying to convert non-won quote */}
             {!quote.convertedToOrderId && draft.status !== "won" && quote.status !== "won" && (
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", alignSelf: "center" }}>
@@ -202,7 +218,7 @@ export const QuoteDetailModal = ({ quote, dispatches, setQuotes, quotes, onConve
   );
 };
 
-export const QuotesTab = ({ quotes, setQuotes, dispatches = [], setDispatches, contacts = [], projects = [], onJumpTab, onToast }) => {
+export const QuotesTab = ({ quotes, setQuotes, dispatches = [], setDispatches, contacts = [], projects = [], onJumpTab, onConvertToBid, onToast }) => {
   const [viewingQuote, setViewingQuote] = useState(null);
   const [pendingConversion, setPendingConversion] = useState(null); // quote being converted
 
@@ -341,6 +357,7 @@ export const QuotesTab = ({ quotes, setQuotes, dispatches = [], setDispatches, c
           setQuotes={setQuotes}
           quotes={quotes}
           onConvertToOrder={handleConvert}
+          onConvertToBid={onConvertToBid}
           onClose={() => setViewingQuote(null)}
           onToast={onToast}
         />
