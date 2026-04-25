@@ -563,7 +563,12 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>JOB DETAILS</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 13 }}>
             <div><strong>JOB:</strong> {dispatch.jobName}</div>
+            {dispatch.clientName && <div><strong>CUSTOMER:</strong> {dispatch.clientName}</div>}
             <div><strong>DATE:</strong> {fmtDate(dispatch.date)}</div>
+            {(assignment?.startTime || dispatch.baseStartTime) && (
+              <div><strong>START TIME:</strong> {assignment?.startTime || dispatch.baseStartTime}</div>
+            )}
+            {dispatch.material && <div><strong>MATERIAL:</strong> {dispatch.material}</div>}
             {dispatch.pickup && <div><strong>PICKUP:</strong> {dispatch.pickup}</div>}
             {dispatch.dropoff && <div><strong>DROPOFF:</strong> {dispatch.dropoff}</div>}
             <div><strong>TRUCKS EXPECTED:</strong> {dispatch.trucksExpected}</div>

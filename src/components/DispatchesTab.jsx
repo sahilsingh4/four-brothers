@@ -924,6 +924,44 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
         <button onClick={openNewOrder} className="btn-primary"><Plus size={16} /> NEW ORDER</button>
       </div>
 
+      {/* Floating + (FAB) — pinned bottom-right on small screens so the
+          dispatcher can spawn a new order from anywhere on the page without
+          scrolling back to the top. Hidden on desktop (the NEW ORDER button
+          in the toolbar is plenty there) and while a modal is open. */}
+      {!showNew && (
+        <button
+          onClick={openNewOrder}
+          className="fab-new-order"
+          aria-label="New order"
+          title="New order"
+        >
+          <Plus size={26} />
+        </button>
+      )}
+      <style>{`
+        .fab-new-order {
+          display: none;
+          position: fixed;
+          right: 16px;
+          bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: var(--steel);
+          color: var(--cream);
+          border: none;
+          cursor: pointer;
+          z-index: 950;
+          box-shadow: 0 6px 20px rgba(15,23,42,0.30);
+          align-items: center;
+          justify-content: center;
+        }
+        .fab-new-order:active { transform: scale(0.96); }
+        @media (max-width: 768px) {
+          .fab-new-order { display: flex; }
+        }
+      `}</style>
+
       {/* Send Links modal — offered after order create / mark-dispatched */}
       {sendLinksTarget && (() => {
         // Find the order fresh each render so we pick up state changes
