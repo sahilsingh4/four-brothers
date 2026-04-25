@@ -292,6 +292,51 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     setShowNew(true);
   };
 
+  // Open a fresh NewOrder pre-filled from an existing dispatch — same job,
+  // customer, project, trucks, drivers, rates, but date defaults to tomorrow
+  // and the new order gets a fresh code on save. Used for daily-repeat jobs
+  // (long-term construction projects) so the dispatcher doesn't have to
+  // re-enter every field.
+  const duplicateDispatch = (d) => {
+    setEditingId(null);
+    setEditingLock(null);
+    setOverriddenFields({});
+    // Default date to tomorrow — most duplicates are "same job, next day"
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowISO = tomorrow.toISOString().slice(0, 10);
+    // Strip per-FB / lock-state stuff that shouldn't carry over
+    const cleanAssignments = (d.assignments || []).map(({ aid: _aid, ...rest }) => ({ ...rest }));
+    setDraft({
+      date: tomorrowISO,
+      jobName: d.jobName || "",
+      clientName: d.clientName || "",
+      clientId: d.clientId || "",
+      projectId: d.projectId || null,
+      subContractor: d.subContractor || "",
+      subContractorId: d.subContractorId || "",
+      pickup: d.pickup || "",
+      dropoff: d.dropoff || "",
+      material: d.material || "",
+      trucksExpected: d.trucksExpected || 1,
+      expectedTonnagePerTruck: d.expectedTonnagePerTruck ?? "",
+      shift: d.shift || "day",
+      baseStartTime: d.baseStartTime || "",
+      staggerMin: d.staggerMin ?? 5,
+      ratePerHour: d.ratePerHour || "",
+      ratePerTon: d.ratePerTon || "",
+      ratePerLoad: d.ratePerLoad || "",
+      quarryId: d.quarryId || null,
+      notes: d.notes || "",
+      assignedDriverIds: d.assignedDriverIds || [],
+      assignments: cleanAssignments,
+      lockOverrides: [],
+      // New: optional multi-day repeat. UI in the modal exposes this; default 1 = single order.
+      repeatDays: 1,
+    });
+    setShowNew(true);
+  };
+
   const createDispatch = async () => {
     if (!draft.jobName) { onToast("JOB NAME REQUIRED"); return; }
 
@@ -392,31 +437,53 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
 
     // CREATE MODE — new order
     const code = randomCode(6);
-    const d = {
-      ...draft,
-      id: "temp-" + Date.now(),
-      code,
-      trucksExpected: finalTrucksExpected,
-      assignedDriverIds: assignedIds,
-      assignedDriverNames: assignedNames,
-      assignments,
-      createdAt: new Date().toISOString(),
-      status: "open",
-    };
-    const next = [d, ...dispatches];
+    // Multi-day repeat — strip repeatDays from the draft body and create N
+    // copies with consecutive dates. Each gets its own random code. Drivers /
+    // assignments / rates / job all carry over identically.
+    const repeatDays = Math.max(1, Math.min(30, Number(draft.repeatDays) || 1));
+    const baseDate = draft.date || todayISO();
+    const created = [];
+    for (let i = 0; i < repeatDays; i++) {
+      const dateForI = (() => {
+        if (i === 0) return baseDate;
+        const dt = new Date(baseDate);
+        dt.setDate(dt.getDate() + i);
+        return dt.toISOString().slice(0, 10);
+      })();
+      const codeForI = i === 0 ? code : randomCode(6);
+      const { repeatDays: _drop, ...draftBody } = draft;
+      const d = {
+        ...draftBody,
+        date: dateForI,
+        id: "temp-" + Date.now() + "-" + i,
+        code: codeForI,
+        trucksExpected: finalTrucksExpected,
+        assignedDriverIds: assignedIds,
+        assignedDriverNames: assignedNames,
+        // Re-mint assignment IDs for each copy so they stay unique
+        assignments: assignments.map((a, idx) => ({
+          ...a,
+          aid: `a${Date.now().toString(36).slice(-4)}${i}${idx}`,
+        })),
+        createdAt: new Date().toISOString(),
+        status: "open",
+      };
+      created.push(d);
+    }
+    const next = [...created, ...dispatches];
     await setDispatches(next);
     setShowNew(false);
-    // v18 fix: look up in `next` (what we just saved), not `dispatches` (stale closure).
-    // Was: setTimeout + read from dispatches — brittle race with realtime refresh.
-    const fresh = next.find((x) => x.code === code);
+    // Focus the FIRST created dispatch on the page
+    const fresh = next.find((x) => x.code === created[0].code);
     if (fresh) setActiveDispatch(fresh.id);
     resetDraft();
     clearNewOrderDraft();
-    onToast("ORDER CREATED");
+    if (repeatDays > 1) onToast(`✓ ${repeatDays} ORDERS CREATED`);
+    else onToast("ORDER CREATED");
 
-    // If order has assignments with contacts — open Send Links modal so admin can text/email the team
+    // If first order has assignments with contacts — open Send Links modal so admin can text/email the team
     if (assignments && assignments.length > 0 && assignments.some((a) => a.contactId)) {
-      setSendLinksTarget(d);
+      setSendLinksTarget(created[0]);
     }
   };
 
@@ -1088,6 +1155,29 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
                 <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
+                {!editingId && (
+                  <div>
+                    <label className="fbt-label" title="Create copies of this order for consecutive days. 1 = single order. Useful for long-running daily haul jobs.">Repeat for # days</label>
+                    <input
+                      className="fbt-input"
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={draft.repeatDays || 1}
+                      onChange={(e) => setDraft({ ...draft, repeatDays: e.target.value })}
+                      placeholder="1"
+                    />
+                    {Number(draft.repeatDays) > 1 && (
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--good)", marginTop: 3 }}>
+                        ▸ WILL CREATE {Number(draft.repeatDays)} ORDERS · {draft.date} → {(() => {
+                          const end = new Date(draft.date);
+                          end.setDate(end.getDate() + Number(draft.repeatDays) - 1);
+                          return end.toISOString().slice(0, 10);
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label className="fbt-label">Expected Tons/Truck</label>
                   <input
@@ -2217,6 +2307,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => copyLink(d.code)}><Link2 size={12} style={{ marginRight: 4 }} /> COPY LINK</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => printDriverSheet(d, `${window.location.origin}${window.location.pathname}#/submit/${d.code}`, onToast)} title="Print driver sheet with QR"><Printer size={12} style={{ marginRight: 4 }} /> PRINT</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => openEditDispatch(d)} title="Edit this order"><Edit2 size={12} style={{ marginRight: 4 }} /> EDIT</button>
+                      <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => duplicateDispatch(d)} title="Create a new order copying this one's job, customer, trucks, drivers, and rates"><Plus size={12} style={{ marginRight: 4 }} /> DUPLICATE</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => setActiveDispatch(d.id)}><Eye size={12} style={{ marginRight: 4 }} /> OPEN</button>
                       <button className="btn-danger" onClick={() => removeDispatch(d.id)}><Trash2 size={12} /></button>
                     </div>
