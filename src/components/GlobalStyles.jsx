@@ -4,7 +4,10 @@
 export const GlobalStyles = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;500;700&family=Oswald:wght@400;500;600;700&display=swap');
-    :root { --hazard:#F59E0B; --hazard-deep:#D97706; --steel:#44403C; --concrete:#78716C; --cream:#FAFAF9; --rust:#9A3412; --safety:#EF4444; --good:#65A30D; --line:#D6D3D1; }
+    /* v21: shifted to a lighter palette — white surfaces + light-blue accent.
+       Token names kept (--hazard, --steel, --cream, etc.) so all the per-component
+       inline styles that reference them swap automatically. */
+    :root { --hazard:#60A5FA; --hazard-deep:#2563EB; --steel:#1E293B; --concrete:#64748B; --cream:#FFFFFF; --rust:#1D4ED8; --safety:#EF4444; --good:#16A34A; --line:#E2E8F0; }
     * { box-sizing: border-box; }
     body { margin: 0; }
     .fbt-root { font-family: 'Oswald', sans-serif; color: var(--steel); background: var(--cream); min-height: 100vh; }
@@ -12,7 +15,7 @@ export const GlobalStyles = () => (
     .fbt-mono { font-family: 'JetBrains Mono', monospace; }
     .hazard-stripe { background: repeating-linear-gradient(-45deg, var(--hazard) 0 20px, var(--steel) 20px 40px); }
     .hazard-stripe-thin { background: repeating-linear-gradient(-45deg, var(--hazard) 0 8px, var(--steel) 8px 16px); }
-    .texture-paper { background-color: var(--cream); background-image: radial-gradient(circle at 20% 50%, rgba(68,64,60,0.04) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(245,158,11,0.05) 0%, transparent 50%); }
+    .texture-paper { background-color: var(--cream); background-image: radial-gradient(circle at 20% 50%, rgba(30,41,59,0.04) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(96,165,250,0.06) 0%, transparent 50%); }
     .grain::before { content:''; position:absolute; inset:0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.15 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); opacity:0.4; pointer-events:none; mix-blend-mode:multiply; }
     .btn-primary { background: var(--hazard); color: var(--steel); border: 3px solid var(--steel); padding: 14px 28px; font-family: 'Oswald', sans-serif; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 14px; cursor: pointer; box-shadow: 4px 4px 0 var(--steel); transition: all 0.12s ease; display: inline-flex; align-items: center; gap: 10px; }
     .btn-primary:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--steel); }
@@ -28,12 +31,12 @@ export const GlobalStyles = () => (
     .fbt-label { display: block; font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; margin-bottom: 6px; color: var(--concrete); }
     .fbt-card { background: #FFF; border: 2px solid var(--steel); box-shadow: 6px 6px 0 var(--steel); }
     .nav-tab { padding: 10px 20px; font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; font-size: 13px; cursor: pointer; color: var(--cream); border: 2px solid transparent; display: flex; align-items: center; gap: 8px; transition: all 0.15s; }
-    .nav-tab:hover { background: rgba(245,158,11,0.15); }
+    .nav-tab:hover { background: rgba(96,165,250,0.18); }
     .nav-tab.active { background: var(--hazard); color: var(--steel); }
     .fbt-table { width: 100%; border-collapse: collapse; }
     .fbt-table th { background: var(--steel); color: var(--hazard); text-align: left; padding: 10px 12px; font-family: 'Oswald', sans-serif; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; border-right: 1px solid var(--concrete); }
     .fbt-table td { padding: 10px 12px; border-bottom: 1px solid #E7E5E4; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--steel); }
-    .fbt-table tr:hover td { background: #FEF3C7; }
+    .fbt-table tr:hover td { background: #EFF6FF; }
     .stat-num { font-family: 'Archivo Black', sans-serif; font-size: clamp(22px, 4vw, 36px); line-height: 1.1; color: var(--steel); word-break: break-all; }
     .stat-label { font-family: 'Oswald', sans-serif; font-weight: 500; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; color: var(--concrete); margin-top: 6px; }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
