@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
@@ -13,6 +14,8 @@ export default defineConfig([
       reactHooks.configs.flat.recommended,
       reactRefresh.configs.vite,
     ],
+    plugins: { react },
+    settings: { react: { version: 'detect' } },
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -28,6 +31,10 @@ export default defineConfig([
         argsIgnorePattern: '^_',
         caughtErrorsIgnorePattern: '^_',
       }],
+      // Catches the exact bug class that crashed the live site:
+      // a JSX tag (<X />) referencing a component that wasn't imported.
+      // Base no-undef doesn't see JSX identifiers; this rule does.
+      'react/jsx-no-undef': 'error',
     },
   },
 ])

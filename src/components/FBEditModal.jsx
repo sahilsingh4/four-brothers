@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { AlertTriangle, Camera, Clock, Lock, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, Camera, Clock, Lock, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { compressImage, fmt$, nextLineId } from "../utils";
 import { deleteFreightBill, recoverFreightBill, logAudit } from "../db";
 
