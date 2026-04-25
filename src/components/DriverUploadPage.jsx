@@ -3,6 +3,7 @@ import { AlertCircle, Camera, CheckCircle2, Clock, Plus, Trash2, Upload, X } fro
 import { Lightbox } from "./Lightbox";
 import { Logo } from "./Logo";
 import { PreTripModal } from "./PreTripModal";
+import { IncidentModal } from "./IncidentModal";
 import { compressImage, fmtDate } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { useNetworkStatus } from "../hooks/useNetworkStatus";
@@ -114,6 +115,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
   });
   const [posttripPending, setPosttripPending] = useState(null);
   const [showPosttrip, setShowPosttrip] = useState(false);
+  // Incident — captured ad-hoc whenever something happens; attached to next FB
+  // submit so the admin sees it in Review with full context.
+  const [showIncident, setShowIncident] = useState(false);
+  const [incidentPending, setIncidentPending] = useState(null);
+  const onIncidentSubmit = (incident) => {
+    setIncidentPending(incident);
+    setShowIncident(false);
+  };
   const onPretripSubmit = (inspection) => {
     try { localStorage.setItem(PRETRIP_KEY, JSON.stringify(inspection)); } catch { /* noop */ }
     setPretripDone(true);
@@ -265,9 +274,11 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         // the day. Subsequent FBs the same shift don't carry it again.
         pretripInspection: pretripPending || undefined,
         posttripInspection: posttripPending || undefined,
+        incidentReport: incidentPending || undefined,
       });
       if (pretripPending) setPretripPending(null);
       if (posttripPending) setPosttripPending(null);
+      if (incidentPending) setIncidentPending(null);
       const wasQueued = result?.status === "queued";
 
       setSubmitProgress(wasQueued ? "✓ QUEUED" : "✓ SENT");
@@ -431,6 +442,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           driverName={form.driverName}
           onSubmit={onPosttripSubmit}
           onClose={() => setShowPosttrip(false)}
+        />
+      )}
+      {showIncident && (
+        <IncidentModal
+          truckNumber={form.truckNumber}
+          driverName={form.driverName}
+          onSubmit={onIncidentSubmit}
+          onClose={() => setShowIncident(false)}
         />
       )}
       <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "20px 24px", borderBottom: "3px solid var(--hazard)" }}>
@@ -640,6 +659,25 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 )}
               </div>
             )}
+
+            {/* Incident quick-link — always available in case driver needs to
+                report something mid-shift. Pending incident shows a chip until
+                attached to next FB submit. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+              {incidentPending ? (
+                <span className="chip" style={{ background: "var(--safety)", color: "#FFF", fontSize: 10, padding: "3px 8px", borderColor: "var(--safety)" }}>
+                  ⚠ INCIDENT PENDING — attaches to your next submit
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowIncident(true)}
+                  style={{ background: "transparent", border: "none", color: "var(--safety)", textDecoration: "underline", cursor: "pointer", fontSize: 11, padding: 0 }}
+                >
+                  ⚠ Report incident
+                </button>
+              )}
+            </div>
 
             <div>
               <label className="fbt-label">Freight Bill # * <span style={{ color: "var(--concrete)", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>(from the top of your paper bill)</span></label>

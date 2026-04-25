@@ -219,6 +219,55 @@ export const computeDispatchSummary = (d, bills) => {
   };
 };
 
+// Per-project profitability rollup. Sums invoice totals (billed) for invoices
+// linked to this project, FB pay (paid out to drivers/subs), and FB extras
+// (tolls, dump fees, fuel — pass-through costs we paid). Returns a margin
+// object the dashboard renders as a single row per project.
+//
+// Notes:
+// - Billed: SUM(invoice.total) for invoices with this projectId. Includes paid
+//   AND outstanding (the work was done; we just haven't collected yet).
+// - PaidOut: SUM(fb.paidAmount) across FBs whose dispatch belongs to a job
+//   under this project. Falls back to the gross of payingLines if paidAmount
+//   isn't set yet (statement not locked).
+// - Fees: SUM of pass-through extras on those same FBs.
+// - Margin = billed - paidOut - fees.
+export const computeProjectProfitability = (project, dispatches, freightBills, invoices) => {
+  if (!project) return null;
+  const projectInvoices = (invoices || []).filter((inv) => inv.projectId === project.id && !inv.deletedAt);
+  const billed = projectInvoices.reduce((s, inv) => s + (Number(inv.total) || 0), 0);
+  const collected = projectInvoices.reduce((s, inv) => s + (Number(inv.amountPaid) || 0), 0);
+  const outstanding = Math.max(0, billed - collected);
+
+  const projectDispatchIds = new Set(
+    (dispatches || []).filter((d) => d.projectId === project.id).map((d) => d.id)
+  );
+  const projectFbs = (freightBills || []).filter((fb) => projectDispatchIds.has(fb.dispatchId));
+
+  const paidOut = projectFbs.reduce((s, fb) => {
+    if (fb.paidAmount != null) return s + (Number(fb.paidAmount) || 0);
+    // Fallback: sum of paying-line nets if not yet locked-in via pay statement
+    const lines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+    return s + lines.reduce((ls, ln) => ls + (Number(ln.net) || 0), 0);
+  }, 0);
+
+  const fees = projectFbs.reduce((s, fb) => {
+    const extras = Array.isArray(fb.extras) ? fb.extras : [];
+    return s + extras.reduce((es, x) => es + (Number(x.amount) || 0), 0);
+  }, 0);
+
+  const margin = billed - paidOut - fees;
+  const marginPct = billed > 0 ? (margin / billed) * 100 : 0;
+
+  return {
+    project,
+    billed, collected, outstanding,
+    paidOut, fees, margin, marginPct,
+    invoiceCount: projectInvoices.length,
+    fbCount: projectFbs.length,
+  };
+};
+
 // Compress an image File to a JPEG dataURL, scaled to fit `maxDim` on the
 // longer edge. Used wherever the app accepts photo uploads (driver freight
 // bills, company logos, etc.) — small enough payloads to fit in localStorage

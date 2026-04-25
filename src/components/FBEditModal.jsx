@@ -1661,6 +1661,44 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           </div>
 
 
+          {/* Incident report — captured ad-hoc by the driver, attached to next
+              FB submission. Shown as a prominent red panel since these usually
+              require admin follow-up (insurance, photos, drivable status). */}
+          {fb.incidentReport && (() => {
+            const r = fb.incidentReport;
+            const when = r.reportedAt ? new Date(r.reportedAt).toLocaleString() : "—";
+            const drivLabel = r.drivable === "yes" ? "drivable" : r.drivable === "no" ? "NOT drivable" : "drivability unsure";
+            return (
+              <div style={{ padding: 12, border: "2px solid var(--safety)", background: "#FEF2F2", borderRadius: 6 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700, marginBottom: 6 }}>
+                  ⚠ INCIDENT REPORT · {String(r.kind || "—").toUpperCase()} · {drivLabel.toUpperCase()}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--steel)" }}>
+                  Signed by <strong>{r.signedBy || "—"}</strong> · {when} · Truck {r.truckNumber || "—"}
+                  {r.location && <> · {r.location}</>}
+                </div>
+                {r.narrative && (
+                  <div style={{ marginTop: 8, padding: 8, background: "#FFF", border: "1px solid var(--line)", fontSize: 12, lineHeight: 1.5 }}>
+                    {r.narrative}
+                  </div>
+                )}
+                {(r.otherParty || r.policeReportNumber) && (
+                  <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11, color: "var(--steel)" }}>
+                    {r.otherParty && <div><strong>Other party:</strong> {r.otherParty}</div>}
+                    {r.policeReportNumber && <div><strong>Police report #:</strong> {r.policeReportNumber}</div>}
+                  </div>
+                )}
+                {Array.isArray(r.photos) && r.photos.length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {r.photos.map((p, idx) => (
+                      <img key={p.id || idx} src={p.dataUrl} alt="" style={{ width: 80, height: 80, objectFit: "cover", border: "1px solid var(--line)" }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* Pre-trip / post-trip inspections — present on the FIRST FB
               of the day (pre) or the FB submitted right after end-of-shift
               check (post). Shows OK/DEFECT counts and lists each defect inline.

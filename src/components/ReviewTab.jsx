@@ -239,6 +239,11 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                           </span>
                         );
                       })()}
+                      {fb.incidentReport && (
+                        <span className="chip" title={`Incident: ${fb.incidentReport.kind || "—"} · ${fb.incidentReport.drivable === "no" ? "NOT drivable" : fb.incidentReport.drivable === "yes" ? "drivable" : "drivable unsure"}`} style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
+                          ⚠ INCIDENT
+                        </span>
+                      )}
                     </div>
                     <div className="fbt-display" style={{ fontSize: 15, lineHeight: 1.2 }}>
                       {fb.driverName || "Unknown driver"} · Truck {fb.truckNumber || "—"}
