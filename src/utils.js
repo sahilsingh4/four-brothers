@@ -121,6 +121,29 @@ export const bidDaysUntil = (iso) => {
   return Math.ceil(diff / (24 * 60 * 60 * 1000));
 };
 
+// Bid lifecycle stages used by BidModal, BidsTab, and CustomerPortal.
+// Order matters — the array order is the natural progression.
+export const BID_STATUSES = [
+  { value: "discovered", label: "DISCOVERED", color: "#64748B", bg: "#F1F5F9", description: "Found the opportunity, not yet evaluated" },
+  { value: "researching", label: "RESEARCHING", color: "#0369A1", bg: "#E0F2FE", description: "Reading specs, evaluating fit" },
+  { value: "preparing", label: "PREPARING", color: "#B45309", bg: "#FEF3C7", description: "Building the bid package" },
+  { value: "submitted", label: "SUBMITTED", color: "#7C3AED", bg: "#EDE9FE", description: "Bid in, awaiting decision" },
+  { value: "awarded", label: "AWARDED ★", color: "#166534", bg: "#DCFCE7", description: "We won" },
+  { value: "rejected", label: "REJECTED", color: "#991B1B", bg: "#FEE2E2", description: "Lost, competitor won" },
+  { value: "abandoned", label: "ABANDONED", color: "#57534E", bg: "#F5F5F4", description: "We chose not to bid" },
+];
+export const BID_STATUS_MAP = Object.fromEntries(BID_STATUSES.map((s) => [s.value, s]));
+
+// Common bid portals for the BidModal source dropdown.
+export const BID_PORTALS = [
+  { value: "publicpurchase", label: "Public Purchase" },
+  { value: "planetbids", label: "PlanetBids" },
+  { value: "ebmud", label: "EBMUD" },
+  { value: "bidnet", label: "BidNet" },
+  { value: "direct", label: "Direct (email/mail)" },
+  { value: "other", label: "Other" },
+];
+
 // Build a goqr.me URL for a given data string. Used by both the in-app QR
 // renderer and the printable driver sheet.
 export const qrServiceUrl = (data, size = 300) =>
