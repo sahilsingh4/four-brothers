@@ -35,6 +35,9 @@ export default defineConfig([
       // a JSX tag (<X />) referencing a component that wasn't imported.
       // Base no-undef doesn't see JSX identifiers; this rule does.
       'react/jsx-no-undef': 'error',
+      // Tells no-unused-vars that a JSX tag reference counts as a use.
+      // Without this, `const Foo = (...)` + `<Foo />` reports Foo unused.
+      'react/jsx-uses-vars': 'error',
     },
   },
 ])
