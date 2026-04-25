@@ -1894,6 +1894,56 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           );
         })()}
 
+        {/* F5: Mixed-rate detection — flags when the dispatch's current rate differs
+            from the rate stamped on a candidate FB (i.e. the dispatcher edited the
+            rate after the FB was approved). The invoice will use whatever each FB
+            has stamped, so a mismatch can produce silent under/overbilling. */}
+        {matchedBills.length > 0 && (() => {
+          const drift = []; // [{fb, method, fbRate, dispatchRate}]
+          matchedBills.forEach((fb) => {
+            const disp = dispatches.find((d) => d.id === fb.dispatchId);
+            if (!disp) return;
+            const method = fb.billedMethod || (
+              disp.ratePerHour ? "hour" : disp.ratePerTon ? "ton" : disp.ratePerLoad ? "load" : null
+            );
+            if (!method) return;
+            const dispRate = method === "hour" ? Number(disp.ratePerHour) : method === "ton" ? Number(disp.ratePerTon) : Number(disp.ratePerLoad);
+            if (!dispRate) return;
+            // Pick the FB's most-relevant stamped rate: first matching billing line, else billedRate.
+            let fbRate = null;
+            if (Array.isArray(fb.billingLines) && fb.billingLines.length > 0) {
+              const codeForMethod = method === "hour" ? "H" : method === "ton" ? "T" : "L";
+              const ln = fb.billingLines.find((l) => l.code === codeForMethod) || fb.billingLines[0];
+              fbRate = Number(ln?.rate) || null;
+            }
+            if (fbRate == null && fb.billedRate != null) fbRate = Number(fb.billedRate);
+            if (fbRate == null || fbRate === 0) return;
+            // Use a small epsilon so 142 vs 142.00 doesn't trigger.
+            if (Math.abs(fbRate - dispRate) > 0.005) {
+              drift.push({ fb, method, fbRate, dispRate, dispCode: disp.code });
+            }
+          });
+          if (drift.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 14, padding: 12, background: "#FEF3C7", border: "1px solid var(--hazard)", borderRadius: 6 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 6 }}>
+                ⚠ MIXED RATES · {drift.length} FB{drift.length !== 1 ? "S" : ""} STAMPED AT A DIFFERENT RATE THAN THEIR DISPATCH'S CURRENT RATE
+              </div>
+              <div style={{ display: "grid", gap: 4, fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)" }}>
+                {drift.slice(0, 6).map((d) => (
+                  <div key={d.fb.id}>
+                    FB#{d.fb.freightBillNumber || "—"} · ORDER #{d.dispCode || "—"} · stamped <strong>${d.fbRate.toFixed(2)}/{d.method.charAt(0)}</strong> · dispatch now <strong>${d.dispRate.toFixed(2)}/{d.method.charAt(0)}</strong>
+                  </div>
+                ))}
+                {drift.length > 6 && <div style={{ color: "var(--concrete)" }}>+ {drift.length - 6} more</div>}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>
+                ▸ INVOICE USES EACH FB'S STAMPED RATE (SAFER — THAT'S WHAT WAS AGREED AT REVIEW). TO RE-RATE A FB AT THE NEW RATE, OPEN IT FROM REVIEW AND EDIT THE BILLING LINE.
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Auto-include preview for range + project modes */}
         {(builderMode === "range" || builderMode === "project") && matchedBills.length > 0 && (
           <div style={{ marginBottom: 18 }}>
