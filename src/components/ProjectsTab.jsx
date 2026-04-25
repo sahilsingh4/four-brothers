@@ -10,6 +10,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
     tonnageGoal: "", budget: "", bidAmount: "",
     primeContractor: "", fundingSource: "", certifiedPayroll: false, notes: "",
     defaultRate: "", minimumHours: "",
+    subPayRate: "", subMinimumHours: "",
   });
 
   const customers = contacts.filter((c) => c.type === "customer");
@@ -128,7 +129,44 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
               </div>
             </div>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
-              ▸ INVOICE USES max(ACTUAL_HOURS, MINIMUM) × RATE · SUB PAYROLL USES ACTUAL HOURS
+              ▸ INVOICE USES max(ACTUAL_HOURS, BILL MINIMUM) × RATE
+            </div>
+          </div>
+
+          {/* Sub-Contractor Defaults — applied when adding a sub assignment on
+              an order tied to this project, and used as the floor when computing
+              sub pay statements. Project values win over the sub contact's
+              defaultPayRate (per user's plan). */}
+          <div style={{ padding: 14, background: "#EFF6FF", border: "2px solid var(--hazard-deep)" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 10 }}>
+              ▸ SUB-CONTRACTOR DEFAULTS · APPLIED TO ORDERS + PAYROLL UNDER THIS PROJECT
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+              <div>
+                <label className="fbt-label">Sub Pay $/hr</label>
+                <input
+                  className="fbt-input"
+                  type="number"
+                  step="0.01"
+                  value={draft.subPayRate ?? ""}
+                  onChange={(e) => setDraft({ ...draft, subPayRate: e.target.value })}
+                  placeholder="120.00"
+                />
+              </div>
+              <div>
+                <label className="fbt-label">Minimum Hours / Sub</label>
+                <input
+                  className="fbt-input"
+                  type="number"
+                  step="0.25"
+                  value={draft.subMinimumHours ?? ""}
+                  onChange={(e) => setDraft({ ...draft, subMinimumHours: e.target.value })}
+                  placeholder="4"
+                />
+              </div>
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+              ▸ SUB PAY = max(ACTUAL_HOURS, SUB MINIMUM) × SUB RATE · BLANK = USE SUB CONTACT'S DEFAULT
             </div>
           </div>
 
