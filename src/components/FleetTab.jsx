@@ -47,7 +47,10 @@ const expiryLabel = (dateStr) => {
 // Returns the "worst" expiry status across the unit's tracked dates.
 const worstStatus = (unit) => {
   const order = { expired: 4, soon: 3, warning: 2, ok: 1 };
-  const dates = [unit.insuranceExpiry, unit.registrationExpiry, unit.dotInspectionExpiry];
+  const dates = [
+    unit.insuranceExpiry, unit.registrationExpiry, unit.dotInspectionExpiry,
+    unit.nextOilChange, unit.nextBrakeService, unit.nextSmogCheck,
+  ];
   let worst = null;
   for (const d of dates) {
     const s = expiryStatus(d);
@@ -63,6 +66,9 @@ const newDraft = () => ({
   lastServiceDate: "", lastServiceMileage: "", nextServiceDueMileage: "",
   insuranceCarrier: "", insuranceExpiry: "",
   registrationExpiry: "", dotInspectionExpiry: "",
+  // Preventive-maintenance schedule — owner stamps a target date for each
+  // recurring service. UI flags chips when within 30 days of due / overdue.
+  nextOilChange: "", nextBrakeService: "", nextSmogCheck: "",
   notes: "", maintenanceLog: [],
 });
 
@@ -164,6 +170,9 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
           <div><label className="fbt-label">Insurance expires</label><input className="fbt-input" type="date" value={draft.insuranceExpiry} onChange={(e) => setDraft({ ...draft, insuranceExpiry: e.target.value })} /></div>
           <div><label className="fbt-label">Registration expires</label><input className="fbt-input" type="date" value={draft.registrationExpiry} onChange={(e) => setDraft({ ...draft, registrationExpiry: e.target.value })} /></div>
           <div><label className="fbt-label">DOT inspection expires</label><input className="fbt-input" type="date" value={draft.dotInspectionExpiry} onChange={(e) => setDraft({ ...draft, dotInspectionExpiry: e.target.value })} /></div>
+          <div><label className="fbt-label">Next oil change</label><input className="fbt-input" type="date" value={draft.nextOilChange || ""} onChange={(e) => setDraft({ ...draft, nextOilChange: e.target.value })} /></div>
+          <div><label className="fbt-label">Next brake service</label><input className="fbt-input" type="date" value={draft.nextBrakeService || ""} onChange={(e) => setDraft({ ...draft, nextBrakeService: e.target.value })} /></div>
+          <div><label className="fbt-label">Next smog check</label><input className="fbt-input" type="date" value={draft.nextSmogCheck || ""} onChange={(e) => setDraft({ ...draft, nextSmogCheck: e.target.value })} /></div>
           <div style={{ gridColumn: "1 / -1" }}><label className="fbt-label">Notes</label><input className="fbt-input" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></div>
         </div>
         <button onClick={add} className="btn-primary" style={{ marginTop: 18 }}><Plus size={16} /> Add unit</button>
@@ -186,6 +195,9 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
               const insS = expiryStatus(f.insuranceExpiry);
               const regS = expiryStatus(f.registrationExpiry);
               const dotS = expiryStatus(f.dotInspectionExpiry);
+              const oilS = expiryStatus(f.nextOilChange);
+              const brakeS = expiryStatus(f.nextBrakeService);
+              const smogS = expiryStatus(f.nextSmogCheck);
               return (
                 <div key={f.id} style={{ border: `1px solid ${ws === "expired" || ws === "soon" ? "var(--safety)" : "var(--line)"}`, borderRadius: 10, background: "#FFF", padding: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -200,8 +212,8 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
                     Driver ▸ {f.driver || "unassigned"}
                   </div>
 
-                  {/* Expiry chips */}
-                  {(f.insuranceExpiry || f.registrationExpiry || f.dotInspectionExpiry) && (
+                  {/* Expiry chips — compliance + preventive maintenance */}
+                  {(f.insuranceExpiry || f.registrationExpiry || f.dotInspectionExpiry || f.nextOilChange || f.nextBrakeService || f.nextSmogCheck) && (
                     <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {f.insuranceExpiry && (
                         <span className="chip" title={`Insurance expires ${fmtDate(f.insuranceExpiry)}`} style={{ background: expiryBg(insS), color: expiryColor(insS), borderColor: expiryColor(insS) }}>
@@ -216,6 +228,21 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
                       {f.dotInspectionExpiry && (
                         <span className="chip" title={`DOT inspection expires ${fmtDate(f.dotInspectionExpiry)}`} style={{ background: expiryBg(dotS), color: expiryColor(dotS), borderColor: expiryColor(dotS) }}>
                           DOT · {expiryLabel(f.dotInspectionExpiry)}
+                        </span>
+                      )}
+                      {f.nextOilChange && (
+                        <span className="chip" title={`Oil change due ${fmtDate(f.nextOilChange)}`} style={{ background: expiryBg(oilS), color: expiryColor(oilS), borderColor: expiryColor(oilS) }}>
+                          OIL · {expiryLabel(f.nextOilChange)}
+                        </span>
+                      )}
+                      {f.nextBrakeService && (
+                        <span className="chip" title={`Brake service due ${fmtDate(f.nextBrakeService)}`} style={{ background: expiryBg(brakeS), color: expiryColor(brakeS), borderColor: expiryColor(brakeS) }}>
+                          BRAKE · {expiryLabel(f.nextBrakeService)}
+                        </span>
+                      )}
+                      {f.nextSmogCheck && (
+                        <span className="chip" title={`Smog check due ${fmtDate(f.nextSmogCheck)}`} style={{ background: expiryBg(smogS), color: expiryColor(smogS), borderColor: expiryColor(smogS) }}>
+                          SMOG · {expiryLabel(f.nextSmogCheck)}
                         </span>
                       )}
                     </div>

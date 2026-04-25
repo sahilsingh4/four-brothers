@@ -3,7 +3,7 @@ import {
   Activity, AlertTriangle, ClipboardList, Clock, DollarSign,
   Mail, Receipt, Search, ShieldCheck, Truck,
 } from "lucide-react";
-import { fmt$, bidDaysUntil, daysSince, hoursSince, minutesSince } from "../utils";
+import { fmt$, bidDaysUntil, daysSince, hoursSince, minutesSince, computeProjectProfitability } from "../utils";
 import { BidDeadlineChip } from "./BidDeadlineChip";
 import { SectionCard, Row } from "./SectionCard";
 
@@ -212,8 +212,8 @@ export const HomeTab = ({
     return acc;
   }, [invoices]);
 
-  // Fleet alerts — units with insurance / registration / DOT expired or due in
-  // ≤30 days. Sorted by worst (most overdue first).
+  // Fleet alerts — units with insurance / registration / DOT / preventive
+  // maintenance expired or due within 30 days. Sorted worst first.
   const fleetAlerts = useMemo(() => {
     return (fleet || [])
       .map((f) => {
@@ -222,9 +222,15 @@ export const HomeTab = ({
         const ins = days("insuranceExpiry");
         const reg = days("registrationExpiry");
         const dot = days("dotInspectionExpiry");
+        const oil = days("nextOilChange");
+        const brake = days("nextBrakeService");
+        const smog = days("nextSmogCheck");
         if (ins !== null && ins <= 30) labels.push({ kind: "INS", days: ins });
         if (reg !== null && reg <= 30) labels.push({ kind: "REG", days: reg });
         if (dot !== null && dot <= 30) labels.push({ kind: "DOT", days: dot });
+        if (oil !== null && oil <= 30) labels.push({ kind: "OIL", days: oil });
+        if (brake !== null && brake <= 30) labels.push({ kind: "BRAKE", days: brake });
+        if (smog !== null && smog <= 30) labels.push({ kind: "SMOG", days: smog });
         if (labels.length === 0) return null;
         const worst = Math.min(...labels.map((l) => l.days));
         return { unit: f, labels, worst };
@@ -232,6 +238,17 @@ export const HomeTab = ({
       .filter(Boolean)
       .sort((a, b) => a.worst - b.worst);
   }, [fleet]);
+
+  // Project profitability — billed (invoice totals) - paid out (FB pay) - fees
+  // (FB extras like tolls/dump). Surfaces top winners + losers so the owner can
+  // see at a glance which jobs are making money and which are bleeding.
+  const projectMargins = useMemo(() => {
+    return (projects || [])
+      .filter((p) => p.status !== "archived")
+      .map((p) => computeProjectProfitability(p, dispatches, freightBills, invoices))
+      .filter((m) => m && (m.billed > 0 || m.paidOut > 0))
+      .sort((a, b) => b.margin - a.margin);
+  }, [projects, dispatches, freightBills, invoices]);
 
   // Driver compliance alerts — drivers/subs with CDL or medical card expiring
   // within 30 days. Same shape as fleetAlerts so the panel can render either.
@@ -885,6 +902,50 @@ export const HomeTab = ({
             />
           ))}
           {driverDocAlerts.length > 5 && <Row left={`+ ${driverDocAlerts.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* Project profitability — top winners + losers by margin. Click jumps
+            to ProjectsTab focused on that project. */}
+        <SectionCard
+          title="Project profitability"
+          icon={<DollarSign size={18} />}
+          count={projectMargins.length}
+          color="var(--steel)"
+          bg="#F8FAFC"
+          onClick={() => onJumpTab("projects")}
+          empty="No active projects with billed/paid activity yet"
+        >
+          {projectMargins.slice(0, 5).map((m) => (
+            <Row
+              key={m.project.id}
+              left={<><strong>{m.project.name}</strong></>}
+              sub={`${fmt$(m.billed)} billed · ${fmt$(m.paidOut)} pay · ${fmt$(m.fees)} fees`}
+              right={
+                <span style={{ color: m.margin >= 0 ? "var(--good)" : "var(--safety)", fontWeight: 700 }}>
+                  {fmt$(m.margin)}{m.billed > 0 ? ` (${m.marginPct.toFixed(0)}%)` : ""}
+                </span>
+              }
+              onClick={() => onJumpTab("projects", m.project.id)}
+            />
+          ))}
+          {projectMargins.length > 5 && (
+            <>
+              <Row left={<em style={{ color: "var(--concrete)" }}>—— Lowest margin ——</em>} />
+              {projectMargins.slice(-3).reverse().map((m) => (
+                <Row
+                  key={`bot-${m.project.id}`}
+                  left={<><strong>{m.project.name}</strong></>}
+                  sub={`${fmt$(m.billed)} billed · ${fmt$(m.paidOut)} pay · ${fmt$(m.fees)} fees`}
+                  right={
+                    <span style={{ color: m.margin >= 0 ? "var(--good)" : "var(--safety)", fontWeight: 700 }}>
+                      {fmt$(m.margin)}{m.billed > 0 ? ` (${m.marginPct.toFixed(0)}%)` : ""}
+                    </span>
+                  }
+                  onClick={() => onJumpTab("projects", m.project.id)}
+                />
+              ))}
+            </>
+          )}
         </SectionCard>
 
         {/* 3. Unpaid invoices (all) — with A/R aging chip strip */}
