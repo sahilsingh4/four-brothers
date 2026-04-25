@@ -311,7 +311,7 @@ const PayStubOfferModal = ({ target, onPrint, onClose }) => {
     <div className="modal-bg" onClick={onClose}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div style={{ padding: "18px 22px", background: "var(--good)", color: "#FFF" }}>
-          <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em" }}>PAYMENT RECORDED</div>
+          <div className="fbt-mono" style={{ fontSize: 10 }}>PAYMENT RECORDED</div>
           <h3 className="fbt-display" style={{ fontSize: 18, margin: "4px 0 0" }}>Print Pay Stub?</h3>
         </div>
         <div style={{ padding: 22 }}>
@@ -457,7 +457,7 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
         <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>MARK PAID</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>MARK PAID</div>
             <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>{target.subName}</h3>
             <div className="fbt-mono" style={{ fontSize: 10, color: "#D6D3D1", marginTop: 2 }}>
               {target.projectName || "(No project)"} · {fbs.length} FB{fbs.length !== 1 ? "S" : ""}
@@ -469,7 +469,7 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
 
           {/* Advance-pay warning */}
           {target.includeAdvance && target.hasAdvance && (
-            <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--safety)" }}>
+            <div style={{ padding: 10, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, color: "var(--safety)" }}>
               ⚠ <strong>ADVANCE PAY WARNING:</strong> Some FBs here haven't been paid by customer yet. You're fronting the cash.
             </div>
           )}
@@ -479,14 +479,14 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
             const shortFbs = fbs.filter((x) => x.custStatus === "short");
             if (shortFbs.length === 0) return null;
             return (
-              <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>
+              <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11 }}>
                 ⚠ <strong>{shortFbs.length} SHORT-PAID FB{shortFbs.length !== 1 ? "S" : ""}:</strong> Sub will be paid proportionally to what customer paid.
               </div>
             );
           })()}
 
           {/* Breakdown */}
-          <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>
+          <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)", fontSize: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
               <span>GROSS (adjusted for short-pay):</span><strong>{fmt$(target.gross)}</strong>
             </div>
@@ -1143,13 +1143,13 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
 
     return (
       <div style={{ padding: 8, background: "#FFF", border: "1.5px solid " + kindColor, display: "flex", flexDirection: "column", gap: 6 }}>
-        <div className="fbt-mono" style={{ fontSize: 9, color: kindColor, letterSpacing: "0.1em", fontWeight: 700, marginBottom: 2 }}>
+        <div className="fbt-mono" style={{ fontSize: 9, color: kindColor, fontWeight: 700, marginBottom: 2 }}>
           🚚 PAYING · EDITABLE
           {locked && <span style={{ marginLeft: 6, color: "var(--concrete)", fontWeight: 400 }}>⚑ locked</span>}
         </div>
 
         {/* Header */}
-        <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 60px 70px 50px 70px 22px", gap: 4, alignItems: "center", fontSize: 9, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", letterSpacing: "0.05em" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "50px 1fr 60px 70px 50px 70px 22px", gap: 4, alignItems: "center", fontSize: 9, color: "var(--concrete)" }}>
           <div>CODE</div><div>ITEM</div><div style={{ textAlign: "right" }}>QTY</div>
           <div style={{ textAlign: "right" }}>RATE</div><div style={{ textAlign: "center" }}>BR?</div>
           <div style={{ textAlign: "right" }}>NET</div><div></div>
@@ -1175,20 +1175,20 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                   e.target.value === "H" ? "HOURLY" : e.target.value === "T" ? "TONS" : e.target.value === "L" ? "LOAD" :
                   e.target.value === "TOLL" ? "Tolls" : e.target.value === "DUMP" ? "Dump" : e.target.value === "FUEL" ? "Fuel" : (ln.item || "")
                 ) })}
-                style={{ padding: "2px 3px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }}
+                style={{ padding: "2px 3px", fontSize: 10, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }}
               >
                 <option value="H">H</option><option value="T">T</option><option value="L">L</option>
                 <option value="TOLL">TOLL</option><option value="DUMP">DUMP</option><option value="FUEL">FUEL</option><option value="OTHER">OTHER</option>
               </select>
               <input disabled={rowLocked} type="text" value={ln.item || ""}
                 onChange={(e) => updatePayLineLocal(fb.id, ln.id, { item: e.target.value })}
-                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }} />
+                style={{ padding: "2px 4px", fontSize: 10, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%" }} />
               <input disabled={rowLocked} type="number" step="0.01" value={ln.qty ?? ""}
                 onChange={(e) => updatePayLineLocal(fb.id, ln.id, { qty: e.target.value })}
-                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
+                style={{ padding: "2px 4px", fontSize: 10, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
               <input disabled={rowLocked} type="number" step="0.01" value={ln.rate ?? ""}
                 onChange={(e) => updatePayLineLocal(fb.id, ln.id, { rate: e.target.value })}
-                style={{ padding: "2px 4px", fontSize: 10, fontFamily: "JetBrains Mono, monospace", border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
+                style={{ padding: "2px 4px", fontSize: 10, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: "100%", textAlign: "right" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 1, justifyContent: "center" }}>
                 <input type="checkbox" disabled={rowLocked} checked={!!ln.brokerable}
                   onChange={(e) => updatePayLineLocal(fb.id, ln.id, { brokerable: e.target.checked, brokeragePct: e.target.checked ? (ln.brokeragePct || 10) : 0 })}
@@ -1199,7 +1199,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                     style={{ padding: "1px 2px", fontSize: 9, border: "1px solid var(--concrete)", background: rowLocked ? "#F5F5F4" : "#FFF", width: 28, textAlign: "right" }} />
                 )}
               </div>
-              <div style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: kindColor, textAlign: "right" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: kindColor, textAlign: "right" }}>
                 ${net.toFixed(2)}
               </div>
               <button type="button" disabled={rowLocked}
@@ -1234,7 +1234,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
             border: `1px solid ${dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)"}`,
             flexWrap: "wrap",
           }}>
-            <span className="fbt-mono" style={{ fontSize: 9, letterSpacing: "0.08em", fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
+            <span className="fbt-mono" style={{ fontSize: 9, fontWeight: 700, color: dirty ? "var(--hazard-deep)" : status === "saved" ? "var(--good)" : status === "error" ? "var(--safety)" : "var(--concrete)" }}>
               {status === "saving" ? "SAVING…" :
                status === "saved" ? "SAVED ✓" :
                status === "error" ? "ERROR" :
@@ -1263,7 +1263,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
           that contact in the appropriate scope. */}
       {orphanByContact.length > 0 && (
         <div className="fbt-card" style={{ padding: 14, background: "#FEF3C7", border: "1px solid var(--hazard)" }}>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 8 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 8 }}>
             ⚠ UNPAID APPROVED FBs · {orphanByContact.reduce((s, e) => s + e.fbs.length, 0)} ACROSS {orphanByContact.length} {orphanByContact.length === 1 ? "PERSON" : "PEOPLE"}
           </div>
           <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10 }}>
@@ -1303,7 +1303,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
             type="button"
             onClick={() => setPayScope("drivers")}
             style={{
-              padding: "10px 22px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+              padding: "10px 22px", fontSize: 12, fontWeight: 700,
               background: payScope === "drivers" ? "#0369A1" : "#FFF",
               color: payScope === "drivers" ? "#FFF" : "var(--steel)",
               border: "none", cursor: "pointer",
@@ -1315,7 +1315,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
             type="button"
             onClick={() => setPayScope("subs")}
             style={{
-              padding: "10px 22px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+              padding: "10px 22px", fontSize: 12, fontWeight: 700,
               background: payScope === "subs" ? "#9A3412" : "#FFF",
               color: payScope === "subs" ? "#FFF" : "var(--steel)",
               border: "none", borderLeft: "2px solid var(--steel)", cursor: "pointer",
@@ -1324,7 +1324,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
             <Building2 size={13} style={{ marginRight: 6, marginBottom: -2 }} /> SUBS ({subContactsList.length})
           </button>
         </div>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", flex: 1 }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", flex: 1 }}>
           ▸ BUILDING PAY STATEMENT FOR {payScope === "drivers" ? "EMPLOYEE DRIVERS" : "SUBCONTRACTORS"}
         </div>
       </div>
@@ -1375,11 +1375,11 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
               </div>
             ) : (
               <div>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", marginBottom: 6, fontWeight: 700 }}>
                   ▸ {drvFbs.length} FB{drvFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDIT PAY LINES ON RIGHT
                 </div>
                 {drvFbs.length > 0 && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 700 }}>
                       <input
                         type="checkbox"
@@ -1406,7 +1406,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                     return (
                       <div key={fb.id} style={{ background: !isSelected ? "#F5F5F4" : dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${!isSelected ? "#D6D3D1" : dirty ? "var(--hazard-deep)" : "var(--concrete)"}`, opacity: !isSelected ? 0.6 : 1 }}>
                         <div
-                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11 }}
                         >
                           <input
                             type="checkbox"
@@ -1451,14 +1451,14 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                           <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                             {/* LEFT: Billed to customer (read-only) */}
                             <div style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--concrete)" }}>
-                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
                                 💰 BILLED TO CUSTOMER (READ-ONLY)
                               </div>
                               {billLines.length === 0 ? (
                                 <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No billing lines</div>
                               ) : (
                                 billLines.map((ln) => (
-                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                  <div key={ln.id} style={{ fontSize: 10, padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
                                     <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
                                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
                                     <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
@@ -1466,7 +1466,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                   </div>
                                 ))
                               )}
-                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
                                 <span>BILL TOTAL</span>
                                 <span style={{ color: "var(--hazard-deep)" }}>${billTotal.toFixed(2)}</span>
                               </div>
@@ -1480,12 +1480,12 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                 const livePayTotal = livePayLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                                 return (
                                   <>
-                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #0369A1", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, background: "#FFF" }}>
+                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #0369A1", display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, background: "#FFF" }}>
                                       <span>PAY TOTAL</span>
                                       <span style={{ color: "#0369A1" }}>${livePayTotal.toFixed(2)}</span>
                                     </div>
                                     {billTotal > 0 && livePayTotal > 0 && (
-                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, display: "flex", justifyContent: "space-between" }}>
                                         <span style={{ fontWeight: 700 }}>MARGIN</span>
                                         <span style={{ fontWeight: 700, color: "var(--good)" }}>
                                           ${(billTotal - livePayTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - livePayTotal) / billTotal * 100).toFixed(0) : "0"}%)
@@ -1624,11 +1624,11 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
               </div>
             ) : (
               <div>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "#9A3412", letterSpacing: "0.08em", marginBottom: 6, fontWeight: 700 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#9A3412", marginBottom: 6, fontWeight: 700 }}>
                   ▸ {subFbs.length} FB{subFbs.length !== 1 ? "S" : ""} · CLICK TO EXPAND · EDIT PAY LINES ON RIGHT
                 </div>
                 {subFbs.length > 0 && (
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 10px", background: "#FFF", border: "1px dashed var(--concrete)", marginBottom: 6, fontSize: 10 }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 700 }}>
                       <input
                         type="checkbox"
@@ -1655,7 +1655,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                     return (
                       <div key={fb.id} style={{ background: !isSelected ? "#F5F5F4" : dirty ? "#FEF3C7" : "#FFF", border: `1.5px solid ${!isSelected ? "#D6D3D1" : dirty ? "var(--hazard-deep)" : "var(--concrete)"}`, opacity: !isSelected ? 0.6 : 1 }}>
                         <div
-                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}
+                          style={{ padding: "8px 10px", display: "grid", gridTemplateColumns: "auto auto auto 1fr auto auto", gap: 10, alignItems: "center", fontSize: 11 }}
                         >
                           <input
                             type="checkbox"
@@ -1699,14 +1699,14 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                           <div style={{ padding: "10px 14px", background: "#FAFAF9", borderTop: "1px dashed var(--concrete)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                             {/* LEFT: Billed to customer (read-only) */}
                             <div style={{ padding: 8, background: "#FFF", border: "1.5px solid var(--concrete)" }}>
-                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 6 }}>
+                              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
                                 💰 BILLED TO CUSTOMER (READ-ONLY)
                               </div>
                               {billLines.length === 0 ? (
                                 <div style={{ fontSize: 10, color: "var(--concrete)", fontStyle: "italic" }}>No billing lines</div>
                               ) : (
                                 billLines.map((ln) => (
-                                  <div key={ln.id} style={{ fontSize: 10, fontFamily: "JetBrains Mono, monospace", padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
+                                  <div key={ln.id} style={{ fontSize: 10, padding: "2px 0", display: "flex", justifyContent: "space-between", gap: 6, borderBottom: "1px dotted var(--concrete)" }}>
                                     <span style={{ fontWeight: 700, minWidth: 42 }}>{ln.code}</span>
                                     <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ln.item}</span>
                                     <span>{Number(ln.qty || 0).toFixed(2)}×${Number(ln.rate || 0).toFixed(2)}</span>
@@ -1714,7 +1714,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                   </div>
                                 ))
                               )}
-                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1.5px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700 }}>
                                 <span>BILL TOTAL</span>
                                 <span style={{ color: "var(--hazard-deep)" }}>${billTotal.toFixed(2)}</span>
                               </div>
@@ -1728,12 +1728,12 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                 const livePayTotal = livePayLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
                                 return (
                                   <>
-                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #9A3412", display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", fontWeight: 700, background: "#FFF" }}>
+                                    <div style={{ marginTop: 6, padding: "6px 10px", border: "1.5px solid #9A3412", display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, background: "#FFF" }}>
                                       <span>PAY TOTAL</span>
                                       <span style={{ color: "#9A3412" }}>${livePayTotal.toFixed(2)}</span>
                                     </div>
                                     {billTotal > 0 && livePayTotal > 0 && (
-                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between" }}>
+                                      <div style={{ marginTop: 4, padding: "4px 10px", background: "#D1FAE5", fontSize: 10, display: "flex", justifyContent: "space-between" }}>
                                         <span style={{ fontWeight: 700 }}>MARGIN</span>
                                         <span style={{ fontWeight: 700, color: "var(--good)" }}>
                                           ${(billTotal - livePayTotal).toFixed(2)} ({billTotal > 0 ? ((billTotal - livePayTotal) / billTotal * 100).toFixed(0) : "0"}%)
@@ -1827,7 +1827,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
 
       {/* Section divider before existing payroll UI */}
       <div style={{ padding: "10px 0", borderTop: "2px solid var(--concrete)", marginTop: 8 }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", fontWeight: 700 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", fontWeight: 700 }}>
           ▸ RECENT STATEMENTS · GROUPED BY SUB/DRIVER
         </div>
       </div>
@@ -1937,7 +1937,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
       <div className="fbt-card" style={{ padding: 16, display: "grid", gap: 12 }}>
         {/* Customer-paid filter (prominent) */}
         <div style={{ padding: 12, background: customerPaidOnly ? "#F0FDF4" : "#FEF2F2", border: "2px solid " + (customerPaidOnly ? "var(--good)" : "var(--safety)"), display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontFamily: "JetBrains Mono, monospace", flex: 1, minWidth: 240 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, flex: 1, minWidth: 240 }}>
             <input
               type="checkbox"
               checked={customerPaidOnly}
@@ -1948,7 +1948,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
             <strong>{customerPaidOnly ? "PAY ONLY WHEN CUSTOMER PAID" : "⚠ ADVANCE PAY MODE — PAYING BEFORE CUSTOMER PAYS"}</strong>
           </label>
           {!customerPaidOnly && (
-            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", letterSpacing: "0.1em" }}>
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)" }}>
               RISK: YOUR CASH FIRST
             </span>
           )}
@@ -2206,7 +2206,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                               {/* Missing-rate warning — sub-level */}
                               {missingRateFbs.length > 0 && (
                                 <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", marginBottom: 6 }}>
-                                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700, marginBottom: 4, letterSpacing: "0.08em" }}>
+                                  <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", fontWeight: 700, marginBottom: 4 }}>
                                     ⚠ {missingRateFbs.length} FB{missingRateFbs.length !== 1 ? "s" : ""} MISSING PAY RATE — SHOWING $0
                                   </div>
                                   <div style={{ fontSize: 10, color: "var(--concrete)", lineHeight: 1.5 }}>
@@ -2226,7 +2226,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                   <div
                                     key={fb.id}
                                     style={{
-                                      padding: 8, fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                                      padding: 8, fontSize: 11,
                                       background: isPaid ? "#F0FDF4" : (entry.custStatus === "paid" || entry.custStatus === "short" ? "#FEF3C7" : "#FEE2E2"),
                                       borderLeft: `3px solid ${isPaid ? "var(--good)" : (entry.custStatus === "paid" || entry.custStatus === "short" ? "var(--hazard)" : "var(--safety)")}`,
                                       display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center",
@@ -2295,7 +2295,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                                           <span style={{ color: "var(--good)", fontWeight: 700 }}>
                                             ✓ {fb.paidAt.slice(0, 10)} · {methodLabel[fb.paidMethod] || "Paid"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""} · {fmt$(fb.paidAmount || 0)}
                                             {fb.payStatementNumber && (
-                                              <span style={{ marginLeft: 6, padding: "1px 5px", background: "var(--steel)", color: "var(--cream)", fontSize: 9, letterSpacing: "0.05em" }}>
+                                              <span style={{ marginLeft: 6, padding: "1px 5px", background: "var(--steel)", color: "var(--cream)", fontSize: 9 }}>
                                                 {fb.payStatementNumber}
                                               </span>
                                             )}

@@ -255,7 +255,7 @@ export const HomeTab = ({
 
       {/* Welcome header */}
       <div className="fbt-card" style={{ padding: "18px 22px", background: "linear-gradient(135deg, var(--steel), #3F3B38)", color: "var(--cream)" }}>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em" }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>
           ▸ COMMAND CENTER · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
         </div>
         <h2 className="fbt-display" style={{ fontSize: 22, margin: "4px 0 0" }}>
@@ -267,7 +267,7 @@ export const HomeTab = ({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
         <div className="fbt-card" style={{ padding: 14, cursor: "pointer", borderLeft: "4px solid var(--good)" }}
              onClick={() => onJumpTab("invoices")}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>💰 MONEY DUE IN</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>💰 MONEY DUE IN</div>
           <div className="stat-num" style={{ color: "var(--good)", marginTop: 4 }}>{fmt$(totalUnpaid)}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
             {unpaidInvoices.length} invoice{unpaidInvoices.length !== 1 ? "s" : ""}
@@ -277,7 +277,7 @@ export const HomeTab = ({
 
         <div className="fbt-card" style={{ padding: 14, cursor: "pointer", borderLeft: "4px solid #9A3412" }}
              onClick={() => onJumpTab("payroll")}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>💸 MONEY OUT</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>💸 MONEY OUT</div>
           <div className="stat-num" style={{ color: "#9A3412", marginTop: 4 }}>{fmt$(moneyOut.total)}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
             {moneyOut.count} unpaid FB{moneyOut.count !== 1 ? "s" : ""}
@@ -286,7 +286,7 @@ export const HomeTab = ({
 
         <div className="fbt-card" style={{ padding: 14, cursor: "pointer", borderLeft: "4px solid var(--hazard-deep)" }}
              onClick={() => onJumpTab("review")}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>✅ FBs PENDING REVIEW</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>✅ FBs PENDING REVIEW</div>
           <div className="stat-num" style={{ color: "var(--hazard-deep)", marginTop: 4 }}>{pendingFbs.length}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
             {pendingFbs.length === 0 ? "all caught up ✓" : "awaiting approval"}
@@ -295,14 +295,14 @@ export const HomeTab = ({
 
         <div className="fbt-card" style={{ padding: 14, cursor: "pointer", borderLeft: "4px solid #0369A1" }}
              onClick={() => onJumpTab("dispatches")}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>🚚 TODAY'S ORDERS</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>🚚 TODAY'S ORDERS</div>
           <div className="stat-num" style={{ color: "#0369A1", marginTop: 4 }}>{ordersForDay.filter((d) => d.date === todayStr).length || dispatches.filter((d) => d.date === todayStr).length}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>running today</div>
         </div>
 
         <div className="fbt-card" style={{ padding: 14, cursor: "pointer", borderLeft: "4px solid var(--steel)" }}
              onClick={() => onJumpTab("quotes")}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>📋 OPEN QUOTES</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>📋 OPEN QUOTES</div>
           <div className="stat-num" style={{ color: "var(--steel)", marginTop: 4 }}>{openQuotesCount}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>leads to follow up</div>
         </div>
@@ -314,7 +314,7 @@ export const HomeTab = ({
                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
                }
              }}>
-          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>⚠️ MISSING FBs</div>
+          <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>⚠️ MISSING FBs</div>
           <div className="stat-num" style={{ color: missingFbs.length > 0 ? "var(--safety)" : "var(--good)", marginTop: 4 }}>{missingFbs.length}</div>
           <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
             {missingFbs.length === 0 ? "all submitted ✓" : "send reminder ▸"}
@@ -326,7 +326,7 @@ export const HomeTab = ({
       {missingFbs.length > 0 && (
         <div id="dashboard-missing-fbs" className="fbt-card" style={{ padding: 0, overflow: "hidden", border: "2px solid var(--safety)" }}>
           <div style={{ padding: "12px 16px", background: "var(--safety)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, letterSpacing: "0.1em", fontWeight: 700 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>
               ⚠️ {missingFbs.length} DRIVER{missingFbs.length !== 1 ? "S" : ""}/SUB{missingFbs.length !== 1 ? "S" : ""} HAVE NOT SUBMITTED FB
             </div>
             <span className="fbt-mono" style={{ fontSize: 10, opacity: 0.9 }}>TAP 📱 OR ✉️ TO NUDGE</span>
@@ -422,13 +422,13 @@ export const HomeTab = ({
         return (
           <div className="fbt-card" style={{ padding: 0, overflow: "hidden", border: `2px solid ${accentColor}` }}>
             <div style={{ padding: "12px 16px", background: accentColor, color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <div className="fbt-mono" style={{ fontSize: 11, letterSpacing: "0.1em", fontWeight: 700 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>
                 📋 {upcoming.length > 0 ? `${upcoming.length} BID${upcoming.length !== 1 ? "S" : ""} DUE SOON` : "UPCOMING BID ACTIVITY"}
               </div>
               <button
                 type="button"
                 onClick={() => onJumpTab("bids")}
-                style={{ background: "rgba(255,255,255,0.2)", border: "1px solid #FFF", color: "#FFF", padding: "4px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 10, letterSpacing: "0.05em", fontWeight: 700 }}
+                style={{ background: "rgba(255,255,255,0.2)", border: "1px solid #FFF", color: "#FFF", padding: "4px 10px", cursor: "pointer", fontSize: 10, fontWeight: 700 }}
               >
                 VIEW ALL ▸
               </button>
@@ -455,7 +455,7 @@ export const HomeTab = ({
                   >
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                        <strong style={{ fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>{b.rfbNumber || b.title.slice(0, 40)}</strong>
+                        <strong style={{ fontSize: 13 }}>{b.rfbNumber || b.title.slice(0, 40)}</strong>
                         {b.priority === "high" && (
                           <span className="fbt-mono" style={{ fontSize: 9, padding: "1px 5px", background: "var(--safety)", color: "#FFF", fontWeight: 700 }}>★ HIGH</span>
                         )}
@@ -478,7 +478,7 @@ export const HomeTab = ({
               {preBids.length > 0 && (
                 <>
                   {upcoming.length > 0 && <div style={{ height: 1, background: "#E7E5E4", margin: "4px 0" }} />}
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", padding: "4px 4px 2px" }}>▸ PRE-BID MEETINGS</div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", padding: "4px 4px 2px" }}>▸ PRE-BID MEETINGS</div>
                   {preBids.map((b) => (
                     <div
                       key={"pre-" + b.id}
@@ -496,7 +496,7 @@ export const HomeTab = ({
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 200 }}>
-                        <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                        <div style={{ fontSize: 12 }}>
                           <strong>{b.rfbNumber || b.title.slice(0, 40)}</strong>
                         </div>
                         <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
@@ -542,13 +542,13 @@ export const HomeTab = ({
           <button
             type="button"
             onClick={() => shiftDate(-1)}
-            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700 }}
+            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
             title="Previous day"
           >
             ◀
           </button>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.12em" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>
               ▸ ORDERS ON DAY
             </div>
             <div className="fbt-display" style={{ fontSize: 16, lineHeight: 1.2 }}>{dateLabel}</div>
@@ -557,7 +557,7 @@ export const HomeTab = ({
             type="date"
             value={viewDate}
             onChange={(e) => setViewDate(e.target.value)}
-            style={{ padding: "5px 8px", border: "1.5px solid var(--cream)", background: "var(--cream)", color: "var(--steel)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}
+            style={{ padding: "5px 8px", border: "1.5px solid var(--cream)", background: "var(--cream)", color: "var(--steel)", fontSize: 11 }}
             title="Jump to date"
           />
           <button
@@ -570,8 +570,7 @@ export const HomeTab = ({
               border: "2px solid " + (viewDate === todayStr ? "var(--concrete)" : "var(--hazard-deep)"),
               padding: "4px 12px",
               cursor: viewDate === todayStr ? "default" : "pointer",
-              fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700,
-              letterSpacing: "0.08em",
+              fontSize: 11, fontWeight: 700,
             }}
           >
             TODAY
@@ -579,7 +578,7 @@ export const HomeTab = ({
           <button
             type="button"
             onClick={() => shiftDate(1)}
-            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 12, fontWeight: 700 }}
+            style={{ background: "transparent", border: "2px solid var(--cream)", color: "var(--cream)", padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
             title="Next day"
           >
             ▶
@@ -594,7 +593,7 @@ export const HomeTab = ({
             placeholder="Search ANY order (customer, job, code, material, date…) — ignores the day filter"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ flex: 1, padding: "6px 10px", border: "1.5px solid var(--concrete)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, background: "#FFF" }}
+            style={{ flex: 1, padding: "6px 10px", border: "1.5px solid var(--concrete)", fontSize: 12, background: "#FFF" }}
           />
           {searchTerm && (
             <button
@@ -612,7 +611,7 @@ export const HomeTab = ({
         <div style={{ padding: "14px 18px" }}>
           {searchTerm ? (
             <>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
                 ▸ SEARCH RESULTS ({searchResults.length}{searchResults.length >= 30 ? "+" : ""}) · "{searchTerm}"
               </div>
               {searchResults.length === 0 ? (
@@ -631,7 +630,7 @@ export const HomeTab = ({
                           padding: "8px 12px", background: "#FFF", border: "1.5px solid var(--steel)",
                           cursor: "pointer", display: "grid",
                           gridTemplateColumns: "90px 70px 1fr 1fr 80px", gap: 10, alignItems: "center",
-                          fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                          fontSize: 12,
                         }}
                       >
                         <strong>#{d.code}</strong>
@@ -653,7 +652,7 @@ export const HomeTab = ({
             </>
           ) : (
             <>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
                 ▸ ORDERS THIS DAY ({ordersForDay.length})
               </div>
               {ordersForDay.length === 0 ? (
@@ -684,7 +683,7 @@ export const HomeTab = ({
                           padding: "10px 14px", background: "#FFF", border: "2px solid var(--steel)",
                           cursor: "pointer", display: "grid",
                           gridTemplateColumns: "90px 1fr 1fr 150px", gap: 12, alignItems: "center",
-                          fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                          fontSize: 12,
                         }}
                       >
                         <strong style={{ fontSize: 14, color: "var(--hazard-deep)" }}>#{d.code}</strong>

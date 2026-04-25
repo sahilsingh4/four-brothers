@@ -130,7 +130,7 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
     return (
       <div className="fbt-root texture-paper" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
         <GlobalStyles />
-        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)", letterSpacing: "0.2em" }}>▸ LOADING YOUR PAY…</div>
+        <div className="fbt-mono anim-roll" style={{ color: "var(--hazard-deep)" }}>▸ LOADING YOUR PAY…</div>
       </div>
     );
   }
@@ -202,24 +202,24 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
       <GlobalStyles />
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <div style={{ background: "var(--steel)", color: "var(--cream)", padding: "24px", marginBottom: 16, border: "2px solid var(--hazard-deep)" }}>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.15em", marginBottom: 6 }}>▸ PAY PORTAL · LAST {windowDays} DAYS</div>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", marginBottom: 6 }}>▸ PAY PORTAL · LAST {windowDays} DAYS</div>
           <div className="fbt-display" style={{ fontSize: 24, letterSpacing: "-0.01em" }}>{contact.name}</div>
           {contact.companyName && contact.companyName !== contact.name && (
             <div className="fbt-mono" style={{ fontSize: 12, color: "#D6D3D1", marginTop: 4 }}>{contact.companyName}</div>
           )}
-          <div className="fbt-mono" style={{ fontSize: 10, color: "#A8A29E", marginTop: 10, letterSpacing: "0.1em" }}>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "#A8A29E", marginTop: 10 }}>
             {(contact.type === "subcontractor" || contact.type === "sub") ? "SUBCONTRACTOR" : "DRIVER"} · VIEWED {new Date().toLocaleDateString()}
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
           <div className="fbt-card" style={{ padding: 16, borderLeft: "6px solid var(--hazard-deep)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>UNPAID · DUE TO YOU</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>UNPAID · DUE TO YOU</div>
             <div className="stat-num" style={{ color: "var(--hazard-deep)", marginTop: 4 }}>{fmt$(totalUnpaid)}</div>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>{unpaid.length} FB{unpaid.length !== 1 ? "s" : ""}</div>
           </div>
           <div className="fbt-card" style={{ padding: 16, borderLeft: "6px solid var(--good)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>PAID · LAST {windowDays} DAYS</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>PAID · LAST {windowDays} DAYS</div>
             <div className="stat-num" style={{ color: "var(--good)", marginTop: 4 }}>{fmt$(totalPaidWindow)}</div>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>{payRunsList.length} PAY RUN{payRunsList.length !== 1 ? "S" : ""}</div>
           </div>
@@ -230,7 +230,7 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
             <button
               key={t.k}
               onClick={() => setTab(t.k)}
-              style={{ padding: "10px 18px", fontSize: 12, fontFamily: "Oswald, sans-serif", fontWeight: 700, letterSpacing: "0.08em", background: tab === t.k ? "var(--steel)" : "transparent", color: tab === t.k ? "var(--cream)" : "var(--steel)", border: "2px solid var(--steel)", cursor: "pointer" }}
+              style={{ padding: "10px 18px", fontSize: 12, fontWeight: 700, background: tab === t.k ? "var(--steel)" : "transparent", color: tab === t.k ? "var(--cream)" : "var(--steel)", border: "2px solid var(--steel)", cursor: "pointer" }}
             >{t.label}</button>
           ))}
         </div>
@@ -250,7 +250,7 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
                         <span className="chip" style={{ fontSize: 9, padding: "2px 8px", background: fb.status === "approved" ? "var(--good)" : "var(--concrete)", color: "#FFF" }}>{fb.status?.toUpperCase()}</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>FB #{fb.freightBillNumber || "—"}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>FB #{fb.freightBillNumber || "—"}</span>
                       </div>
                       <div className="fbt-display" style={{ fontSize: 14, margin: "4px 0 2px" }}>{fb.jobName || "—"}</div>
                       <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", lineHeight: 1.5 }}>
@@ -260,16 +260,16 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>EXPECTED</div>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>EXPECTED</div>
                       <div className="fbt-display" style={{ fontSize: 20, color: "var(--hazard-deep)" }}>{fmt$(fb.expectedPay)}</div>
                       {fb.status === "pending" && <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2 }}>PENDING REVIEW</div>}
                     </div>
                   </div>
                   {Array.isArray(fb.payingLines) && fb.payingLines.length > 0 && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--concrete)" }}>
-                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.08em", marginBottom: 6 }}>▸ PAY BREAKDOWN</div>
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>▸ PAY BREAKDOWN</div>
                       {fb.payingLines.map((ln, idx) => (
-                        <div key={idx} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
+                        <div key={idx} style={{ fontSize: 11, display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
                           <span>{ln.description || ln.code || "Line"} · {Number(ln.qty || 0).toFixed(2)} @ {fmt$(ln.rate || 0)}</span>
                           <strong>{fmt$(ln.gross || 0)}</strong>
                         </div>
@@ -294,20 +294,20 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
                 <div key={run.statementNumber || i} className="fbt-card" style={{ padding: 14, borderLeft: "4px solid var(--good)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
                     <div style={{ flex: 1, minWidth: 160 }}>
-                      {run.statementNumber && <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 2 }}>▸ {run.statementNumber}</div>}
+                      {run.statementNumber && <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 2 }}>▸ {run.statementNumber}</div>}
                       <div className="fbt-display" style={{ fontSize: 14 }}>Pay Run · {run.paidAt ? new Date(run.paidAt).toLocaleDateString() : "—"}</div>
                       <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
                         {(run.method || "—").toUpperCase()}{run.checkNumber ? ` · Check #${run.checkNumber}` : ""} · {run.fbs.length} FB{run.fbs.length !== 1 ? "s" : ""}
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em" }}>PAID</div>
+                      <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>PAID</div>
                       <div className="fbt-display" style={{ fontSize: 20, color: "var(--good)" }}>{fmt$(run.total)}</div>
                     </div>
                   </div>
                   <div style={{ paddingTop: 10, borderTop: "1px dashed var(--concrete)", marginBottom: 10 }}>
                     {run.fbs.map((fb) => (
-                      <div key={fb.id} style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", padding: "3px 0", gap: 8 }}>
+                      <div key={fb.id} style={{ fontSize: 11, display: "flex", justifyContent: "space-between", padding: "3px 0", gap: 8 }}>
                         <span style={{ flex: 1 }}>
                           FB #{fb.freightBillNumber} · {fb.jobName?.slice(0, 40) || "—"}
                           {fb.dispatchDate && <span style={{ color: "var(--concrete)" }}> · {new Date(fb.dispatchDate).toLocaleDateString()}</span>}
@@ -329,7 +329,7 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
           )
         )}
 
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 24, textAlign: "center", letterSpacing: "0.1em", lineHeight: 1.6 }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 24, textAlign: "center", lineHeight: 1.6 }}>
           ▸ QUESTIONS ABOUT PAY? CONTACT DISPATCH.<br/>
           ▸ THIS PORTAL IS PRIVATE — DON'T SHARE YOUR LINK.<br/>
           ▸ SHOWING LAST {windowDays} DAYS ONLY. OLDER RECORDS AVAILABLE ON REQUEST.

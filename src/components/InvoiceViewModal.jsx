@@ -188,7 +188,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
             {invoicePhotoCount > 0 && (
               <button
                 onClick={() => setShowPhotos(true)}
-                style={{ background: "var(--hazard)", color: "var(--steel)", border: "none", padding: "6px 10px", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 10, fontWeight: 700, letterSpacing: "0.05em" }}
+                style={{ background: "var(--hazard)", color: "var(--steel)", border: "none", padding: "6px 10px", cursor: "pointer", fontSize: 10, fontWeight: 700 }}
                 title="View all photos attached to this invoice's freight bills"
               >
                 <Camera size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> PHOTOS ({invoicePhotoCount})
@@ -200,7 +200,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
 
         <div style={{ padding: 22, display: "grid", gap: 16 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PAYMENT HISTORY</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ PAYMENT HISTORY</div>
             {history.length === 0 ? (
               <div style={{ padding: 18, textAlign: "center", background: "#F5F5F4", fontSize: 12, color: "var(--concrete)" }}>
                 No payments recorded yet.
@@ -208,7 +208,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
             ) : (
               <div style={{ display: "grid", gap: 4 }}>
                 {history.map((p, idx) => (
-                  <div key={idx} style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, fontFamily: "JetBrains Mono, monospace", alignItems: "center" }}>
+                  <div key={idx} style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, alignItems: "center" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <strong>{fmt$(p.amount)}</strong> · {p.date ? new Date(p.date).toLocaleDateString() : "—"} · {p.method?.toUpperCase()}{p.reference ? ` #${p.reference}` : ""}
                       {p.mode === "perfb" && p.fbIds?.length > 0 && <span style={{ color: "var(--concrete)" }}> · {p.fbIds.length} FB{p.fbIds.length !== 1 ? "s" : ""}</span>}
@@ -219,7 +219,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
                         type="button"
                         disabled={deletingIdx === idx}
                         onClick={() => deletePayment(idx)}
-                        style={{ padding: "4px 10px", fontSize: 10, background: "transparent", border: "1.5px solid var(--safety)", color: "var(--safety)", cursor: deletingIdx === idx ? "wait" : "pointer", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, letterSpacing: "0.05em" }}
+                        style={{ padding: "4px 10px", fontSize: 10, background: "transparent", border: "1.5px solid var(--safety)", color: "var(--safety)", cursor: deletingIdx === idx ? "wait" : "pointer", fontWeight: 700 }}
                         title="Delete this payment (reverses any linked FB paid stamps)"
                       >
                         {deletingIdx === idx ? "..." : <><Trash2 size={11} style={{ marginRight: 3, verticalAlign: "middle" }} /> DELETE</>}
@@ -232,12 +232,12 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
           </div>
 
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ FREIGHT BILLS ON THIS INVOICE ({invFbs.length})</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ FREIGHT BILLS ON THIS INVOICE ({invFbs.length})</div>
             <div style={{ display: "grid", gap: 4, maxHeight: 300, overflowY: "auto" }}>
               {invFbs.map((fb) => {
                 const paid = !!fb.customerPaidAt;
                 return (
-                  <div key={fb.id} style={{ padding: 8, background: paid ? "#F0FDF4" : "#FEF3C7", border: "1px solid var(--steel)", borderLeft: `3px solid ${paid ? "var(--good)" : "var(--hazard)"}`, fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <div key={fb.id} style={{ padding: 8, background: paid ? "#F0FDF4" : "#FEF3C7", border: "1px solid var(--steel)", borderLeft: `3px solid ${paid ? "var(--good)" : "var(--hazard)"}`, fontSize: 11, display: "flex", justifyContent: "space-between", gap: 8 }}>
                     <div>
                       <strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}{fb.truckNumber ? ` · T${fb.truckNumber}` : ""}
                       <div style={{ color: "var(--concrete)", fontSize: 10, marginTop: 2 }}>
@@ -262,7 +262,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
 
           {/* PAYROLL STATUS — subs/drivers who worked this invoice */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PAYROLL STATUS — SUBS/DRIVERS WHO WORKED THIS INVOICE ({payrollSummary.length})</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ PAYROLL STATUS — SUBS/DRIVERS WHO WORKED THIS INVOICE ({payrollSummary.length})</div>
             {payrollSummary.length === 0 ? (
               <div style={{ padding: 12, background: "#F5F5F4", fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
                 No assignments linked to these FBs.
@@ -280,7 +280,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
                       style={{
                         padding: 10, background: bg, border: "1.5px solid " + borderColor,
                         display: "flex", justifyContent: "space-between", alignItems: "center",
-                        flexWrap: "wrap", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace",
+                        flexWrap: "wrap", gap: 8, fontSize: 12,
                         cursor: p.subId && onJumpToPayroll ? "pointer" : "default",
                       }}
                     >
@@ -307,7 +307,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
                           <div style={{ color: "var(--safety)", fontWeight: 700, fontSize: 11 }}>UNPAID</div>
                         )}
                         {p.subId && onJumpToPayroll && (
-                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2, letterSpacing: "0.08em" }}>TAP TO VIEW ▸</div>
+                          <div style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2 }}>TAP TO VIEW ▸</div>
                         )}
                       </div>
                     </div>

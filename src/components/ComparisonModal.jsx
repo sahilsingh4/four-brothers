@@ -39,7 +39,7 @@ export const ComparisonModal = ({ quarries, materialSearch, onClose }) => {
             </div>
           ) : (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 12 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 12 }}>
                 ▸ {matched.length} MATCH{matched.length !== 1 ? "ES" : ""} · SORTED BY PRICE (LOWEST FIRST)
               </div>
               <div style={{ display: "grid", gap: 8 }}>

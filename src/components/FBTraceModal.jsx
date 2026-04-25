@@ -30,8 +30,8 @@ export const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
 
           {/* Step 1: FB details */}
           <div style={{ padding: 12, background: "#F5F5F4", border: "1.5px solid var(--steel)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ FREIGHT BILL</div>
-            <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>▸ FREIGHT BILL</div>
+            <div style={{ fontSize: 12, lineHeight: 1.7 }}>
               <div><strong>Order:</strong> #{entry.dispatch?.code} — {entry.dispatch?.jobName || "—"}</div>
               <div><strong>Qty:</strong> {entry.qty.toFixed(2)} {entry.method} × ${entry.rate.toFixed(2)} (sub rate)</div>
               <div><strong>Sub Gross (agreed):</strong> <span style={{ color: "var(--steel)", fontWeight: 700 }}>{fmt$(entry.gross)}</span></div>
@@ -41,8 +41,8 @@ export const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
           {/* Step 2: Invoice */}
           {invoice ? (
             <div style={{ padding: 12, background: "#FEF3C7", border: "1.5px solid var(--hazard)" }}>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ CUSTOMER INVOICE</div>
-              <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>▸ CUSTOMER INVOICE</div>
+              <div style={{ fontSize: 12, lineHeight: 1.7 }}>
                 <div><strong>Invoice #:</strong> {invoice.invoiceNumber} · {invoice.invoiceDate}</div>
                 <div><strong>Billed to:</strong> {customer?.companyName || invoice.billToName || "—"}</div>
                 <div><strong>Pricing:</strong> {invoice.pricingMethod} @ ${Number(invoice.rate).toFixed(2)}/{invoice.pricingMethod}</div>
@@ -61,8 +61,8 @@ export const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
           {invoice && (
             entry.custStatus === "paid" || entry.custStatus === "short" ? (
               <div style={{ padding: 12, background: entry.custStatus === "paid" ? "#F0FDF4" : "#FEF3C7", border: "1.5px solid " + (entry.custStatus === "paid" ? "var(--good)" : "var(--hazard)") }}>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ CUSTOMER PAYMENT</div>
-                <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>▸ CUSTOMER PAYMENT</div>
+                <div style={{ fontSize: 12, lineHeight: 1.7 }}>
                   <div><strong>Status:</strong> {entry.custStatus === "paid" ? "✓ PAID IN FULL" : `⚠ SHORT-PAID ${Math.round(entry.customerRatio * 100)}%`}</div>
                   <div><strong>Amount received:</strong> {fmt$(entry.customerPaid)} of {fmt$(entry.customerBilled)} billed</div>
                   <div><strong>Paid on:</strong> {fb.customerPaidAt ? new Date(fb.customerPaidAt).toLocaleDateString() : "—"}</div>
@@ -91,8 +91,8 @@ export const FBTraceModal = ({ entry, invoices, contacts, onClose }) => {
           {/* Step 4: Sub Payment */}
           {fb.paidAt ? (
             <div style={{ padding: 12, background: "#F0FDF4", border: "1.5px solid var(--good)" }}>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, letterSpacing: "0.1em" }}>▸ SUB / DRIVER PAYMENT</div>
-              <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", lineHeight: 1.7 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>▸ SUB / DRIVER PAYMENT</div>
+              <div style={{ fontSize: 12, lineHeight: 1.7 }}>
                 <div><strong>Status:</strong> ✓ PAID TO {entry.dispatch ? (entry.dispatch.assignments?.find(a => a.aid === fb.assignmentId)?.name || "SUB") : "SUB"}</div>
                 <div><strong>Amount:</strong> {fmt$(fb.paidAmount || 0)}</div>
                 <div><strong>Method:</strong> {methodLabel[fb.paidMethod] || "—"}{fb.paidCheckNumber ? ` #${fb.paidCheckNumber}` : ""}</div>

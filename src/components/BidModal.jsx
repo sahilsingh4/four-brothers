@@ -115,13 +115,13 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 820 }}>
         <div style={{ padding: "18px 22px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>
               {isNew ? "NEW BID" : "EDIT BID"}
               {wasRestored && (
                 <span
                   onClick={() => { clearDraft(); setDraft(initialDraft); }}
                   title="Click to discard the restored draft and start fresh"
-                  style={{ marginLeft: 8, padding: "2px 6px", background: "var(--good)", color: "#FFF", fontSize: 9, cursor: "pointer", letterSpacing: "0.06em" }}
+                  style={{ marginLeft: 8, padding: "2px 6px", background: "var(--good)", color: "#FFF", fontSize: 9, cursor: "pointer" }}
                 >● RESTORED · CLICK TO DISCARD</span>
               )}
             </div>
@@ -136,7 +136,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Status chip + pipeline selector */}
           <div style={{ padding: 12, background: currentStatus.bg, border: `2px solid ${currentStatus.color}` }}>
-            <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", color: currentStatus.color, marginBottom: 8, fontWeight: 700 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: currentStatus.color, marginBottom: 8, fontWeight: 700 }}>
               ▸ STATUS: {currentStatus.label}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -148,8 +148,6 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
                   style={{
                     padding: "6px 10px",
                     fontSize: 10,
-                    fontFamily: "JetBrains Mono, monospace",
-                    letterSpacing: "0.05em",
                     fontWeight: 700,
                     background: draft.status === s.value ? s.color : "#FFF",
                     color: draft.status === s.value ? "#FFF" : s.color,
@@ -168,7 +166,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Core info */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ IDENTIFICATION</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ IDENTIFICATION</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
               <div>
                 <label className="fbt-label">RFB/RFP #</label>
@@ -208,7 +206,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Agency contact */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ AGENCY CONTACT (OPTIONAL)</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ AGENCY CONTACT (OPTIONAL)</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
                 <label className="fbt-label">Contact Name</label>
@@ -227,7 +225,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Deadlines */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ DEADLINES</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ DEADLINES</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
                 <label className="fbt-label">Pre-Bid Meeting</label>
@@ -257,7 +255,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Money */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ MONEY</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ MONEY</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
                 <label className="fbt-label">Agency Estimate $</label>
@@ -309,7 +307,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
           {/* Outcome fields — only when won/lost */}
           {showOutcomeFields && (
             <div>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ OUTCOME</div>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ OUTCOME</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div>
                   <label className="fbt-label">Outcome Date</label>
@@ -377,7 +375,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
               return (
                 <>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 10, flexWrap: "wrap" }}>
-                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em" }}>▸ SUBMISSION CHECKLIST</div>
+                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>▸ SUBMISSION CHECKLIST</div>
                     {items.length > 0 && (
                       <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700, color: allDone ? "var(--good)" : done > 0 ? "var(--hazard-deep)" : "var(--concrete)" }}>
                         {done} OF {items.length} · {pct}%{allDone ? " ✓ READY TO SUBMIT" : ""}
@@ -394,7 +392,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
                   {/* Checklist items */}
                   {items.length === 0 ? (
-                    <div style={{ padding: 10, background: "#F5F5F4", fontSize: 11, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", marginBottom: 10 }}>
+                    <div style={{ padding: 10, background: "#F5F5F4", fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>
                       No checklist items yet. Add required submission documents below or use a preset.
                     </div>
                   ) : (
@@ -412,7 +410,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
                             onChange={() => toggle(item.id)}
                             style={{ width: 18, height: 18, cursor: "pointer", flexShrink: 0 }}
                           />
-                          <div style={{ flex: 1, fontSize: 13, fontFamily: "JetBrains Mono, monospace", color: item.done ? "var(--good)" : "var(--steel)", textDecoration: item.done ? "line-through" : "none" }}>
+                          <div style={{ flex: 1, fontSize: 13, color: item.done ? "var(--good)" : "var(--steel)", textDecoration: item.done ? "line-through" : "none" }}>
                             {item.label}
                             {item.done && item.doneAt && (
                               <span style={{ fontSize: 10, color: "var(--concrete)", marginLeft: 8, textDecoration: "none" }}>
@@ -448,7 +446,7 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
                   {/* Preset packs */}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
-                    <span className="fbt-mono" style={{ color: "var(--concrete)", letterSpacing: "0.05em", alignSelf: "center" }}>QUICK-ADD:</span>
+                    <span className="fbt-mono" style={{ color: "var(--concrete)", alignSelf: "center" }}>QUICK-ADD:</span>
                     <button type="button" onClick={() => addPreset([
                       "Bid bond",
                       "Price sheet / schedule",
@@ -475,10 +473,10 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
 
           {/* Tags */}
           <div>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ TAGS</div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ TAGS</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
               {(draft.tags || []).map((t) => (
-                <span key={t} style={{ padding: "4px 8px", background: "var(--steel)", color: "var(--cream)", fontSize: 11, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 6 }}>
+                <span key={t} style={{ padding: "4px 8px", background: "var(--steel)", color: "var(--cream)", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
                   {t}
                   <button type="button" onClick={() => setDraft({ ...draft, tags: (draft.tags || []).filter((x) => x !== t) })} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer", padding: 0 }}>×</button>
                 </span>

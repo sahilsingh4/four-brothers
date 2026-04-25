@@ -228,7 +228,7 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
                         display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
                         background: alreadyPaid ? "#E5E7EB" : "#FFF", border: "1px solid var(--steel)",
                         opacity: alreadyPaid ? 0.6 : 1, cursor: alreadyPaid ? "not-allowed" : "pointer",
-                        fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                        fontSize: 11,
                       }}
                     >
                       <input

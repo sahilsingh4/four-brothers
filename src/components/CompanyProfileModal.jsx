@@ -71,7 +71,7 @@ export const CompanyProfileModal = ({ company, onSave, onClose, onToast, generat
             <input className="fbt-input" value={draft.usdot || ""} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="USDOT 1234567 · CA MCP" />
           </div>
           <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 8, fontWeight: 700 }}>
               ▸ TAX / PAYROLL IDENTIFIERS (SHOWN ON PAY STUBS & 1099s)
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -116,10 +116,10 @@ export const CompanyProfileModal = ({ company, onSave, onClose, onToast, generat
 
           {/* v22 Session V: Capability Statement fields */}
           <details style={{ padding: 14, border: "2px dashed var(--steel)", background: "#FAFAF9" }}>
-            <summary style={{ cursor: "pointer", fontFamily: "Oswald, sans-serif", fontSize: 12, letterSpacing: "0.1em", color: "var(--hazard-deep)", textTransform: "uppercase", fontWeight: 700 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12, color: "var(--hazard-deep)", fontWeight: 700 }}>
               ▸ CAPABILITY STATEMENT — GOVERNMENT / PRIME CONTRACTOR DATA
             </summary>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, marginBottom: 14, letterSpacing: "0.05em", lineHeight: 1.5 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, marginBottom: 14, lineHeight: 1.5 }}>
               ▸ USED WHEN GENERATING THE CAPABILITY STATEMENT PDF.<br/>
               ▸ LEAVE FIELDS BLANK IF YOU DON'T HAVE THEM YET — THEY'LL BE OMITTED FROM THE PDF.
             </div>
@@ -181,7 +181,7 @@ export const CompanyProfileModal = ({ company, onSave, onClose, onToast, generat
               <div>
                 <label className="fbt-label">NAICS Codes (comma-separated)</label>
                 <input className="fbt-input" value={draft.naicsCodes || ""} onChange={(e) => setDraft({ ...draft, naicsCodes: e.target.value })} placeholder="484220, 484230, 237310" />
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
                   ▸ 484220 = SPECIALIZED FREIGHT TRUCKING · 484230 = LONG-DISTANCE · 237310 = HIGHWAY/STREET CONSTRUCTION
                 </div>
               </div>
@@ -206,7 +206,7 @@ export const CompanyProfileModal = ({ company, onSave, onClose, onToast, generat
                   onChange={(e) => setDraft({ ...draft, competencies: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
                   placeholder="Construction material hauling (aggregate, dirt, asphalt)&#10;Public works / prevailing wage project support&#10;Certified payroll reporting"
                 />
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
                   ▸ LEAVE BLANK TO USE SMART DEFAULTS
                 </div>
               </div>

@@ -54,7 +54,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
           <div>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)", letterSpacing: "0.1em" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>
               {contact.type === "sub" ? "SUB-CONTRACTOR"
                 : contact.type === "customer" ? "CUSTOMER"
                 : contact.type === "broker" ? "BROKER"
@@ -74,8 +74,8 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
 
         <div style={{ padding: 24 }}>
           {/* Contact info */}
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ CONTACT INFO</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ CONTACT INFO</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13 }}>
             {contact.phone && (
               <div><strong>PHONE:</strong> <a href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`} style={{ color: "var(--hazard-deep)" }}>{contact.phone}</a></div>
             )}
@@ -90,8 +90,8 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
 
           {(contact.typicalTrucks || contact.rateNotes || contact.usdot || contact.insurance) && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ OPERATIONAL</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ OPERATIONAL</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 20, fontSize: 13 }}>
                 {contact.typicalTrucks && <div><strong>TYPICAL TRUCKS:</strong> {contact.typicalTrucks}</div>}
                 {contact.rateNotes && <div><strong>RATE:</strong> {contact.rateNotes}</div>}
                 {contact.usdot && <div style={{ gridColumn: "1 / -1" }}><strong>USDOT/MC:</strong> {contact.usdot}</div>}
@@ -102,7 +102,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
 
           {contact.notes && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ NOTES</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ NOTES</div>
               <div style={{ padding: 12, background: "#FEF3C7", borderLeft: "3px solid var(--hazard)", fontSize: 13, marginBottom: 20, whiteSpace: "pre-wrap" }}>
                 {contact.notes}
               </div>
@@ -112,7 +112,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
           {/* Customer Portal (only for type=customer) */}
           {contact.type === "customer" && onSaveContact && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ CUSTOMER PORTAL ACCESS</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ CUSTOMER PORTAL ACCESS</div>
               <div style={{ padding: 14, background: contact.portalEnabled ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (contact.portalEnabled ? "var(--good)" : "var(--concrete)"), marginBottom: 20 }}>
                 {!contact.portalEnabled ? (
                   <>
@@ -130,7 +130,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
                       <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>● ACTIVE</span>
                       <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>VIEW-ONLY · APPROVED FBs ONLY</span>
                     </div>
-                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 10 }}>
+                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, wordBreak: "break-all", marginBottom: 10 }}>
                       {portalUrl}
                     </code>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -178,7 +178,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
           {/* v23 Session Y: Driver/Sub Pay Portal */}
           {(contact.type === "driver" || contact.type === "sub" || contact.type === "subcontractor") && onSaveContact && (
             <>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ PAY PORTAL ACCESS</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ PAY PORTAL ACCESS</div>
               <div style={{ padding: 14, background: contact.portalEnabled ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (contact.portalEnabled ? "var(--good)" : "var(--concrete)"), marginBottom: 20 }}>
                 {!contact.portalEnabled ? (
                   <>
@@ -196,7 +196,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
                       <span className="chip" style={{ background: "var(--good)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>● ACTIVE</span>
                       <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>VIEW-ONLY · LAST 90 DAYS · THEIR PAY ONLY</span>
                     </div>
-                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, fontFamily: "JetBrains Mono, monospace", wordBreak: "break-all", marginBottom: 10 }}>
+                    <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--steel)", fontSize: 10, wordBreak: "break-all", marginBottom: 10 }}>
                       {payPortalUrl}
                     </code>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -242,7 +242,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
           )}
 
           {/* Job history */}
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>
             ▸ JOB HISTORY ({history.length} DISPATCH{history.length !== 1 ? "ES" : ""} · {totalFBs} FREIGHT BILL{totalFBs !== 1 ? "S" : ""} · {totalTons.toFixed(1)} TONS)
           </div>
           {history.length === 0 ? (
@@ -254,7 +254,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
               {history.slice(0, 10).map((d) => {
                 const bills = freightBills.filter((fb) => fb.dispatchId === d.id);
                 return (
-                  <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                  <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
                     <div>
                       <strong>#{d.code}</strong> · {d.jobName} · <span style={{ color: "var(--concrete)" }}>{fmtDate(d.date)}</span>
                     </div>

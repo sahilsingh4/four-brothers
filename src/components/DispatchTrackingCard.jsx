@@ -31,7 +31,7 @@ export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }
 
         {/* Progress */}
         <div style={{ marginTop: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontFamily: "JetBrains Mono, monospace", marginBottom: 4, color: "var(--concrete)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4, color: "var(--concrete)" }}>
             <span>▸ {bills.length} / {dispatch.trucksExpected} TRUCKS IN</span>
             <span>{pct.toFixed(0)}%</span>
           </div>
@@ -86,15 +86,15 @@ export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }
           <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
             <div style={{ padding: 12, border: "1.5px solid var(--steel)", background: "#FFF" }}>
               <div className="fbt-display" style={{ fontSize: 22, lineHeight: 1 }}>{totalTons.toFixed(1)}</div>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em", marginTop: 2 }}>TOTAL TONS</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2 }}>TOTAL TONS</div>
             </div>
             <div style={{ padding: 12, border: "1.5px solid var(--steel)", background: "#FFF" }}>
               <div className="fbt-display" style={{ fontSize: 22, lineHeight: 1 }}>{totalLoads}</div>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.1em", marginTop: 2 }}>LOADS</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 2 }}>LOADS</div>
             </div>
             <div style={{ padding: 12, border: "1.5px solid var(--steel)", background: "var(--hazard)" }}>
               <div className="fbt-display" style={{ fontSize: 22, lineHeight: 1 }}>{bills.length}</div>
-              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--steel)", letterSpacing: "0.1em", marginTop: 2, fontWeight: 700 }}>FREIGHT BILLS</div>
+              <div className="fbt-mono" style={{ fontSize: 9, color: "var(--steel)", marginTop: 2, fontWeight: 700 }}>FREIGHT BILLS</div>
             </div>
           </div>
         )}
@@ -102,7 +102,7 @@ export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }
         {/* Freight bill list (when expanded or always if short) */}
         {expanded && bills.length > 0 && (
           <div style={{ marginTop: 20 }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ FREIGHT BILLS SUBMITTED</div>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ FREIGHT BILLS SUBMITTED</div>
             <div style={{ display: "grid", gap: 8 }}>
               {bills.map((fb) => (
                 <div key={fb.id} style={{ border: "1.5px solid var(--steel)", background: "#FFF", padding: 12 }}>
@@ -123,7 +123,7 @@ export const DispatchTrackingCard = ({ dispatch, bills, expanded, onPhotoClick }
                           <img key={p.id} src={p.dataUrl} onClick={() => onPhotoClick?.(p.dataUrl)} style={{ width: 48, height: 48, objectFit: "cover", border: "1.5px solid var(--steel)", cursor: "pointer" }} alt="ticket" />
                         ))}
                         {fb.photos.length > 3 && (
-                          <div style={{ width: 48, height: 48, border: "1.5px dashed var(--concrete)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)" }}>
+                          <div style={{ width: 48, height: 48, border: "1.5px dashed var(--concrete)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "var(--concrete)" }}>
                             +{fb.photos.length - 3}
                           </div>
                         )}

@@ -44,7 +44,7 @@ export const ChangePasswordModal = ({ onClose, onToast }) => {
           <div>
             <label htmlFor="cpw-new" className="fbt-label">New Password</label>
             <input id="cpw-new" className="fbt-input" type="password" value={pw} onChange={(e) => { setPw(e.target.value); setErr(""); }} placeholder="12+ chars · upper + lower + number + symbol" autoFocus />
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6, lineHeight: 1.6, letterSpacing: "0.03em" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6, lineHeight: 1.6 }}>
               ▸ MIN 12 CHARS · MIX CASE · INCLUDE A NUMBER · INCLUDE A SYMBOL<br/>
               ▸ NO COMMON WORDS (PASSWORD, BROTHERS, TRUCKING, QWERTY, 123456)<br/>
               ▸ NO 3+ REPEATED CHARS IN A ROW
@@ -56,7 +56,7 @@ export const ChangePasswordModal = ({ onClose, onToast }) => {
           </div>
 
           {err && (
-            <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
               <AlertCircle size={14} /> {err}
             </div>
           )}

@@ -143,7 +143,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
           {/* Driver defaults — auto-fill when assigned to orders */}
           {draft.type === "driver" && (
             <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", fontWeight: 700, marginBottom: 8 }}>
                 ▸ DRIVER DEFAULTS · AUTO-FILL WHEN ASSIGNED TO ORDER
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
@@ -196,7 +196,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
                   onChange={(e) => setDraft({ ...draft, brokerageApplies: e.target.checked })}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
-                <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em", fontWeight: 700 }}>
+                <span className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>
                   DEDUCT BROKERAGE WHEN PAYING
                 </span>
               </label>
@@ -234,7 +234,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
                   onChange={(e) => setDraft({ ...draft, is1099Eligible: e.target.checked })}
                   style={{ width: 16, height: 16, cursor: "pointer" }}
                 />
-                <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em", fontWeight: 700 }}>
+                <span className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>
                   1099 ELIGIBLE — ISSUE 1099-NEC AT YEAR-END
                 </span>
               </label>
@@ -297,7 +297,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
           {/* Broker-specific fields */}
           {draft.type === "broker" && (
             <div style={{ padding: 12, background: "#F0FDF4", border: "2px solid var(--good)" }}>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", marginBottom: 8, fontWeight: 700 }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginBottom: 8, fontWeight: 700 }}>
                 ▸ BROKER — PAYS US, NOT WE PAY THEM
               </div>
               <div style={{ fontSize: 12, color: "var(--steel)", lineHeight: 1.5 }}>
@@ -510,7 +510,7 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
                     </button>
                   </div>
 
-                  <div style={{ marginTop: 10, fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", lineHeight: 1.6 }}>
+                  <div style={{ marginTop: 10, fontSize: 12, color: "var(--concrete)", lineHeight: 1.6 }}>
                     {c.phone && <div>▸ {c.phone}</div>}
                     {c.email && <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>▸ {c.email}</div>}
                     {c.typicalTrucks && <div>▸ {c.typicalTrucks} typical trucks</div>}

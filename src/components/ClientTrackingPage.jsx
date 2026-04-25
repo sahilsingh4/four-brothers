@@ -54,7 +54,7 @@ export const ClientTrackingPage = ({ token, dispatches, freightBills, company, o
       <TrackingHeader company={company} />
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 20px 80px" }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 8 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 8 }}>
           ▸ CLIENT PORTAL
         </div>
         <h1 className="fbt-display" style={{ fontSize: 36, margin: "0 0 8px", lineHeight: 1 }}>
@@ -84,7 +84,7 @@ export const ClientTrackingPage = ({ token, dispatches, freightBills, company, o
           </div>
         </div>
 
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.15em", marginBottom: 14 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 14 }}>
           ▸ JOBS ({matched.length})
         </div>
         <div style={{ display: "grid", gap: 16 }}>
@@ -94,7 +94,7 @@ export const ClientTrackingPage = ({ token, dispatches, freightBills, company, o
           })}
         </div>
 
-        <div className="fbt-mono" style={{ marginTop: 40, fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.12em", lineHeight: 1.8 }}>
+        <div className="fbt-mono" style={{ marginTop: 40, fontSize: 10, color: "var(--concrete)", textAlign: "center", lineHeight: 1.8 }}>
           ▸ QUESTIONS? CONTACT YOUR DISPATCHER<br />
           ▸ {company?.name || "4 BROTHERS TRUCKING"}{company?.phone && ` · ${company.phone}`}{company?.email && ` · ${company.email}`}
         </div>

@@ -19,7 +19,7 @@ export const SectionCard = ({ title, icon, count, total, color = "var(--steel)",
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         {icon}
         <div>
-          <div className="fbt-mono" style={{ fontSize: 10, letterSpacing: "0.1em", opacity: 0.85 }}>{title}</div>
+          <div className="fbt-mono" style={{ fontSize: 10, opacity: 0.85 }}>{title}</div>
           <div className="fbt-display" style={{ fontSize: 20 }}>{count ?? 0}{total != null ? ` · ${fmt$(total)}` : ""}</div>
         </div>
       </div>
@@ -40,7 +40,7 @@ export const Row = ({ left, right, sub, onClick }) => (
   <div
     onClick={(e) => { if (onClick) { e.stopPropagation(); onClick(); } }}
     style={{
-      padding: "6px 8px", fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+      padding: "6px 8px", fontSize: 11,
       borderBottom: "1px solid #E5E7EB", display: "flex", justifyContent: "space-between",
       gap: 8, cursor: onClick ? "pointer" : "default",
     }}

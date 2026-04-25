@@ -42,7 +42,7 @@ export const LoginScreen = ({ onSuccess, onCancel }) => {
               <Lock size={26} strokeWidth={2.5} color="var(--steel)" />
             </div>
             <div>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em" }}>▸ STAFF SIGN IN</div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)" }}>▸ STAFF SIGN IN</div>
               <h2 className="fbt-display" style={{ fontSize: 24, margin: 0, lineHeight: 1 }}>SECURE LOGIN</h2>
             </div>
           </div>
@@ -58,7 +58,7 @@ export const LoginScreen = ({ onSuccess, onCancel }) => {
             </div>
 
             {err && (
-              <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, fontFamily: "JetBrains Mono, monospace", display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ padding: 10, background: "#FEE2E2", border: "2px solid var(--safety)", color: "var(--safety)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
                 <AlertCircle size={14} /> {err}
               </div>
             )}
@@ -71,7 +71,7 @@ export const LoginScreen = ({ onSuccess, onCancel }) => {
               ← BACK TO PUBLIC SITE
             </button>
 
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em", marginTop: 4 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", textAlign: "center", marginTop: 4 }}>
               ▸ CLOUD LOGIN · SECURED BY SUPABASE
             </div>
           </div>

@@ -15,7 +15,7 @@ export const TrackingHeader = ({ company }) => (
       )}
       <div style={{ flex: 1 }}>
         <div className="fbt-display" style={{ fontSize: 18, letterSpacing: "-0.02em" }}>{company?.name || "4 BROTHERS TRUCKING"}</div>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em" }}>▸ CLIENT TRACKING · LIVE</div>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)" }}>▸ CLIENT TRACKING · LIVE</div>
       </div>
     </div>
   </div>

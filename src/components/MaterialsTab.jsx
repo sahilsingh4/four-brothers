@@ -296,7 +296,7 @@ export const MaterialsTab = ({ quarries, setQuarries, dispatches, onToast }) => 
             <Search size={14} /> FIND CHEAPEST
           </button>
         </div>
-        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10, letterSpacing: "0.05em" }}>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 10 }}>
           ▸ SEARCHES ACROSS ALL QUARRIES · RANKED BY CURRENT $/TON
         </div>
       </div>
@@ -335,18 +335,18 @@ export const MaterialsTab = ({ quarries, setQuarries, dispatches, onToast }) => 
 
                 {q.materials && q.materials.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--concrete)", paddingTop: 10 }}>
-                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6 }}>
+                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6 }}>
                       {q.materials.length} MATERIAL{q.materials.length !== 1 ? "S" : ""}
                     </div>
                     <div style={{ display: "grid", gap: 4 }}>
                       {q.materials.slice(0, 4).map((m) => (
-                        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>
+                        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                           <span style={{ color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: 6 }}>{m.name}</span>
                           <strong style={{ color: "var(--hazard-deep)" }}>{fmt$(m.pricePerTon)}</strong>
                         </div>
                       ))}
                       {q.materials.length > 4 && (
-                        <div style={{ fontSize: 11, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace" }}>+ {q.materials.length - 4} more</div>
+                        <div style={{ fontSize: 11, color: "var(--concrete)" }}>+ {q.materials.length - 4} more</div>
                       )}
                     </div>
                   </div>

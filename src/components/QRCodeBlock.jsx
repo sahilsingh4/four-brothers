@@ -33,7 +33,7 @@ export const QRCodeBlock = ({ url, size = 180, label, onToast }) => {
 
   if (failed) {
     return (
-      <div style={{ width: size, height: size, background: "#F5F5F4", border: "2px dashed var(--concrete)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", padding: 10, textAlign: "center", fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "var(--concrete)" }}>
+      <div style={{ width: size, height: size, background: "#F5F5F4", border: "2px dashed var(--concrete)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", padding: 10, textAlign: "center", fontSize: 10, color: "var(--concrete)" }}>
         <AlertCircle size={20} style={{ marginBottom: 6 }} />
         QR SERVICE OFFLINE — USE THE LINK
       </div>

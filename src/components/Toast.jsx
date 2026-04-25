@@ -22,7 +22,7 @@ export const Toast = ({ msg, onClose }) => {
           style={{
             marginLeft: 10, background: "var(--hazard)", color: "var(--steel)",
             border: "2px solid var(--hazard)", padding: "4px 10px", cursor: "pointer",
-            fontFamily: "inherit", fontWeight: 700, fontSize: 12, letterSpacing: "0.08em",
+            fontFamily: "inherit", fontWeight: 700, fontSize: 12,
           }}
         >{action.label}</button>
       )}

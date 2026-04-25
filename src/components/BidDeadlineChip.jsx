@@ -13,7 +13,7 @@ export const BidDeadlineChip = ({ dueAt, label = "DUE" }) => {
   else if (days <= 7) { color = "var(--steel)"; bg = "var(--hazard)"; text = `${label} IN ${days}D`; }
   else { color = "var(--steel)"; bg = "#F1F5F9"; text = `${label} ${dateStr}`; }
   return (
-    <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: bg, color, fontWeight: 700, letterSpacing: "0.05em", whiteSpace: "nowrap" }}>
+    <span className="fbt-mono" style={{ fontSize: 10, padding: "2px 6px", background: bg, color, fontWeight: 700, whiteSpace: "nowrap" }}>
       {text}
     </span>
   );

@@ -100,7 +100,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
 
           {/* Project Billing Defaults — inherited by orders under this project */}
           <div style={{ padding: 14, background: "#F0FDF4", border: "2px solid var(--good)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 10 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", fontWeight: 700, marginBottom: 10 }}>
               ▸ BILLING DEFAULTS · APPLIED TO ORDERS + INVOICES UNDER THIS PROJECT
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
@@ -167,7 +167,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
 
           <label style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, border: "2px solid var(--steel)", background: draft.certifiedPayroll ? "#FEF3C7" : "#FFF", cursor: "pointer" }}>
             <input type="checkbox" checked={draft.certifiedPayroll} onChange={(e) => setDraft({ ...draft, certifiedPayroll: e.target.checked })} style={{ width: 18, height: 18, cursor: "pointer" }} />
-            <span className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.08em" }}>CERTIFIED PAYROLL REQUIRED (Prevailing Wage)</span>
+            <span className="fbt-mono" style={{ fontSize: 12 }}>CERTIFIED PAYROLL REQUIRED (Prevailing Wage)</span>
           </label>
 
           <div>
@@ -177,14 +177,14 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
 
           {/* v21 Session S: Public portfolio section */}
           <div style={{ padding: 14, border: "2px dashed var(--steel)", background: "#FAFAF9" }}>
-            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", fontWeight: 700, marginBottom: 10 }}>
+            <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 10 }}>
               ▸ PUBLIC WEBSITE PORTFOLIO
             </div>
             <label style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 10, border: "2px solid var(--steel)", background: draft.showOnWebsite ? "#DCFCE7" : "#FFF", cursor: "pointer" }}>
               <input type="checkbox" checked={!!draft.showOnWebsite} onChange={(e) => setDraft({ ...draft, showOnWebsite: e.target.checked })} style={{ width: 18, height: 18, cursor: "pointer", marginTop: 2 }} />
               <div>
-                <div className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.08em", fontWeight: 700 }}>SHOW ON PUBLIC WEBSITE</div>
-                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, fontFamily: "JetBrains Mono, monospace" }}>
+                <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>SHOW ON PUBLIC WEBSITE</div>
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
                   Displays project name + customer name on 4brotherstruck.com portfolio section. Nothing else (no rates, no tonnage, no contract info) is ever shown publicly.
                 </div>
               </div>
@@ -203,7 +203,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
                         : "e.g. City of Salinas, Caltrans, Graniterock"
                     }
                   />
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
                     ▸ USE IF YOU WANT A CLEANER PUBLIC NAME (E.G. "CITY OF SALINAS" INSTEAD OF THE FULL ENTITY NAME)
                   </div>
                 </div>
@@ -228,7 +228,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
                     onChange={(e) => setDraft({ ...draft, publicOrder: Number(e.target.value) || 0 })}
                     style={{ width: 140 }}
                   />
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, letterSpacing: "0.05em" }}>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4 }}>
                     ▸ LOWER NUMBERS SHOW FIRST. LEAVE AT 0 TO SORT BY COMPLETION YEAR.
                   </div>
                 </div>
@@ -383,7 +383,7 @@ export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freig
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 12, fontFamily: "JetBrains Mono, monospace", color: "var(--concrete)", lineHeight: 1.6, marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: "var(--concrete)", lineHeight: 1.6, marginTop: 8 }}>
                     {p.contractNumber && <div>CONTRACT ▸ {p.contractNumber}</div>}
                     {p.poNumber && <div>PO ▸ {p.poNumber}</div>}
                     {p.location && <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}><MapPin size={11} style={{ marginTop: 2, flexShrink: 0 }} /> {p.location}</div>}

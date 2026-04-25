@@ -268,7 +268,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           <div style={{ width: 80, height: 80, background: accentColor, borderRadius: "50%", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {wasQueued ? <Clock size={44} color="#FFF" /> : <CheckCircle2 size={44} color="#FFF" />}
           </div>
-          <div className="fbt-mono" style={{ fontSize: 11, color: accentColor, letterSpacing: "0.15em", marginBottom: 4 }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: accentColor, marginBottom: 4 }}>
             ▸ {wasQueued ? "QUEUED — WILL UPLOAD WHEN ONLINE" : "SENT TO DISPATCHER"}
           </div>
           <h2 className="fbt-display" style={{ fontSize: 28, margin: "0 0 8px" }}>FB #{lastFB}</h2>
@@ -279,8 +279,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           {/* Summary block */}
           {submissionSummary && (
             <div style={{ background: accentBg, border: `2px solid ${accentColor}`, padding: 16, marginBottom: 20, textAlign: "left" }}>
-              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 10 }}>▸ WHAT YOU SUBMITTED</div>
-              <div style={{ display: "grid", gap: 6, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10 }}>▸ WHAT YOU SUBMITTED</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 13 }}>
                 <div><strong>DRIVER:</strong> {submissionSummary.driverName}</div>
                 <div><strong>TRUCK:</strong> {submissionSummary.truckNumber}</div>
                 {submissionSummary.material && <div><strong>MATERIAL:</strong> {submissionSummary.material}</div>}
@@ -297,7 +297,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               {/* v18 Session E: Show actual photo thumbnails so driver can verify what was sent */}
               {submissionSummary.photos && submissionSummary.photos.length > 0 && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--good)" }}>
-                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>▸ PHOTOS UPLOADED</div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>▸ PHOTOS UPLOADED</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {submissionSummary.photos.map((p) => (
                       <img
@@ -313,7 +313,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                         border: "1.5px dashed var(--concrete)",
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 11, color: "var(--concrete)",
-                        fontFamily: "JetBrains Mono, monospace"
+                        
                       }}>
                         +{submissionSummary.photoCount - submissionSummary.photos.length}
                       </div>
@@ -337,7 +337,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               DONE — CLOSE
             </button>
           </div>
-          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 16, letterSpacing: "0.1em" }}>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 16 }}>
             ▸ ORDER #{dispatch.code} · {dispatch.jobName}
           </div>
         </div>
@@ -352,7 +352,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         <div style={{ maxWidth: 720, margin: "0 auto" }}><Logo size="sm" /></div>
       </div>
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px 80px" }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 8 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 8 }}>
           ▸ DRIVER / SUB UPLOAD · ORDER #{dispatch.code}
         </div>
         <h1 className="fbt-display" style={{ fontSize: 32, margin: "0 0 8px", lineHeight: 1.1 }}>UPLOAD YOUR FREIGHT BILL</h1>
@@ -375,11 +375,11 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         {/* Assignment-specific banner when using a sublink */}
         {assignment && (
           <div className="fbt-card" style={{ padding: 18, marginBottom: 20, background: "var(--steel)", color: "var(--cream)", borderLeft: "6px solid var(--hazard)" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", letterSpacing: "0.15em", marginBottom: 4 }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", marginBottom: 4 }}>
               ▸ {assignment.kind === "driver" ? "DRIVER LINK" : "SUB-CONTRACTOR LINK"}
             </div>
             <div className="fbt-display" style={{ fontSize: 18, marginBottom: 6 }}>{assignment.name}</div>
-            <div className="fbt-mono" style={{ fontSize: 12, letterSpacing: "0.05em" }}>
+            <div className="fbt-mono" style={{ fontSize: 12 }}>
               {dispatch.submittedCount} OF {dispatch.trucksExpected} TRUCK{dispatch.trucksExpected !== 1 ? "S" : ""} SUBMITTED
               {dispatch.submittedCount >= dispatch.trucksExpected && " · ✓ COMPLETE"}
             </div>
@@ -387,8 +387,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         )}
 
         <div className="fbt-card" style={{ padding: 20, marginBottom: 24, background: "#FEF3C7" }}>
-          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 8 }}>JOB DETAILS</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 13, fontFamily: "JetBrains Mono, monospace" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>JOB DETAILS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 13 }}>
             <div><strong>JOB:</strong> {dispatch.jobName}</div>
             <div><strong>DATE:</strong> {fmtDate(dispatch.date)}</div>
             {dispatch.pickup && <div><strong>PICKUP:</strong> {dispatch.pickup}</div>}
@@ -402,7 +402,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
           <div style={{ display: "grid", gap: 14 }}>
             {formWasRestored && !submitted && (
               <div style={{ padding: 10, background: "#F0FDF4", border: "1.5px solid var(--good)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", letterSpacing: "0.05em", fontWeight: 700 }}>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--good)", fontWeight: 700 }}>
                   ▸ DRAFT RESTORED FROM YOUR LAST SESSION
                 </div>
                 <button
@@ -516,7 +516,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
 
             {/* Tolls / Dump Fees / Fuel / Other — per-FB extras */}
             <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)" }}>
-              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 6, fontWeight: 700 }}>
                 ▸ TOLLS · DUMP FEES · FUEL · OTHER {form.extras?.length > 0 ? `(${form.extras.length})` : "(OPTIONAL)"}
               </div>
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8, lineHeight: 1.4 }}>
@@ -569,7 +569,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, alignItems: "center" }}>
                           <div>
-                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>QTY (OPTIONAL)</label>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>QTY (OPTIONAL)</label>
                             <input
                               className="fbt-input"
                               type="number" step="0.01" min="0"
@@ -589,7 +589,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                             />
                           </div>
                           <div>
-                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", letterSpacing: "0.08em" }}>RATE $ (OPTIONAL)</label>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)" }}>RATE $ (OPTIONAL)</label>
                             <input
                               className="fbt-input"
                               type="number" step="0.01" min="0"
@@ -609,7 +609,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                             />
                           </div>
                           <div>
-                            <label className="fbt-mono" style={{ fontSize: 9, color: hasQtyRate ? "var(--good)" : "var(--concrete)", letterSpacing: "0.08em", fontWeight: 700 }}>
+                            <label className="fbt-mono" style={{ fontSize: 9, color: hasQtyRate ? "var(--good)" : "var(--concrete)", fontWeight: 700 }}>
                               AMOUNT $ {hasQtyRate ? "(AUTO)" : ""}
                             </label>
                             <input
@@ -660,10 +660,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                   color: photos.length > 0 ? "#FFF" : "var(--steel)",
                   border: "3px solid " + (photos.length > 0 ? "var(--good)" : "var(--hazard-deep)"),
                   textAlign: "center",
-                  fontFamily: "JetBrains Mono, monospace",
                   fontWeight: 700,
                   fontSize: 16,
-                  letterSpacing: "0.08em",
                   minHeight: 120,
                   display: "flex",
                   flexDirection: "column",
@@ -685,12 +683,12 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                     : photos.length === 0 ? "📷 TAKE PHOTO OF TICKETS" : `+ ADD MORE PHOTOS`}
                 </div>
                 {photos.length === 0 && (
-                  <div style={{ fontSize: 11, opacity: 0.9, letterSpacing: "0.08em" }}>
+                  <div style={{ fontSize: 11, opacity: 0.9 }}>
                     TAP TO USE YOUR CAMERA
                   </div>
                 )}
                 {photos.length > 0 && (
-                  <div style={{ fontSize: 11, opacity: 0.95, letterSpacing: "0.08em" }}>
+                  <div style={{ fontSize: 11, opacity: 0.95 }}>
                     {photos.length} ATTACHED · TAP TO ADD MORE
                   </div>
                 )}
@@ -699,7 +697,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
 
               {/* Secondary gallery option */}
               <div style={{ marginTop: 8, textAlign: "center" }}>
-                <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--concrete)", fontFamily: "JetBrains Mono, monospace", letterSpacing: "0.08em", padding: "6px 10px" }}>
+                <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--concrete)", padding: "6px 10px" }}>
                   <Upload size={12} /> OR PICK FROM GALLERY
                   <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
                 </label>
@@ -721,7 +719,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                             padding: 6, gap: 4, textAlign: "center",
                           }}>
                             {isFailed ? <AlertCircle size={20} style={{ color: "var(--safety)" }} /> : <Clock size={20} style={{ color: "var(--concrete)" }} />}
-                            <div className="fbt-mono" style={{ fontSize: 9, color: isFailed ? "var(--safety)" : "var(--concrete)", letterSpacing: "0.05em", fontWeight: 700, lineHeight: 1.2 }}>
+                            <div className="fbt-mono" style={{ fontSize: 9, color: isFailed ? "var(--safety)" : "var(--concrete)", fontWeight: 700, lineHeight: 1.2 }}>
                               {isFailed ? "FAILED" : "COMPRESSING…"}
                             </div>
                             <div style={{ fontSize: 9, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={p.name}>
@@ -731,7 +729,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                               <button
                                 type="button"
                                 onClick={() => retryPhoto(p.id)}
-                                style={{ padding: "2px 8px", fontSize: 9, fontWeight: 700, background: "var(--safety)", color: "#FFF", border: "none", cursor: "pointer", letterSpacing: "0.05em" }}
+                                style={{ padding: "2px 8px", fontSize: 9, fontWeight: 700, background: "var(--safety)", color: "#FFF", border: "none", cursor: "pointer" }}
                               >
                                 RETRY
                               </button>
@@ -753,7 +751,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
             {/* Submit button with progress indicator */}
             {submitting ? (
               <div style={{ marginTop: 16, padding: 20, background: "var(--good)", color: "#FFF", textAlign: "center" }}>
-                <div className="fbt-mono" style={{ fontSize: 14, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 8 }}>
+                <div className="fbt-mono" style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
                   {submitProgress || "SUBMITTING…"}
                 </div>
                 <div style={{ height: 6, background: "rgba(255,255,255,0.3)", overflow: "hidden" }}>
@@ -767,7 +765,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 {submitError && (
                   <div style={{ marginTop: 14, padding: 14, background: "#FEF2F2", border: "2px solid var(--safety)", display: "flex", gap: 12, alignItems: "flex-start" }}>
                     <AlertCircle size={20} style={{ color: "var(--safety)", flexShrink: 0, marginTop: 2 }} />
-                    <div style={{ flex: 1, fontSize: 13, fontFamily: "JetBrains Mono, monospace", color: "var(--steel)", whiteSpace: "pre-line", lineHeight: 1.4 }}>
+                    <div style={{ flex: 1, fontSize: 13, color: "var(--steel)", whiteSpace: "pre-line", lineHeight: 1.4 }}>
                       {submitError}
                     </div>
                     <button
@@ -789,11 +787,11 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 {/* v20 Session P: Captcha challenge — shown when threshold hit */}
                 {captchaChallenge && (
                   <div style={{ marginTop: 14, padding: 14, background: "#FEF3C7", border: "2px solid var(--hazard-deep)" }}>
-                    <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.1em", fontWeight: 700, marginBottom: 8 }}>
+                    <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 8 }}>
                       ▸ QUICK VERIFICATION — PROVE YOU'RE HUMAN
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <div style={{ fontSize: 18, fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700 }}>
                         {captchaChallenge.a} + {captchaChallenge.b} =
                       </div>
                       <input
@@ -809,14 +807,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                   </div>
                 )}
 
-                <button onClick={submit} className="btn-primary" style={{ marginTop: 16, padding: "16px 24px", fontSize: 15, letterSpacing: "0.08em" }} disabled={uploading}>
+                <button onClick={submit} className="btn-primary" style={{ marginTop: 16, padding: "16px 24px", fontSize: 15 }} disabled={uploading}>
                   <CheckCircle2 size={18} /> {submitError ? "RETRY SUBMIT" : "SUBMIT FREIGHT BILL"}
                 </button>
               </>
             )}
           </div>
         </div>
-        <div className="fbt-mono" style={{ marginTop: 20, fontSize: 11, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.1em" }}>▸ PROBLEM WITH THIS FORM? CONTACT DISPATCH.</div>
+        <div className="fbt-mono" style={{ marginTop: 20, fontSize: 11, color: "var(--concrete)", textAlign: "center" }}>▸ PROBLEM WITH THIS FORM? CONTACT DISPATCH.</div>
       </div>
     </div>
   );

@@ -34,7 +34,7 @@ export const DispatchTrackingPage = ({ dispatch, freightBills, company, onBack }
       <TrackingHeader company={company} />
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 20px 80px" }}>
-        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.15em", marginBottom: 8 }}>
+        <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 8 }}>
           ▸ DISPATCH #{dispatch.code}
         </div>
         <h1 className="fbt-display" style={{ fontSize: 36, margin: "0 0 8px", lineHeight: 1 }}>
@@ -46,7 +46,7 @@ export const DispatchTrackingPage = ({ dispatch, freightBills, company, onBack }
 
         <DispatchTrackingCard dispatch={dispatch} bills={bills} expanded={true} onPhotoClick={setLightbox} />
 
-        <div className="fbt-mono" style={{ marginTop: 32, fontSize: 10, color: "var(--concrete)", textAlign: "center", letterSpacing: "0.12em", lineHeight: 1.8 }}>
+        <div className="fbt-mono" style={{ marginTop: 32, fontSize: 10, color: "var(--concrete)", textAlign: "center", lineHeight: 1.8 }}>
           ▸ QUESTIONS? CONTACT YOUR DISPATCHER<br />
           ▸ {company?.name || "4 BROTHERS TRUCKING"}{company?.phone && ` · ${company.phone}`}{company?.email && ` · ${company.email}`}
         </div>
