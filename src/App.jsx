@@ -97,6 +97,7 @@ import {
   BID_STATUSES, BID_STATUS_MAP,
 } from "./utils";
 import { Toast } from "./components/Toast";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Logo } from "./components/Logo";
 import { Lightbox } from "./components/Lightbox";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -6469,14 +6470,16 @@ export default function App() {
         </Suspense>
       ) : (
         <>
-          <Dashboard
-            state={{ quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-            setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
-            onToast={showToast}
-            onExit={() => setView("public")}
-            onLogout={handleLogout}
-            onChangePassword={() => setShowChangePw(true)}
-          />
+          <ErrorBoundary>
+            <Dashboard
+              state={{ quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
+              setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+              onToast={showToast}
+              onExit={() => setView("public")}
+              onLogout={handleLogout}
+              onChangePassword={() => setShowChangePw(true)}
+            />
+          </ErrorBoundary>
           {showChangePw && (
             <ChangePasswordModal
               onClose={() => setShowChangePw(false)}
