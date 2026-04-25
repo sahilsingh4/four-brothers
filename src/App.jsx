@@ -362,7 +362,7 @@ const daysAgoRange = (days) => {
 const toISODate = (d) => d.toISOString().slice(0, 10);
 
 // Core computation — returns a full report object
-const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, quarries }) => {
+const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, quarries, contacts = [], projects = [] }) => {
   const fromT = from.getTime();
   const toT = to.getTime();
 
@@ -449,6 +449,125 @@ const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, q
     expected: Number(d.trucksExpected || 0),
   }));
 
+  // === A/R aging — based on TODAY, not the filter range ===
+  // Walks every invoice with an outstanding balance and buckets by days since
+  // invoiceDate. The owner's most-asked accounting view: who owes us, how long.
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const arBuckets = { current: [], "30": [], "60": [], "90+": [] };
+  let arTotal = 0;
+  invoices.forEach((inv) => {
+    const bal = (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0);
+    if (bal <= 0.01) return; // paid in full
+    const invDate = inv.invoiceDate ? new Date(inv.invoiceDate + "T12:00:00") : null;
+    const days = invDate ? Math.floor((today.getTime() - invDate.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const bucket = days <= 30 ? "current" : days <= 60 ? "30" : days <= 90 ? "60" : "90+";
+    arBuckets[bucket].push({
+      num: inv.invoiceNumber,
+      billTo: inv.billToName,
+      total: Number(inv.total) || 0,
+      paid: Number(inv.amountPaid) || 0,
+      balance: bal,
+      days,
+      date: inv.invoiceDate,
+    });
+    arTotal += bal;
+  });
+  Object.keys(arBuckets).forEach((k) => arBuckets[k].sort((a, b) => b.days - a.days));
+  const arSummary = {
+    total: arTotal,
+    counts: {
+      current: arBuckets.current.length,
+      "30": arBuckets["30"].length,
+      "60": arBuckets["60"].length,
+      "90+": arBuckets["90+"].length,
+    },
+    sums: {
+      current: arBuckets.current.reduce((s, x) => s + x.balance, 0),
+      "30": arBuckets["30"].reduce((s, x) => s + x.balance, 0),
+      "60": arBuckets["60"].reduce((s, x) => s + x.balance, 0),
+      "90+": arBuckets["90+"].reduce((s, x) => s + x.balance, 0),
+    },
+    buckets: arBuckets,
+  };
+
+  // === Profitability rollups for invoices/payouts in range ===
+  // Per FB: derive paid (sub pay) from payingLines, brokerage from those lines,
+  // billed (revenue) from the FB's invoice line. Aggregate by project + by
+  // customer + by sub.
+  const fbStats = billsInRange.map((fb) => {
+    const disp = dispatches.find((x) => x.id === fb.dispatchId);
+    const inv = fb.invoiceId ? invoices.find((i) => i.id === fb.invoiceId) : null;
+    const payLines = Array.isArray(fb.payingLines) ? fb.payingLines : [];
+    const subPay = payLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+    const subBrokerage = payLines.reduce((s, ln) => {
+      const gross = Number(ln.gross) || ((Number(ln.qty) || 0) * (Number(ln.rate) || 0));
+      const net = Number(ln.net) || gross;
+      return s + Math.max(0, gross - net);
+    }, 0);
+    // Revenue per FB: take this FB's share of the invoice (proportional to the
+    // FB's total billing-line net within the invoice's freightBillIds set).
+    let revenue = 0;
+    if (inv && Array.isArray(fb.billingLines)) {
+      revenue = fb.billingLines.reduce((s, ln) => s + (Number(ln.net) || 0), 0);
+    }
+    const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
+    return { fb, disp, inv, assignment, subPay, subBrokerage, revenue };
+  });
+
+  // Per-project rollup
+  const byProject = new Map();
+  fbStats.forEach(({ fb, disp, subPay, subBrokerage, revenue }) => {
+    if (!disp) return;
+    const projectId = disp.projectId || "_none";
+    const project = projects.find((p) => p.id === projectId);
+    const name = project?.name || "(no project)";
+    const e = byProject.get(projectId) || { id: projectId, name, contractNumber: project?.contractNumber || "", revenue: 0, subPay: 0, subBrokerage: 0, fbCount: 0, tonnage: 0 };
+    e.revenue += revenue;
+    e.subPay += subPay;
+    e.subBrokerage += subBrokerage;
+    e.fbCount += 1;
+    e.tonnage += Number(fb.tonnage) || 0;
+    byProject.set(projectId, e);
+  });
+  const profitByProject = Array.from(byProject.values())
+    .map((e) => ({ ...e, net: e.revenue - e.subPay - e.subBrokerage, marginPct: e.revenue > 0 ? ((e.revenue - e.subPay - e.subBrokerage) / e.revenue) * 100 : null }))
+    .sort((a, b) => b.net - a.net);
+
+  // Per-customer rollup
+  const byCustomer = new Map();
+  fbStats.forEach(({ fb, disp, subPay, subBrokerage, revenue }) => {
+    if (!disp) return;
+    const customerId = disp.clientId || "_none";
+    const customer = contacts.find((c) => c.id === customerId);
+    const name = customer?.companyName || customer?.contactName || disp.clientName || "(no customer)";
+    const e = byCustomer.get(customerId) || { id: customerId, name, revenue: 0, subPay: 0, subBrokerage: 0, fbCount: 0, tonnage: 0 };
+    e.revenue += revenue;
+    e.subPay += subPay;
+    e.subBrokerage += subBrokerage;
+    e.fbCount += 1;
+    e.tonnage += Number(fb.tonnage) || 0;
+    byCustomer.set(customerId, e);
+  });
+  const profitByCustomer = Array.from(byCustomer.values())
+    .map((e) => ({ ...e, net: e.revenue - e.subPay - e.subBrokerage, marginPct: e.revenue > 0 ? ((e.revenue - e.subPay - e.subBrokerage) / e.revenue) * 100 : null }))
+    .sort((a, b) => b.net - a.net);
+
+  // Per-sub rollup (drivers + subs)
+  const bySub = new Map();
+  fbStats.forEach(({ assignment, subPay, subBrokerage, fb }) => {
+    if (!assignment || !assignment.contactId) return;
+    const contact = contacts.find((c) => c.id === assignment.contactId);
+    const name = contact?.companyName || contact?.contactName || assignment.name || "(unknown)";
+    const e = bySub.get(assignment.contactId) || { id: assignment.contactId, name, kind: assignment.kind || contact?.type || "sub", subPay: 0, brokerage: 0, fbCount: 0, tonnage: 0 };
+    e.subPay += subPay;
+    e.brokerage += subBrokerage;
+    e.fbCount += 1;
+    e.tonnage += Number(fb.tonnage) || 0;
+    bySub.set(assignment.contactId, e);
+  });
+  const paidBySub = Array.from(bySub.values()).sort((a, b) => b.subPay - a.subPay);
+
   return {
     from: toISODate(from),
     to: toISODate(to),
@@ -467,6 +586,10 @@ const computeReport = ({ from, to, dispatches, freightBills, invoices, quotes, q
     invoiceTotal,
     invoicesList: invoicesInRange.map((i) => ({ num: i.invoiceNumber, billTo: i.billToName, total: i.total, date: i.invoiceDate })),
     incomplete,
+    arSummary,
+    profitByProject,
+    profitByCustomer,
+    paidBySub,
   };
 };
 
@@ -4191,6 +4314,101 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
   );
 };
 
+// Profitability table — used by ReportsTab for the per-project, per-customer,
+// and per-sub rollups. Sub-tab toggle shows one of the three at a time.
+const ProfitabilityPanel = ({ report }) => {
+  const [view, setView] = useState("project"); // project | customer | sub
+  const rows = view === "project" ? report.profitByProject
+    : view === "customer" ? report.profitByCustomer
+    : report.paidBySub;
+  const isSubView = view === "sub";
+
+  return (
+    <div className="fbt-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>Profitability</h3>
+        <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", fontSize: 12 }}>
+          {[
+            { k: "project", label: "By project" },
+            { k: "customer", label: "By customer" },
+            { k: "sub", label: "By sub/driver" },
+          ].map(({ k, label }) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setView(k)}
+              style={{
+                padding: "6px 12px",
+                background: view === k ? "var(--accent-soft)" : "#FFF",
+                color: view === k ? "var(--accent)" : "var(--concrete)",
+                border: "none",
+                cursor: "pointer",
+                fontWeight: view === k ? 600 : 500,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div style={{ padding: 24, background: "var(--surface)", borderRadius: 6, fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>
+          No freight-bill activity in this date range.
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="fbt-table" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th>{view === "sub" ? "Sub / driver" : view === "customer" ? "Customer" : "Project"}</th>
+                <th style={{ textAlign: "right" }}>FBs</th>
+                <th style={{ textAlign: "right" }}>Tons</th>
+                {!isSubView && <th style={{ textAlign: "right" }}>Revenue</th>}
+                <th style={{ textAlign: "right" }}>{isSubView ? "Paid" : "Sub pay"}</th>
+                {!isSubView && <th style={{ textAlign: "right" }}>Brokerage</th>}
+                {isSubView && <th style={{ textAlign: "right" }}>Brokerage</th>}
+                {!isSubView && <th style={{ textAlign: "right" }}>Net</th>}
+                {!isSubView && <th style={{ textAlign: "right" }}>Margin</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.id || i}>
+                  <td>
+                    <div style={{ fontWeight: 500 }}>{r.name}</div>
+                    {r.contractNumber && <div style={{ fontSize: 11, color: "var(--concrete)" }}>{r.contractNumber}</div>}
+                    {isSubView && <div style={{ fontSize: 11, color: "var(--concrete)" }}>{r.kind === "driver" ? "Driver" : "Sub"}</div>}
+                  </td>
+                  <td style={{ textAlign: "right" }}>{r.fbCount}</td>
+                  <td style={{ textAlign: "right" }}>{r.tonnage.toFixed(1)}</td>
+                  {!isSubView && <td style={{ textAlign: "right", fontWeight: 600 }}>{fmt$(r.revenue)}</td>}
+                  <td style={{ textAlign: "right", color: "var(--concrete)" }}>{fmt$(isSubView ? r.subPay : r.subPay)}</td>
+                  <td style={{ textAlign: "right", color: "var(--concrete)" }}>{fmt$(isSubView ? r.brokerage : r.subBrokerage)}</td>
+                  {!isSubView && (
+                    <td style={{ textAlign: "right", fontWeight: 700, color: r.net >= 0 ? "var(--good)" : "var(--safety)" }}>
+                      {fmt$(r.net)}
+                    </td>
+                  )}
+                  {!isSubView && (
+                    <td style={{ textAlign: "right", color: r.marginPct == null ? "var(--concrete)" : r.marginPct >= 20 ? "var(--good)" : r.marginPct >= 0 ? "var(--warn-fg)" : "var(--safety)" }}>
+                      {r.marginPct == null ? "—" : `${r.marginPct.toFixed(1)}%`}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div style={{ marginTop: 10, fontSize: 11, color: "var(--concrete)", lineHeight: 1.5 }}>
+        ▸ Revenue = sum of this entity's FB billing-line totals on invoiced FBs in range.
+        Sub pay = sum of paying-line totals (post-brokerage). Net = revenue − sub pay − brokerage.
+      </div>
+    </div>
+  );
+};
+
 const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes, quarries, contacts, projects = [], company, editFreightBill, onToast, lastViewedMondayReport, setLastViewedMondayReport }) => {
   const [rangePreset, setRangePreset] = useState("lastweek");
   const [customFrom, setCustomFrom] = useState("");
@@ -4227,8 +4445,8 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes,
   }, [rangePreset, customFrom, customTo]);
 
   const report = useMemo(
-    () => computeReport({ from, to, dispatches, freightBills, invoices, quotes, quarries, contacts }),
-    [from, to, dispatches, freightBills, invoices, quotes, quarries, contacts]
+    () => computeReport({ from, to, dispatches, freightBills, invoices, quotes, quarries, contacts, projects }),
+    [from, to, dispatches, freightBills, invoices, quotes, quarries, contacts, projects]
   );
 
   // Monday morning banner — show if today is Monday (5am-noon) and user hasn't viewed last week's report
@@ -4463,6 +4681,54 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes,
           <div className="fbt-card" style={{ padding: 18, background: report.incomplete.length > 0 ? "#FEE2E2" : "#FFF" }}><div className="stat-num" style={{ fontSize: 36, color: report.incomplete.length > 0 ? "var(--safety)" : "var(--good)" }}>{report.incomplete.length}</div><div className="stat-label">Incomplete</div></div>
         </div>
       </div>
+
+      {/* A/R aging — based on TODAY, ignores the date filter (debts don't care about your filter range) */}
+      <div className="fbt-card" style={{ padding: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+          <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>Accounts receivable</h3>
+          <div style={{ fontSize: 13, color: "var(--concrete)" }}>
+            Total outstanding: <strong style={{ color: "var(--steel)" }}>{fmt$(report.arSummary.total)}</strong>
+            <span style={{ marginLeft: 6, fontSize: 11 }}>(as of today, all dates)</span>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+          {[
+            { k: "current", label: "Current (0–30d)", color: "var(--good)" },
+            { k: "30", label: "31–60 days", color: "var(--warn-fg)" },
+            { k: "60", label: "61–90 days", color: "var(--hazard-deep)" },
+            { k: "90+", label: "90+ days", color: "var(--safety)" },
+          ].map(({ k, label, color }) => (
+            <div key={k} style={{ padding: 14, border: `1px solid ${color}`, borderRadius: 8, background: "#FFF" }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color }}>{fmt$(report.arSummary.sums[k])}</div>
+              <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
+                {label} · {report.arSummary.counts[k]} invoice{report.arSummary.counts[k] !== 1 ? "s" : ""}
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Show top 5 oldest in 90+ if any */}
+        {report.arSummary.buckets["90+"].length > 0 && (
+          <div style={{ marginTop: 14, padding: 12, background: "var(--danger-soft)", border: "1px solid var(--safety)", borderRadius: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--safety)", marginBottom: 6 }}>
+              ⚠ Oldest debts ({report.arSummary.buckets["90+"].length} over 90 days)
+            </div>
+            <div style={{ display: "grid", gap: 4 }}>
+              {report.arSummary.buckets["90+"].slice(0, 5).map((inv, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: "inherit" }}>
+                  <span><strong>{inv.num}</strong> · {inv.billTo} · {inv.days}d old</span>
+                  <span style={{ fontWeight: 600 }}>{fmt$(inv.balance)}</span>
+                </div>
+              ))}
+              {report.arSummary.buckets["90+"].length > 5 && (
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>+ {report.arSummary.buckets["90+"].length - 5} more</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Profitability — per-project / per-customer / per-sub for the date range */}
+      <ProfitabilityPanel report={report} />
 
       {/* Top clients */}
       <div className="fbt-card" style={{ padding: 20 }}>
