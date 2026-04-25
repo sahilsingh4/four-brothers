@@ -1324,6 +1324,57 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                 )}
               </div>
 
+              {/* F5: Mixed-rate detection — if any billing line's rate differs from
+                  the dispatch's CURRENT rate for the same method, surface a warning
+                  with a one-click "Apply $X.XX" action per line. Skips when the
+                  invoice is locked since lines can't be edited then. */}
+              {!billingSnapshotLocked && (() => {
+                const drift = (draft.billingLines || []).map((ln) => {
+                  const code = ln.code;
+                  if (code !== "H" && code !== "T" && code !== "L") return null;
+                  const dispRate = code === "H" ? Number(dispatch?.ratePerHour)
+                                 : code === "T" ? Number(dispatch?.ratePerTon)
+                                 : Number(dispatch?.ratePerLoad);
+                  if (!dispRate) return null;
+                  const lnRate = Number(ln.rate) || 0;
+                  if (lnRate === 0) return null;
+                  if (Math.abs(lnRate - dispRate) <= 0.005) return null;
+                  return { line: ln, dispRate, code };
+                }).filter(Boolean);
+                if (drift.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: 10, padding: 10, background: "#FEF3C7", border: "1.5px solid var(--hazard)", borderRadius: 4 }}>
+                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700, marginBottom: 6 }}>
+                      ⚠ RATE DRIFT · {drift.length} LINE{drift.length !== 1 ? "S" : ""} STAMPED AT A DIFFERENT RATE THAN THE DISPATCH'S CURRENT RATE
+                    </div>
+                    <div style={{ display: "grid", gap: 4, fontSize: 11, color: "var(--steel)" }}>
+                      {drift.map((d) => {
+                        const methodLabel = d.code === "H" ? "hr" : d.code === "T" ? "ton" : "load";
+                        return (
+                          <div key={d.line.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span>
+                              {d.line.item || d.code} · stamped <strong>${Number(d.line.rate).toFixed(2)}/{methodLabel}</strong> · dispatch now <strong>${d.dispRate.toFixed(2)}/{methodLabel}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateBillingLine(d.line.id, { rate: d.dispRate })}
+                              className="btn-ghost"
+                              style={{ padding: "2px 8px", fontSize: 10, color: "var(--hazard-deep)", borderColor: "var(--hazard-deep)" }}
+                              title="Re-rate this line to the dispatch's current rate"
+                            >
+                              APPLY ${d.dispRate.toFixed(2)}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6 }}>
+                      ▸ DEFAULT IS THE STAMPED RATE (WHAT WAS AGREED WHEN APPROVED). APPLY ONLY IF YOU CONFIRMED A NEW RATE WITH THE CUSTOMER.
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Quick-add buttons — when LOCKED, new rows become adjustments */}
               <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {billingSnapshotLocked && (
