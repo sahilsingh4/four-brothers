@@ -570,8 +570,10 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     catch { prompt("Copy this link:", url); }
   };
 
-  // Build SMS/Email text with order details
-  // For drivers (kind=driver): NO rate shown. For subs: include rate + method.
+  // Build SMS/Email text with order details.
+  // Per-assignment `sendRates` flag controls whether the rate + minimum-hours
+  // block is included in the text — defaults ON (treats undefined/missing as ON
+  // for legacy dispatches) and applies to BOTH drivers and subs.
   const buildDispatchText = (dispatch, assignment = null) => {
     const url = assignment?.aid
       ? `${window.location.origin}${window.location.pathname}#/submit/${dispatch.code}/a/${assignment.aid}`
@@ -608,13 +610,18 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       }
     }
 
-    // Rate section — SUBS ONLY (not individual drivers)
-    if (assignment && assignment.kind === "sub" && assignment.payRate) {
+    // Rate + min-hours block — gated by per-assignment `sendRates` flag.
+    // Treats undefined/missing as ON so dispatches that pre-date the flag still
+    // get rates in the text (matches the form's default behavior).
+    const includeRates = assignment ? assignment.sendRates !== false : false;
+    if (includeRates && assignment?.payRate) {
       const method = assignment.payMethod || "hour";
       const methodLabel = method === "hour" ? "/hr" : method === "ton" ? "/ton" : "/load";
       const minH = project?.minimumHours;
       lines.push(`Rate: $${assignment.payRate}${methodLabel}${method === "hour" && minH ? ` (${minH}hr min)` : ""}`);
-      if (assignment.trucks > 1) lines.push(`Trucks: ${assignment.trucks}`);
+    }
+    if (assignment && assignment.kind === "sub" && assignment.trucks > 1) {
+      lines.push(`Trucks: ${assignment.trucks}`);
     }
 
     if (dispatch.notes) lines.push(`Notes: ${dispatch.notes}`);
@@ -1614,7 +1621,10 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     const statusKey = submitted === 0 ? "pending" : submitted >= expected ? "complete" : "in_progress";
                     const statusLabel = submitted === 0 ? "PENDING" : submitted >= expected ? "COMPLETE" : "IN PROGRESS";
                     const statusBg = { pending: "var(--concrete)", in_progress: "var(--hazard)", complete: "var(--good)" }[statusKey];
-                    const msg = `Hi ${a.name} — upload your freight bill${expected > 1 ? "s" : ""} for job "${d.jobName}" (${fmtDate(d.date)}) here: ${subUrl}`;
+                    // Use buildDispatchText so the per-truck staggered start
+                    // times and the sendRates-gated rate block both flow into
+                    // the SMS/email body, not just the bare upload-link.
+                    const msg = buildDispatchText(d, a);
                     const subject = `Order #${d.code} — ${d.jobName}`;
                     const smsLink = contact?.phone ? buildSMSLink(contact.phone, msg) : null;
                     const emailLink = contact?.email ? buildEmailLink(contact.email, subject, msg) : null;
