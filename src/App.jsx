@@ -3906,20 +3906,35 @@ const AuditTab = ({ onToast }) => {
   const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
       try {
         const data = await fetchAuditLog({ limit: 500 });
-        setEntries(data);
+        if (!cancelled) setEntries(data);
       } catch (e) {
         console.error("AuditTab load:", e);
-        onToast("⚠ COULDN'T LOAD AUDIT LOG — TABLE MAY NOT EXIST YET");
+        if (!cancelled) onToast("⚠ Couldn't load audit log — table may not exist yet");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, []);
+    return () => { cancelled = true; };
+  }, [onToast]);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchAuditLog({ limit: 500 });
+      setEntries(data);
+    } catch (e) {
+      console.error("AuditTab reload:", e);
+      onToast("⚠ Couldn't load audit log");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return entries.filter((e) => {
@@ -3947,16 +3962,59 @@ const AuditTab = ({ onToast }) => {
 
   const uniqueActions = Object.keys(AUDIT_ACTION_LABELS).filter((k) => counts[k] > 0);
 
+  const exportCsv = () => {
+    if (filtered.length === 0) { onToast("Nothing to export"); return; }
+    const header = ["When", "Actor", "Action", "Entity Type", "Entity ID", "Entity Label", "Details"];
+    const rows = filtered.map((e) => [
+      e.happenedAt || "",
+      e.actor || "",
+      AUDIT_ACTION_LABELS[e.actionType] || e.actionType || "",
+      e.entityType || "",
+      e.entityId || "",
+      e.entityLabel || "",
+      formatAuditMetadata(e) || "",
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onToast(`✓ EXPORTED ${filtered.length} ROW${filtered.length !== 1 ? "S" : ""}`);
+  };
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <FileText size={22} style={{ color: "var(--steel)" }} />
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div className="fbt-display" style={{ fontSize: 18 }}>AUDIT LOG</div>
+          <div className="fbt-display" style={{ fontSize: 18 }}>Audit log</div>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
-            HIGH-VALUE ACTIONS · 90-DAY RETENTION · {entries.length} TOTAL ENTRIES
+            High-value actions · 90-day retention · {entries.length} total entries
           </div>
         </div>
+        <button
+          type="button"
+          onClick={reload}
+          disabled={loading}
+          className="btn-ghost"
+          style={{ fontSize: 12 }}
+          title="Refresh from server"
+        >
+          {loading ? "Loading…" : "↻ Refresh"}
+        </button>
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          className="btn-ghost"
+          style={{ fontSize: 12 }}
+          title="Download filtered entries as CSV"
+        >
+          ↓ Export CSV
+        </button>
       </div>
 
       {/* Filter bar */}
