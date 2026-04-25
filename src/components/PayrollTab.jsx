@@ -700,6 +700,28 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
   const subFbs = useMemo(() => fbsForContact(subContactId, subFromDate, subToDate),
     [subContactId, subFromDate, subToDate, freightBills, dispatches]);
 
+  // F4: Find subs/drivers with unpaid approved FBs that aren't reflected in any
+  // pay statement yet — surfaces "orphan FBs that got approved AFTER a payroll
+  // run" so the owner doesn't miss paying a sub for a late driver upload. We
+  // group by contactId across both DRIVER and SUB assignment kinds.
+  const orphanByContact = useMemo(() => {
+    const map = new Map(); // contactId → { contact, kind, fbs[] }
+    (freightBills || []).forEach((fb) => {
+      if (fb.status !== "approved") return;
+      if (fb.paidAt || fb.payStatementLockedAt) return;
+      const disp = (dispatches || []).find((d) => d.id === fb.dispatchId);
+      if (!disp) return;
+      const assignment = (disp.assignments || []).find((a) => a.aid === fb.assignmentId);
+      if (!assignment || !assignment.contactId) return;
+      const contact = (contacts || []).find((c) => c.id === assignment.contactId);
+      if (!contact) return;
+      const entry = map.get(contact.id) || { contact, kind: assignment.kind || contact.type || "sub", fbs: [] };
+      entry.fbs.push(fb);
+      map.set(contact.id, entry);
+    });
+    return Array.from(map.values()).sort((a, b) => b.fbs.length - a.fbs.length);
+  }, [freightBills, dispatches, contacts]);
+
 
   // Auto-expand a sub's row when jumped from home dashboard
   useEffect(() => {
@@ -1231,6 +1253,41 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
+      {/* F4: Surface unpaid approved FBs across all subs/drivers so the owner
+          doesn't miss paying late driver uploads. Each chip jumps the form to
+          that contact in the appropriate scope. */}
+      {orphanByContact.length > 0 && (
+        <div className="fbt-card" style={{ padding: 14, background: "#FEF3C7", border: "1px solid var(--hazard)" }}>
+          <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", letterSpacing: "0.05em", fontWeight: 700, marginBottom: 8 }}>
+            ⚠ UNPAID APPROVED FBs · {orphanByContact.reduce((s, e) => s + e.fbs.length, 0)} ACROSS {orphanByContact.length} {orphanByContact.length === 1 ? "PERSON" : "PEOPLE"}
+          </div>
+          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10 }}>
+            ▸ THESE WERE APPROVED AFTER THE LAST PAY STATEMENT FOR THIS PERSON. CLICK TO LOAD INTO THE PAYROLL FORM.
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {orphanByContact.map((entry) => (
+              <button
+                key={entry.contact.id}
+                type="button"
+                onClick={() => {
+                  const isDriver = entry.kind === "driver";
+                  setPayScope(isDriver ? "drivers" : "subs");
+                  if (isDriver) setDrvContactId(entry.contact.id);
+                  else setSubContactId(entry.contact.id);
+                }}
+                className="chip"
+                style={{ background: "#FFF", color: "var(--steel)", borderColor: "var(--hazard)", cursor: "pointer", fontSize: 11 }}
+                title={`${entry.fbs.length} unpaid approved FB${entry.fbs.length !== 1 ? "s" : ""} — click to load into ${entry.kind === "driver" ? "DRIVERS" : "SUBS"} form`}
+              >
+                <span style={{ fontWeight: 700 }}>{entry.contact.companyName || entry.contact.contactName}</span>
+                <span style={{ marginLeft: 6, color: "var(--hazard-deep)", fontWeight: 700 }}>· {entry.fbs.length}</span>
+                <span style={{ marginLeft: 4, color: "var(--concrete)", fontSize: 9 }}>{entry.kind === "driver" ? "DRV" : "SUB"}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* v23 Session BB: merged into a single panel with DRIVERS/SUBS toggle.
           Was two side-by-side panels. Toggle at top picks which builder to show. */}
 
