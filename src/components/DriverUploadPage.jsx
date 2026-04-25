@@ -29,6 +29,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
     material: dispatch?.material || "",
     tonnage: "", loadCount: "1",
     pickupTime: "", dropoffTime: "", notes: "",
+    signedOutLoadedAt: "", signedOutEmptyAt: "",
     extras: [],
   };
   const [form, setForm, formWasRestored, clearFormDraft] = useFormDraft(draftKey, initialForm);
@@ -220,6 +221,8 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         loadCount: form.loadCount,
         pickupTime: form.pickupTime,
         dropoffTime: form.dropoffTime,
+        signedOutLoadedAt: form.signedOutLoadedAt,
+        signedOutEmptyAt: form.signedOutEmptyAt,
         photoCount: photosToSend.length,
         photos: photosToSend.slice(0, 8),  // v18 Session E: keep thumbnails for confirmation screen
         extras: cleanExtras,
@@ -289,6 +292,9 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                 {(submissionSummary.pickupTime || submissionSummary.dropoffTime) && (
                   <div><strong>TIMES:</strong> start {submissionSummary.pickupTime || "—"} → end {submissionSummary.dropoffTime || "—"}</div>
                 )}
+                {(submissionSummary.signedOutLoadedAt || submissionSummary.signedOutEmptyAt) && (
+                  <div><strong>SIGNED OUT:</strong> loaded {submissionSummary.signedOutLoadedAt || "—"} · empty {submissionSummary.signedOutEmptyAt || "—"}</div>
+                )}
                 <div><strong>PHOTOS:</strong> {submissionSummary.photoCount} scale ticket{submissionSummary.photoCount !== 1 ? "s" : ""} attached</div>
                 {submissionSummary.extras.length > 0 && (
                   <div><strong>EXTRAS:</strong> {submissionSummary.extras.length} item{submissionSummary.extras.length !== 1 ? "s" : ""} · ${submissionSummary.extrasTotal.toFixed(2)}</div>
@@ -329,7 +335,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               setSubmitted(false);
               setSubmissionSummary(null);
               setSubmitError("");  // v18 Session E: clear any stale error
-              setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: form.truckNumber, material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", notes: "", extras: [] });
+              setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: form.truckNumber, material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", signedOutLoadedAt: "", signedOutEmptyAt: "", notes: "", extras: [] });
               setPhotos([]);
               window.scrollTo(0, 0);
             }}><Plus size={16} /> LOG ANOTHER TRUCK</button>
@@ -512,23 +518,20 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               <div>
                 <label className="fbt-label">Start time</label>
                 <input className="fbt-input" type="time" value={form.pickupTime} onChange={(e) => setForm({ ...form, pickupTime: e.target.value })} />
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => {
-                    const now = new Date();
-                    const hh = String(now.getHours()).padStart(2, "0");
-                    const mm = String(now.getMinutes()).padStart(2, "0");
-                    setForm({ ...form, pickupTime: `${hh}:${mm}` });
-                  }}
-                  style={{ marginTop: 6, width: "100%", fontSize: 12 }}
-                >
-                  Signed out — loaded (now)
-                </button>
               </div>
               <div>
                 <label className="fbt-label">End time</label>
                 <input className="fbt-input" type="time" value={form.dropoffTime} onChange={(e) => setForm({ ...form, dropoffTime: e.target.value })} />
+              </div>
+            </div>
+
+            {/* Signed-out timestamps — separate from start/end time. Tracked independently so
+                admin can compare the driver's stated work hours vs. when they actually left
+                the yard with a load and returned empty. Optional. */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14 }}>
+              <div>
+                <label className="fbt-label">Signed out — loaded</label>
+                <input className="fbt-input" type="time" value={form.signedOutLoadedAt} onChange={(e) => setForm({ ...form, signedOutLoadedAt: e.target.value })} />
                 <button
                   type="button"
                   className="btn-ghost"
@@ -536,11 +539,28 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                     const now = new Date();
                     const hh = String(now.getHours()).padStart(2, "0");
                     const mm = String(now.getMinutes()).padStart(2, "0");
-                    setForm({ ...form, dropoffTime: `${hh}:${mm}` });
+                    setForm({ ...form, signedOutLoadedAt: `${hh}:${mm}` });
                   }}
                   style={{ marginTop: 6, width: "100%", fontSize: 12 }}
                 >
-                  Signed out — empty (now)
+                  Now
+                </button>
+              </div>
+              <div>
+                <label className="fbt-label">Signed out — empty</label>
+                <input className="fbt-input" type="time" value={form.signedOutEmptyAt} onChange={(e) => setForm({ ...form, signedOutEmptyAt: e.target.value })} />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    const now = new Date();
+                    const hh = String(now.getHours()).padStart(2, "0");
+                    const mm = String(now.getMinutes()).padStart(2, "0");
+                    setForm({ ...form, signedOutEmptyAt: `${hh}:${mm}` });
+                  }}
+                  style={{ marginTop: 6, width: "100%", fontSize: 12 }}
+                >
+                  Now
                 </button>
               </div>
             </div>
