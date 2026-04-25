@@ -99,6 +99,7 @@ import {
 import { Toast } from "./components/Toast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { InstallAppButton } from "./components/InstallAppButton";
+import { BottomTabNav } from "./components/BottomTabNav";
 import { Logo } from "./components/Logo";
 import { Lightbox } from "./components/Lightbox";
 import { ChangePasswordModal } from "./components/ChangePasswordModal";
@@ -5726,6 +5727,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "testimonials" && <TestimonialsTab onToast={onToast} />}
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
       </div>
+      <BottomTabNav tabs={tabs} active={tab} setTab={setTab} />
     </div>
   );
 };
