@@ -5350,9 +5350,26 @@ export default function App() {
     firstLoadRef.current = true;
     setTimeout(() => { firstLoadRef.current = false; }, 2000);
 
+    // Helper: every realtime subscription does the same thing — refetch the
+    // table on any change. Wrap the body in try/catch so a network blip
+    // during refresh shows a toast (so the user knows data is stale and
+    // should reload) instead of silently leaving the UI out of date.
+    const safeRefresh = async (label, fetcher, setter) => {
+      try {
+        const fresh = await fetcher();
+        setter(fresh);
+        return fresh;
+      } catch (e) {
+        console.error(`[realtime] ${label} refresh failed:`, e);
+        setToast(`⚠ ${label.toUpperCase()} SYNC FAILED — RELOAD`);
+        return null;
+      }
+    };
+
     const unsubFB = subscribeToFreightBills(async (_payload) => {
       // Refetch to get fresh data
-      const fresh = await fetchFreightBills();
+      const fresh = await safeRefresh("freight bills", fetchFreightBills, setFreightBills);
+      if (!fresh) return;
       const freshIds = new Set(fresh.map((x) => x.id));
       const newOnes = fresh.filter((fb) => !prevFbIdsRef.current.has(fb.id));
 
@@ -5366,46 +5383,18 @@ export default function App() {
         });
         if (soundEnabledRef.current) playDing();
       }
-      setFreightBills(fresh);
       prevFbIdsRef.current = freshIds;
     });
 
-    const unsubD = subscribeToDispatches(async () => {
-      const fresh = await fetchDispatches();
-      setDispatches(fresh);
-    });
-
-    const unsubC = subscribeToContacts(async () => {
-      const fresh = await fetchContacts();
-      setContactsState(fresh);
-    });
-
-    const unsubQ = subscribeToQuarries(async () => {
-      const fresh = await fetchQuarries();
-      setQuarriesState(fresh);
-    });
-
-    const unsubI = subscribeToInvoices(async () => {
-      const fresh = await fetchInvoices();
-      setInvoicesState(fresh);
-    });
-
-    const unsubP = subscribeToProjects(async () => {
-      const fresh = await fetchProjects();
-      setProjectsState(fresh);
-    });
-
+    const unsubD = subscribeToDispatches(() => safeRefresh("dispatches", fetchDispatches, setDispatches));
+    const unsubC = subscribeToContacts(() => safeRefresh("contacts", fetchContacts, setContactsState));
+    const unsubQ = subscribeToQuarries(() => safeRefresh("quarries", fetchQuarries, setQuarriesState));
+    const unsubI = subscribeToInvoices(() => safeRefresh("invoices", fetchInvoices, setInvoicesState));
+    const unsubP = subscribeToProjects(() => safeRefresh("projects", fetchProjects, setProjectsState));
     // v18: Quotes subscription — admin sees new quote requests instantly
-    const unsubQuotes = subscribeToQuotes(async () => {
-      const fresh = await fetchQuotes();
-      setQuotes(fresh);
-    });
-
+    const unsubQuotes = subscribeToQuotes(() => safeRefresh("quotes", fetchQuotes, setQuotes));
     // v19 Session F: Bids subscription
-    const unsubBids = subscribeToBids(async () => {
-      const fresh = await fetchBids();
-      setBids(fresh);
-    });
+    const unsubBids = subscribeToBids(() => safeRefresh("bids", fetchBids, setBids));
 
     return () => {
       unsubFB?.();
