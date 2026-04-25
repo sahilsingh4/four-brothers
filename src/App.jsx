@@ -5531,6 +5531,81 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
               onToggleBrowser={toggleBrowserNotifs}
               browserEnabled={browserNotifsEnabled}
             />
+            <button
+              onClick={() => {
+                // Build a daily briefing email body — open today's tasks at a
+                // glance. Sent via mailto: so no backend dependency. Recipient
+                // defaults to the company email; falls back to a blank "to:"
+                // so the user picks where it goes.
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const fmtMoney = (n) => "$" + (Number(n) || 0).toFixed(2);
+                const daysFromNow = (d) => {
+                  if (!d) return null;
+                  const t = new Date(d + "T12:00:00").getTime();
+                  if (isNaN(t)) return null;
+                  const today = new Date(); today.setHours(12, 0, 0, 0);
+                  return Math.round((t - today.getTime()) / (1000 * 60 * 60 * 24));
+                };
+                const dispatchesToday = (dispatches || []).filter((d) => d.date === todayStr && (d.status || "open") !== "closed");
+                const pendingFbs = (freightBills || []).filter((fb) => (fb.status || "pending") === "pending");
+                const arInvoices = (invoices || [])
+                  .map((inv) => ({ inv, bal: (Number(inv.total) || 0) - (Number(inv.amountPaid) || 0), days: inv.invoiceDate ? Math.max(0, Math.floor((Date.now() - new Date(inv.invoiceDate + "T12:00:00").getTime()) / 86400000)) : 0 }))
+                  .filter((x) => x.bal > 0.01);
+                const arTotal = arInvoices.reduce((s, x) => s + x.bal, 0);
+                const ar90 = arInvoices.filter((x) => x.days > 90);
+                const expiringFleet = (fleet || []).map((f) => {
+                  const ins = daysFromNow(f.insuranceExpiry);
+                  const reg = daysFromNow(f.registrationExpiry);
+                  const dot = daysFromNow(f.dotInspectionExpiry);
+                  const items = [];
+                  if (ins !== null && ins <= 30) items.push(`INS ${ins < 0 ? Math.abs(ins) + "d ago" : "in " + ins + "d"}`);
+                  if (reg !== null && reg <= 30) items.push(`REG ${reg < 0 ? Math.abs(reg) + "d ago" : "in " + reg + "d"}`);
+                  if (dot !== null && dot <= 30) items.push(`DOT ${dot < 0 ? Math.abs(dot) + "d ago" : "in " + dot + "d"}`);
+                  return items.length > 0 ? { unit: f, items } : null;
+                }).filter(Boolean);
+                const bidsDueSoon = (bids || []).filter((b) => {
+                  if (!b.submissionDueAt) return false;
+                  if (b.status !== "researching" && b.status !== "preparing") return false;
+                  const ms = new Date(b.submissionDueAt).getTime() - Date.now();
+                  return ms < 7 * 86400000 && ms > -86400000;
+                });
+
+                const lines = [];
+                lines.push(`${(company?.name || "4 Brothers Trucking")} — daily briefing`);
+                lines.push(new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }));
+                lines.push("");
+                lines.push(`▸ TODAY'S OPEN ORDERS (${dispatchesToday.length})`);
+                if (dispatchesToday.length === 0) lines.push("  · (nothing scheduled)");
+                else dispatchesToday.forEach((d) => lines.push(`  · #${d.code || "—"} · ${d.jobName || "—"} · ${d.clientName || "—"} · ${d.trucksExpected || 1} trucks`));
+                lines.push("");
+                lines.push(`▸ FBs PENDING REVIEW: ${pendingFbs.length}`);
+                lines.push("");
+                lines.push(`▸ A/R OUTSTANDING: ${fmtMoney(arTotal)} across ${arInvoices.length} invoices`);
+                if (ar90.length > 0) {
+                  lines.push(`  ⚠ ${ar90.length} 90+ DAY(S):`);
+                  ar90.slice(0, 5).forEach(({ inv, bal, days }) => lines.push(`    · ${inv.invoiceNumber} · ${inv.billToName} · ${fmtMoney(bal)} · ${days}d old`));
+                  if (ar90.length > 5) lines.push(`    · + ${ar90.length - 5} more`);
+                }
+                lines.push("");
+                lines.push(`▸ FLEET EXPIRING ≤30d (${expiringFleet.length})`);
+                if (expiringFleet.length === 0) lines.push("  · (no expiring docs)");
+                else expiringFleet.forEach(({ unit, items }) => lines.push(`  · ${unit.unit} · ${unit.type} · ${items.join(" · ")}`));
+                lines.push("");
+                lines.push(`▸ BIDS DUE ≤7d (${bidsDueSoon.length})`);
+                if (bidsDueSoon.length === 0) lines.push("  · (none)");
+                else bidsDueSoon.forEach((b) => lines.push(`  · ${b.rfbNumber || b.title} · ${b.agency || "—"} · due ${new Date(b.submissionDueAt).toLocaleDateString()}`));
+
+                const body = encodeURIComponent(lines.join("\n"));
+                const subject = encodeURIComponent(`${company?.name || "4 Brothers"} briefing · ${todayStr}`);
+                const to = company?.email || "";
+                window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
+              }}
+              className="btn-ghost"
+              style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }}
+              title="Email yourself today's open orders, pending reviews, A/R, and expiring fleet docs"
+            >
+              ☀ BRIEFING
+            </button>
             <button onClick={onChangePassword} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }} title="Change password">
               <KeyRound size={12} style={{ marginRight: 4 }} /> PASSWORD
             </button>
