@@ -9,6 +9,7 @@ import {
   fetchInvoices, insertInvoice, updateInvoice, deleteInvoice,
   subscribeToContacts, subscribeToQuarries, subscribeToInvoices,
   fetchProjects, insertProject, updateProject, deleteProject, subscribeToProjects,
+  fetchPublicProjects,
   fetchDeletedDispatches, fetchDeletedFreightBills, fetchDeletedInvoices,
   recoverDispatch, recoverFreightBill, recoverInvoice,
   hardDeleteDispatch, hardDeleteFreightBill, hardDeleteInvoice,
@@ -86,7 +87,8 @@ import {
 // without React/DOM. See src/utils.js + src/utils.test.js.
 import {
   fmt$, fmtDate, fmtDateTime, formatTime12h, todayISO, randomCode,
-  clientToken, compressImage,
+  clientToken, compressImage, qrServiceUrl,
+  nextLineId, isPastRecoveryWindow, daysUntilPurge, daysSince,
 } from "./utils";
 import { Toast } from "./components/Toast";
 import { Logo } from "./components/Logo";
@@ -101,7 +103,7 @@ import { DispatchTrackingCard } from "./components/DispatchTrackingCard";
 // bundle small. Vite emits each as its own chunk.
 const LoginScreen = lazy(() => import("./components/LoginScreen").then((m) => ({ default: m.LoginScreen })));
 const DispatchTrackingPage = lazy(() => import("./components/DispatchTrackingPage").then((m) => ({ default: m.DispatchTrackingPage })));
-import { QRCodeBlock, qrServiceUrl } from "./components/QRCodeBlock";
+import { QRCodeBlock } from "./components/QRCodeBlock";
 import { QuickAddContactModal } from "./components/QuickAddContactModal";
 import { QuarryDetailModal } from "./components/QuarryDetailModal";
 import { ComparisonModal } from "./components/ComparisonModal";
@@ -292,6 +294,31 @@ const printDriverSheet = async (dispatch, url, onToast) => {
 };
 
 
+// Small lock badge for a NewDispatch form field. Pulled to module scope so
+// it doesn't get re-created on every render (was tripping
+// react-hooks/static-components). `locks` carries the three closure values
+// it used to capture inline.
+const LockChip = ({ field, label, locks }) => {
+  const { isFieldLocked, overriddenFields, openOverride } = locks;
+  if (!isFieldLocked(field)) {
+    if (overriddenFields[field]) {
+      return <span className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", marginLeft: 6, fontWeight: 700 }}>🔓 OVERRIDE: {overriddenFields[field].slice(0, 30)}{overriddenFields[field].length > 30 ? "…" : ""}</span>;
+    }
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); openOverride(field, label); }}
+      className="btn-ghost"
+      style={{ padding: "2px 8px", fontSize: 9, marginLeft: 6, background: "#FEF2F2", borderColor: "var(--safety)", color: "var(--safety)" }}
+      title="Click to override with reason"
+    >
+      🔒 UNLOCK
+    </button>
+  );
+};
+
 const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onToast }) => {
   const [showNew, setShowNew] = useState(false);
   // v18 Batch 2: quick-add contact from assignment picker. Shape: { idx, kind } — `idx` is the assignment row being edited.
@@ -322,25 +349,9 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
   };
 
   // Small lock badge component for form fields
-  const LockChip = ({ field, label }) => {
-    if (!isFieldLocked(field)) {
-      if (overriddenFields[field]) {
-        return <span className="fbt-mono" style={{ fontSize: 9, color: "var(--safety)", marginLeft: 6, fontWeight: 700 }}>🔓 OVERRIDE: {overriddenFields[field].slice(0, 30)}{overriddenFields[field].length > 30 ? "…" : ""}</span>;
-      }
-      return null;
-    }
-    return (
-      <button
-        type="button"
-        onClick={(e) => { e.preventDefault(); openOverride(field, label); }}
-        className="btn-ghost"
-        style={{ padding: "2px 8px", fontSize: 9, marginLeft: 6, background: "#FEF2F2", borderColor: "var(--safety)", color: "var(--safety)" }}
-        title="Click to override with reason"
-      >
-        🔒 UNLOCK
-      </button>
-    );
-  };
+  // Bundle the lock-related closure values into one object so LockChip
+  // (which lives at module scope, see below) can read them via a single prop.
+  const locks = { isFieldLocked, overriddenFields, openOverride };
   const [activeDispatch, setActiveDispatch] = useState(null);
   const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
   const [sendLinksTarget, setSendLinksTarget] = useState(null); // Dispatch object to show Send Links modal for
@@ -1186,7 +1197,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
                 <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
               </div>
-              <div><label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" /></label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} /></div>
+              <div><label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" locks={locks} /></label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} /></div>
               <div>
                 <label className="fbt-label">Customer (for tracking link & billing)</label>
                 {contacts.filter((c) => c.type === "customer").length > 0 ? (
@@ -1274,7 +1285,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14, position: "relative" }}>
                 <label className="fbt-label">
                   Sub-Contractors & Drivers{draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
-                  <LockChip field="assignments" label="Assignments" />
+                  <LockChip field="assignments" label="Assignments" locks={locks} />
                 </label>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
                   ▸ ADD EACH SUB AND/OR DRIVER WORKING THIS ORDER · DRIVER = 1 TRUCK · SUB = TRUCK COUNT YOU ENTER · DRIVER PAY RATE + TRUCK # AUTO-FILL FROM CONTACT
@@ -1514,7 +1525,7 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
                 <div>
-                  <label className="fbt-label">Material<LockChip field="material" label="Material" /></label>
+                  <label className="fbt-label">Material<LockChip field="material" label="Material" locks={locks} /></label>
                   <input className="fbt-input" value={draft.material} onChange={(e) => setDraft({ ...draft, material: e.target.value })} disabled={isFieldLocked("material")} />
                 </div>
               </div>
@@ -1526,15 +1537,15 @@ const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBill
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
                   <div>
-                    <label className="fbt-label">Bill $/hr<LockChip field="rate" label="Hourly Bill Rate" /></label>
+                    <label className="fbt-label">Bill $/hr<LockChip field="rate" label="Hourly Bill Rate" locks={locks} /></label>
                     <input className="fbt-input" type="number" step="0.01" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 142.00" />
                   </div>
                   <div>
-                    <label className="fbt-label">Bill $/ton<LockChip field="rate" label="Per-Ton Bill Rate" /></label>
+                    <label className="fbt-label">Bill $/ton<LockChip field="rate" label="Per-Ton Bill Rate" locks={locks} /></label>
                     <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 14.50" />
                   </div>
                   <div>
-                    <label className="fbt-label">Bill $/load<LockChip field="rate" label="Per-Load Bill Rate" /></label>
+                    <label className="fbt-label">Bill $/load<LockChip field="rate" label="Per-Load Bill Rate" locks={locks} /></label>
                     <input className="fbt-input" type="number" step="0.01" value={draft.ratePerLoad} onChange={(e) => setDraft({ ...draft, ratePerLoad: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 450.00" />
                   </div>
                 </div>
@@ -4658,7 +4669,7 @@ const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createIn
     const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
 
     const newLine = recomputeBuilderLine({
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: nextLineId(),
       code: seed.code || "OTHER",
       item: seed.item || "",
       qty: seed.qty != null ? Number(seed.qty) : 1,
@@ -8215,7 +8226,7 @@ const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, project
     const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
 
     const newLine = recomputePayLine({
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: nextLineId(),
       code: seed.code || "OTHER",
       item: seed.item || "",
       qty: seed.qty != null ? Number(seed.qty) : 1,
@@ -12109,18 +12120,9 @@ const RecoveryTab = ({ onToast }) => {
 
   useEffect(() => { refreshAll(); }, []);
 
-  // Is this deletion past the 30-day recovery window?
-  const isExpired = (deletedAt) => {
-    if (!deletedAt) return false;
-    const ageMs = Date.now() - new Date(deletedAt).getTime();
-    return ageMs > 30 * 24 * 60 * 60 * 1000;
-  };
-  const daysUntilPurge = (deletedAt) => {
-    if (!deletedAt) return null;
-    const ageMs = Date.now() - new Date(deletedAt).getTime();
-    const remain = 30 - Math.floor(ageMs / (24 * 60 * 60 * 1000));
-    return remain;
-  };
+  // Past the 30-day recovery window? Helpers live in utils to avoid the
+  // react-hooks/purity warning that fires on Date.now() in render bodies.
+  const isExpired = (deletedAt) => isPastRecoveryWindow(deletedAt, 30);
 
   const fmtDeletedAt = (iso) => {
     if (!iso) return "—";
@@ -12912,16 +12914,6 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
   const [tagInput, setTagInput] = useState("");
   const [checklistInput, setChecklistInput] = useState("");  // v19a: for adding new checklist items
 
-  // v18 pattern: keyboard shortcuts
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape" && !saving) onClose();
-      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); save(); }
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [saving, draft]);
-
   // Helper: convert "yyyy-mm-dd" from input to ISO timestamp (keep time at start of day local)
   // If value is already ISO, return as-is. If blank, return null.
   const toISOTs = (val) => {
@@ -12963,6 +12955,20 @@ const BidModal = ({ bid, onSave, onDelete, onClose, onToast }) => {
       setSaving(false);
     }
   };
+
+  // v18 pattern: keyboard shortcuts. Declared AFTER `save` to avoid the
+  // react-hooks/immutability TDZ warning ("Cannot access variable before
+  // it is declared") that fired when the handler closed over `save` from
+  // above its declaration.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "Escape" && !saving) onClose();
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); save(); }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saving, draft]);
 
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
@@ -15794,7 +15800,7 @@ const DataTab = ({ state, setters, onToast }) => {
     reader.readAsText(file);
   };
 
-  const daysSinceBackup = lastBackup ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const daysSinceBackup = daysSince(lastBackup);
   const backupStale = daysSinceBackup === null || daysSinceBackup >= 7;
 
   return (
@@ -16177,7 +16183,9 @@ export default function App() {
   // After 30 min of inactivity, show a 60-second warning dialog. If user doesn't respond, log out.
   const [idleWarning, setIdleWarning] = useState(false);   // true = warning dialog showing
   const [idleCountdown, setIdleCountdown] = useState(60);  // seconds remaining on warning
-  const lastActivityRef = useRef(Date.now());
+  // useRef initializer runs on every render; passing 0 then setting in effect
+  // sidesteps the react-hooks/purity warning while preserving semantics.
+  const lastActivityRef = useRef(0);
   const IDLE_TIMEOUT_MS = 30 * 60 * 1000;   // 30 min until warning
   const IDLE_WARNING_SEC = 60;              // 60 sec from warning until forced logout
   const [showChangePw, setShowChangePw] = useState(false);
@@ -16219,6 +16227,9 @@ export default function App() {
       });
 
       // v20 Session Q: Idle session detection
+      // Seed lastActivityRef now (initial useRef value is 0; setting Date.now()
+      // here keeps render-side state pure for react-hooks/purity).
+      lastActivityRef.current = Date.now();
       // Track user activity via common events. Reset lastActivityRef on any interaction.
       const markActive = () => {
         lastActivityRef.current = Date.now();

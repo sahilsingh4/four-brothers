@@ -1,21 +1,4 @@
-import { fmtDate, fmtDateTime } from "../utils";
-
-// Pure status/total computation for a dispatch + its freight bills.
-// Exported so it can be unit-tested without rendering.
-export const computeDispatchSummary = (d, bills) => {
-  const totalTons = bills.reduce((s, fb) => s + (Number(fb.tonnage) || 0), 0);
-  const totalLoads = bills.reduce((s, fb) => s + (Number(fb.loadCount) || 0), 0);
-  const pct = d.trucksExpected ? Math.min(100, (bills.length / d.trucksExpected) * 100) : 0;
-  const statusLabel = d.status === "closed"
-    ? "COMPLETE"
-    : (bills.length === 0
-      ? "OPEN · AWAITING TRUCKS"
-      : (bills.length >= d.trucksExpected ? "COMPLETE" : "IN PROGRESS"));
-  const statusColor = statusLabel === "COMPLETE"
-    ? "var(--good)"
-    : statusLabel.startsWith("OPEN") ? "var(--concrete)" : "var(--hazard-deep)";
-  return { totalTons, totalLoads, pct, statusLabel, statusColor };
-};
+import { fmtDate, fmtDateTime, computeDispatchSummary } from "../utils";
 
 // Single dispatch tracking card (also used in client-wide view).
 // Shows status, progress bar, totals, and the list of submitted FBs with photos.

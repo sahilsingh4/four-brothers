@@ -1,11 +1,7 @@
 import { useState } from "react";
 import { Download, AlertCircle } from "lucide-react";
 
-// Uses goqr.me's free public API — no key required, returns PNG.
-// Exported so the printable driver sheet (printDriverSheet in App.jsx) can
-// reuse the same URL builder.
-export const qrServiceUrl = (data, size = 300) =>
-  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&margin=10&color=1C1917&bgcolor=FAFAF9`;
+import { qrServiceUrl } from "../utils";
 
 // Renders a QR code with a "SAVE PNG" button. If the QR service is offline
 // (image fails to load), shows an inline fallback message instead of an
