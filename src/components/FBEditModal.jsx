@@ -1133,63 +1133,67 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", marginBottom: 8 }}>
               ▸ HOURS (FOR BILLING)
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-              <div>
-                <label className="fbt-label">Pickup Time</label>
-                <input className="fbt-input" type="time" value={draft.pickupTime} onChange={(e) => {
-                  const newPickup = e.target.value;
-                  const newHours = hoursFromTimes(newPickup, draft.dropoffTime);
-                  setDraft((d) => {
-                    // v18 fix #4: changing pickup/dropoff time auto-syncs HOURLY line qty in both
-                    // billing + paying lines. User can still manually edit the qty after —
-                    // but changing the time again will re-sync.
-                    const syncHourly = (lines) => (lines || []).map((ln) => {
-                      if (ln.code !== "H") return ln;
-                      if (newHours <= 0) return ln;  // don't clobber if we can't compute
-                      const rate = Number(ln.rate) || 0;
-                      const gross = Number((newHours * rate).toFixed(2));
-                      const net = ln.brokerable
-                        ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
-                        : gross;
-                      return { ...ln, qty: newHours, gross, net };
-                    });
-                    return {
-                      ...d,
-                      pickupTime: newPickup,
-                      billingLines: syncHourly(d.billingLines),
-                      payingLines: syncHourly(d.payingLines),
-                    };
+            {(() => {
+              // Helper: set pickup or dropoff time and re-sync hourly billing + paying lines.
+              // Used by both the time-input onChange handlers and the "Signed out" buttons.
+              const setTimeWithSync = (field, newValue) => {
+                const newPickup = field === "pickupTime" ? newValue : draft.pickupTime;
+                const newDropoff = field === "dropoffTime" ? newValue : draft.dropoffTime;
+                const newHours = hoursFromTimes(newPickup, newDropoff);
+                setDraft((d) => {
+                  const syncHourly = (lines) => (lines || []).map((ln) => {
+                    if (ln.code !== "H") return ln;
+                    if (newHours <= 0) return ln; // don't clobber if we can't compute
+                    const rate = Number(ln.rate) || 0;
+                    const gross = Number((newHours * rate).toFixed(2));
+                    const net = ln.brokerable
+                      ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
+                      : gross;
+                    return { ...ln, qty: newHours, gross, net };
                   });
-                }} />
-              </div>
-              <div>
-                <label className="fbt-label">Dropoff Time</label>
-                <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => {
-                  const newDropoff = e.target.value;
-                  const newHours = hoursFromTimes(draft.pickupTime, newDropoff);
-                  setDraft((d) => {
-                    const syncHourly = (lines) => (lines || []).map((ln) => {
-                      if (ln.code !== "H") return ln;
-                      if (newHours <= 0) return ln;
-                      const rate = Number(ln.rate) || 0;
-                      const gross = Number((newHours * rate).toFixed(2));
-                      const net = ln.brokerable
-                        ? Number((gross - gross * (Number(ln.brokeragePct) || 0) / 100).toFixed(2))
-                        : gross;
-                      return { ...ln, qty: newHours, gross, net };
-                    });
-                    return {
-                      ...d,
-                      dropoffTime: newDropoff,
-                      billingLines: syncHourly(d.billingLines),
-                      payingLines: syncHourly(d.payingLines),
-                    };
-                  });
-                }} />
-              </div>
-            </div>
+                  return {
+                    ...d,
+                    [field]: newValue,
+                    billingLines: syncHourly(d.billingLines),
+                    payingLines: syncHourly(d.payingLines),
+                  };
+                });
+              };
+              const nowHHMM = () => {
+                const n = new Date();
+                return `${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`;
+              };
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+                  <div>
+                    <label className="fbt-label">Start time</label>
+                    <input className="fbt-input" type="time" value={draft.pickupTime} onChange={(e) => setTimeWithSync("pickupTime", e.target.value)} />
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setTimeWithSync("pickupTime", nowHHMM())}
+                      style={{ marginTop: 6, width: "100%", fontSize: 12 }}
+                    >
+                      Signed out — loaded (now)
+                    </button>
+                  </div>
+                  <div>
+                    <label className="fbt-label">End time</label>
+                    <input className="fbt-input" type="time" value={draft.dropoffTime} onChange={(e) => setTimeWithSync("dropoffTime", e.target.value)} />
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setTimeWithSync("dropoffTime", nowHHMM())}
+                      style={{ marginTop: 6, width: "100%", fontSize: 12 }}
+                    >
+                      Signed out — empty (now)
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 6 }}>
-              ▸ CHANGING TIMES AUTO-UPDATES HOURLY LINES IN BILLING &amp; PAY · YOU CAN OVERRIDE QTY MANUALLY BELOW
+              ▸ Changing times auto-updates hourly lines in billing &amp; pay · you can override qty manually below
             </div>
 
             {/* J4: Sub minimum-hours badge — visible whenever this FB is on a
