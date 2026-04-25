@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>4 Brothers — Layout Mock (preview only)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F8FAFC;
+    --surface: #FFFFFF;
+    --border: #E2E8F0;
+    --text: #0F172A;
+    --text-muted: #64748B;
+    --accent: #2563EB;
+    --accent-soft: #EFF6FF;
+    --accent-border: #BFDBFE;
+    --good: #16A34A;
+    --good-soft: #F0FDF4;
+    --warn: #D97706;
+    --warn-soft: #FEF3C7;
+    --danger: #DC2626;
+    --danger-soft: #FEF2F2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mock-header {
+    background: #FFF;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .mock-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .mock-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .container {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 24px;
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 32px;
+  }
+  @media (max-width: 900px) {
+    .container { grid-template-columns: 1fr; }
+  }
+  h2.section {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 32px 0 12px;
+  }
+  h2.section:first-child { margin-top: 0; }
+
+  /* ===== APP CHROME ===== */
+  .app {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+  }
+  .brand-mark {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    color: #FFF;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .topbar-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .nav {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .nav-tab {
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    background: transparent;
+    border: none;
+  }
+  .nav-tab:hover { background: var(--bg); color: var(--text); }
+  .nav-tab.active { background: var(--accent-soft); color: var(--accent); }
+
+  .content {
+    padding: 24px;
+    background: var(--bg);
+  }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .input, .select {
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #FFF;
+    font: inherit;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+  .input:focus, .select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+  }
+  .input.search { padding-left: 32px; background: #FFF url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 6px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #FFF;
+    color: var(--text);
+    transition: all 0.12s;
+  }
+  .btn:hover { background: var(--bg); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #FFF;
+  }
+  .btn.primary:hover { background: #1D4ED8; }
+  .btn.icon {
+    width: 36px; padding: 0; justify-content: center;
+  }
+
+  /* ===== DISPATCH CARD ===== */
+  .dispatch-list {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dispatch-card {
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color 0.12s, box-shadow 0.12s;
+    cursor: pointer;
+  }
+  .dispatch-card:hover {
+    border-color: #CBD5E1;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+  }
+  .dispatch-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .dispatch-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 2px;
+    color: var(--text);
+  }
+  .dispatch-meta {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .dispatch-meta strong { color: var(--text); font-weight: 500; }
+  .dispatch-progress {
+    margin-top: 12px;
+  }
+  .progress-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .progress-row b { color: var(--text); font-weight: 600; }
+  .progress-track {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.3s;
+  }
+  .progress-fill.complete { background: var(--good); }
+  .chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: 12px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .chip.accent { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+  .chip.good { background: var(--good-soft); border-color: #BBF7D0; color: var(--good); }
+  .chip.warn { background: var(--warn-soft); border-color: #FCD34D; color: var(--warn); }
+  .chip.danger { background: var(--danger-soft); border-color: #FCA5A5; color: var(--danger); }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    margin-right: 4px;
+  }
+  .status-dot.good { background: var(--good); }
+  .status-dot.warn { background: var(--warn); }
+
+  /* ===== DETAIL PANEL (right) ===== */
+  .detail-card {
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .detail-head {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .detail-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+  .detail-section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-section:last-child { border-bottom: none; }
+  .detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    font-size: 13px;
+  }
+  .kv > div b {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+
+  /* ===== FB ROW ===== */
+  .fb-row {
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .fb-row.flagged {
+    border-color: #FCA5A5;
+    background: linear-gradient(0deg, var(--danger-soft), var(--danger-soft));
+  }
+  .fb-name {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+  }
+  .fb-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ===== MOBILE FRAME ===== */
+  .phone-frame {
+    width: 375px;
+    height: 760px;
+    border: 8px solid #1E293B;
+    border-radius: 36px;
+    overflow: hidden;
+    margin: 0 auto;
+    background: var(--bg);
+    box-shadow: 0 12px 40px rgba(15,23,42,0.20);
+  }
+  .phone-screen {
+    height: 100%;
+    overflow-y: auto;
+    background: var(--bg);
+  }
+  .phone-topbar {
+    background: #FFF;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .phone-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .phone-tab-bar {
+    position: sticky;
+    bottom: 0;
+    background: #FFF;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    text-align: center;
+    padding: 6px 0 10px;
+  }
+  .phone-tab {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 6px 0;
+  }
+  .phone-tab.active { color: var(--accent); font-weight: 600; }
+  .phone-tab-icon {
+    display: block;
+    margin: 0 auto 2px;
+    width: 22px; height: 22px;
+    background: currentColor;
+    -webkit-mask: var(--icon, none) center / contain no-repeat;
+            mask: var(--icon, none) center / contain no-repeat;
+    opacity: 0.65;
+  }
+  .phone-tab.active .phone-tab-icon { opacity: 1; }
+
+  .legend {
+    background: #FFF;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    font-size: 13px;
+  }
+  .legend ul { margin: 0; padding-left: 18px; color: var(--text-muted); }
+  .legend ul li { margin-bottom: 6px; }
+  .legend strong { color: var(--text); }
+
+  .toggle {
+    display: inline-flex;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    margin: 24px 0 8px;
+  }
+  .toggle button {
+    padding: 6px 14px;
+    font: inherit;
+    font-weight: 500;
+    font-size: 13px;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    color: var(--text-muted);
+  }
+  .toggle button.active {
+    background: #FFF;
+    color: var(--text);
+    box-shadow: 0 1px 2px rgba(15,23,42,0.06);
+  }
+</style>
+</head>
+<body>
+<header class="mock-header">
+  <h1 class="mock-title">4 Brothers — Proposed Layout (mock only)</h1>
+  <div class="mock-sub">Inter typography · 1px slate borders · 6–10px radius · soft drop shadows · pill-shaped chips · no decorative chrome. Click around for feel; no real data.</div>
+</header>
+
+<div class="container">
+
+  <!-- LEFT: desktop view -->
+  <div>
+
+    <h2 class="section">Desktop · Dispatches</h2>
+    <div class="app">
+      <div class="topbar">
+        <div class="brand">
+          <div class="brand-mark">4B</div>
+          <span>4 Brothers Trucking</span>
+        </div>
+        <div class="topbar-right">
+          <div class="chip"><span class="status-dot good"></span>online</div>
+          <button class="btn icon" title="Notifications">🔔</button>
+          <span style="color: var(--text);">sahil@4brotherstruck.com</span>
+        </div>
+      </div>
+      <div class="nav">
+        <button class="nav-tab">Home</button>
+        <button class="nav-tab active">Dispatches</button>
+        <button class="nav-tab">Quotes</button>
+        <button class="nav-tab">Bids</button>
+        <button class="nav-tab">Review</button>
+        <button class="nav-tab">Invoices</button>
+        <button class="nav-tab">Payroll</button>
+        <button class="nav-tab">Materials</button>
+        <button class="nav-tab">Projects</button>
+        <button class="nav-tab">Contacts</button>
+        <button class="nav-tab">Fleet</button>
+      </div>
+      <div class="content">
+        <div class="toolbar">
+          <input type="text" class="input search" placeholder="Search dispatches, drivers, FB#..." style="flex:1; min-width:240px;">
+          <select class="select">
+            <option>All status</option>
+            <option>Open</option>
+            <option>In progress</option>
+            <option>Complete</option>
+          </select>
+          <button class="btn primary">+ New order</button>
+        </div>
+
+        <div class="dispatch-list">
+
+          <div class="dispatch-card">
+            <div class="dispatch-row">
+              <div>
+                <h3 class="dispatch-title">Salinas Stormwater Phase 2A</h3>
+                <div class="dispatch-meta"><strong>MCI Inc.</strong> · MCI #91684 · Tue Apr 25 · Day shift · 7:00 AM</div>
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <span class="chip accent"><span class="status-dot"></span>In progress</span>
+              </div>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>4</b> of 8 trucks in</span><span>50%</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:50%"></div></div>
+            </div>
+            <div class="chips">
+              <span class="chip warn">2 to review</span>
+              <span class="chip good">2 approved</span>
+              <span class="chip accent">1 to invoice</span>
+              <span class="chip">1 invoiced</span>
+              <span class="chip danger">⚠ 1 no photos</span>
+            </div>
+          </div>
+
+          <div class="dispatch-card">
+            <div class="dispatch-row">
+              <div>
+                <h3 class="dispatch-title">Vulcan Yard → Parsons Job 3</h3>
+                <div class="dispatch-meta"><strong>Parsons Construction</strong> · Day shift · 6:00 AM · 5-min stagger</div>
+              </div>
+              <span class="chip good"><span class="status-dot good"></span>Complete</span>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>10</b> of 10 trucks in</span><span>100%</span></div>
+              <div class="progress-track"><div class="progress-fill complete" style="width:100%"></div></div>
+            </div>
+            <div class="chips">
+              <span class="chip good">10 approved</span>
+              <span class="chip">10 invoiced</span>
+              <span class="chip good">8 sub paid</span>
+              <span class="chip good">✓ Cust paid</span>
+            </div>
+          </div>
+
+          <div class="dispatch-card">
+            <div class="dispatch-row">
+              <div>
+                <h3 class="dispatch-title">San Joaquin Co. RFB 26055 — Aggregate</h3>
+                <div class="dispatch-meta"><strong>SJC Public Works</strong> · Night shift · 10:00 PM</div>
+              </div>
+              <span class="chip"><span class="status-dot"></span>Open</span>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>0</b> of 5 trucks in</span><span>0%</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section">Desktop · Review (FB row)</h2>
+    <div class="dispatch-list">
+      <div class="fb-row">
+        <div>
+          <p class="fb-name">FB #45821 · Joe Estrada · Truck T-04</p>
+          <div class="fb-meta">Order #ABC123 · Salinas Stormwater · 25.4 t · 7:32 → 9:14</div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span class="chip warn">Pending</span>
+          <span class="chip">📷 3</span>
+          <button class="btn primary">Approve</button>
+        </div>
+      </div>
+
+      <div class="fb-row flagged">
+        <div>
+          <p class="fb-name">FB #45822 · Carlos M. · Truck T-09</p>
+          <div class="fb-meta">Order #ABC123 · Salinas · 32 t · 8:10 → 9:40</div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span class="chip danger">⚠ No photos</span>
+          <span class="chip warn">⚠ Overage +28%</span>
+          <button class="btn">Review</button>
+        </div>
+      </div>
+
+      <div class="fb-row">
+        <div>
+          <p class="fb-name">FB #45823 · Ronaldo P. · Truck T-11</p>
+          <div class="fb-meta">Order #DEF999 · Vulcan haul · 24.0 t · 6:00 → 7:50</div>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span class="chip good"><span class="status-dot good"></span>Approved</span>
+          <span class="chip accent">On INV-2026-0042</span>
+          <span class="chip">📷 4</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: phone view + legend -->
+  <div>
+    <h2 class="section">Phone · Dispatches</h2>
+    <div class="phone-frame">
+      <div class="phone-screen">
+        <div class="phone-topbar">
+          <div class="brand"><div class="brand-mark">4B</div><span style="font-size:14px;">Dispatches</span></div>
+          <button class="btn icon" style="height:32px; width:32px;">+</button>
+        </div>
+        <div class="phone-content">
+          <input type="text" class="input search" placeholder="Search...">
+
+          <div class="dispatch-card">
+            <div>
+              <h3 class="dispatch-title">Salinas Stormwater 2A</h3>
+              <div class="dispatch-meta">MCI Inc. · 7:00 AM</div>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>4</b> / 8</span><span>50%</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:50%"></div></div>
+            </div>
+            <div class="chips">
+              <span class="chip warn">2 review</span>
+              <span class="chip danger">⚠ 1 photo</span>
+            </div>
+          </div>
+
+          <div class="dispatch-card">
+            <div>
+              <h3 class="dispatch-title">Parsons Job 3</h3>
+              <div class="dispatch-meta">Parsons · 6:00 AM</div>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>10</b> / 10</span><span>100%</span></div>
+              <div class="progress-track"><div class="progress-fill complete" style="width:100%"></div></div>
+            </div>
+            <div class="chips">
+              <span class="chip good">✓ Paid</span>
+              <span class="chip">10 invoiced</span>
+            </div>
+          </div>
+
+          <div class="dispatch-card">
+            <div>
+              <h3 class="dispatch-title">SJC RFB 26055</h3>
+              <div class="dispatch-meta">SJC Public · 10:00 PM</div>
+            </div>
+            <div class="dispatch-progress">
+              <div class="progress-row"><span><b>0</b> / 5</span><span>0%</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="phone-tab-bar">
+          <div class="phone-tab"><span style="display:block;">🏠</span>Home</div>
+          <div class="phone-tab active"><span style="display:block;">🚚</span>Orders</div>
+          <div class="phone-tab"><span style="display:block;">📋</span>Review</div>
+          <div class="phone-tab"><span style="display:block;">💵</span>Invoice</div>
+          <div class="phone-tab"><span style="display:block;">⋯</span>More</div>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section">What changed vs. current</h2>
+    <div class="legend">
+      <ul>
+        <li><strong>Typography:</strong> Inter everywhere. No more Archivo Black + Oswald + JetBrains Mono mix.</li>
+        <li><strong>No uppercase / wide letter-spacing:</strong> Headings are sentence case. Reads like an office app, not a poster.</li>
+        <li><strong>No diagonal stripes</strong> on cards. No grain texture. No corner crosshairs.</li>
+        <li><strong>Pill-shaped chips</strong> (rounded, not boxy). Soft tinted backgrounds for status (blue/green/amber/red).</li>
+        <li><strong>Cards:</strong> 1px slate-200 border + soft drop shadow on hover. 10px radius. No diagonal accent stripe at top.</li>
+        <li><strong>Phone:</strong> bottom tab bar with 5 most-used tabs (Home / Orders / Review / Invoice / More). Same card style, tighter spacing.</li>
+        <li><strong>Inputs:</strong> 36px height, 6px radius, blue focus ring. Search has an inline icon.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
