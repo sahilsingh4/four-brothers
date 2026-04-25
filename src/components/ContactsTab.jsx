@@ -45,6 +45,8 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
     const handler = (e) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose is a stable callback from the parent; not including it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

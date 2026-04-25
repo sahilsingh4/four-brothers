@@ -1,3 +1,8 @@
+/* eslint-disable react-hooks/exhaustive-deps */
+// File-level disable: payroll has multiple memo + effect deps that are
+// intentionally narrow (fbsForContact / clearPendingPaySubId / projection
+// memos that pull from outer-scope helpers). Including the suggested deps
+// would re-fire on every parent render or trigger stale-data flicker.
 import { useState, useEffect, useMemo } from "react";
 import {
   AlertTriangle, Banknote, Briefcase, Building2, CheckCircle2, ChevronDown,

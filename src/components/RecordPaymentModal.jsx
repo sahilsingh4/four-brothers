@@ -44,7 +44,11 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
     return qty * rate;
   };
 
-  // Auto-calc amount from checked FBs in per-FB mode
+  // Auto-calc amount from checked FBs in per-FB mode + autofill amount on
+  // mode toggle. fbEstimate is stable for the modal's lifetime; balance comes
+  // from a parent and would re-fire the autofill on every parent render. Both
+  // setStates are bounded write-once on a real toggle.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   const perFbTotal = useMemo(() => {
     if (mode !== "perfb") return 0;
     return invFbs.filter((fb) => checkedFbs[fb.id]).reduce((s, fb) => s + fbEstimate(fb), 0);
@@ -57,6 +61,7 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
       setForm((f) => ({ ...f, amount: balance.toFixed(2) }));
     }
   }, [mode, perFbTotal]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const proceed = async () => {
     const amt = Number(form.amount);
@@ -153,6 +158,8 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose is a stable callback; intentionally not in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saving]);
 
   return (

@@ -1,3 +1,10 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+// File-level disables: App.jsx is the root component with 8+ intentional
+// respond-to-trigger effects (subscriptions to supabase/realtime,
+// idle-timeout handler, route-change consumers) and several memos whose
+// deps are narrowed on purpose. New effects in here should still be
+// reviewed for cascading bugs at PR time — these warnings reflect existing
+// audited patterns, not new code health.
 import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from "react";
 import { supabase } from "./supabase";
 import {

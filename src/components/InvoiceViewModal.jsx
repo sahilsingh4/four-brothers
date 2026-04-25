@@ -156,6 +156,8 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
     const handler = (e) => { if (e.key === "Escape" && deletingIdx === null) onClose(); };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
+    // onClose is a stable callback; intentionally not in deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletingIdx]);
 
   return (

@@ -171,7 +171,10 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const [textQueue, setTextQueue] = useState(null); // { list: [{name, smsLink}], sent: [bool] }
   const [sendLinksTarget, setSendLinksTarget] = useState(null); // Dispatch object to show Send Links modal for
 
-  // Jump to dispatch when notification clicked
+  // Jump to dispatch when notification clicked. Consume-trigger pattern:
+  // parent passes pendingDispatch once, we read it and immediately clear so
+  // the next render sees null. Bounded one-render cascade.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
     if (pendingDispatch) {
       setActiveDispatch(pendingDispatch);
@@ -179,13 +182,15 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
     }
   }, [pendingDispatch]);
 
-  // Mark as read when dispatch opened
+  // Mark as read when dispatch opened. Intentionally only re-runs on
+  // activeDispatch — re-running on freightBills/unreadIds would be noisy.
   useEffect(() => {
     if (activeDispatch && markDispatchRead) {
       const ids = freightBills.filter((fb) => fb.dispatchId === activeDispatch && unreadIds.includes(fb.id)).map((fb) => fb.id);
       if (ids.length > 0) markDispatchRead(activeDispatch);
     }
   }, [activeDispatch]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   const unreadSet = useMemo(() => new Set(unreadIds), [unreadIds]);
   const [lightbox, setLightbox] = useState(null);
