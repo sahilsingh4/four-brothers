@@ -237,9 +237,9 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
                     <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
                       {d?.jobName || "—"} · {fb.tonnage ? `${fb.tonnage}T` : ""}{fb.hoursBilled ? ` · ${fb.hoursBilled}hrs` : fb.pickupTime && fb.dropoffTime ? ` · ${fb.pickupTime}→${fb.dropoffTime}` : ""}
                     </div>
-                    {(fb.signedOutLoadedAt || fb.signedOutEmptyAt) && (
+                    {fb.signedOutStatus && fb.signedOutAt && (
                       <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
-                        Signed out: loaded {fb.signedOutLoadedAt || "—"} · empty {fb.signedOutEmptyAt || "—"}
+                        Signed out {fb.signedOutStatus} at {fb.signedOutAt}
                       </div>
                     )}
                   </div>
