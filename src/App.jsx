@@ -5578,6 +5578,17 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
   const [pendingPaySubId, setPendingPaySubId] = useState(null); // Sub/driver id for Payroll tab
 
+  // Admin-side "paper FB came in" path. Auto-approves on save because the
+  // admin is the one entering it — no second review needed. Inserts via
+  // the same insertFreightBill plumbing so realtime + state updates stay
+  // consistent with driver submits.
+  const handleAdminAddFb = async (fb) => {
+    const { id: _drop, ...rest } = fb;
+    const newRow = await insertFreightBill(rest);
+    setFreightBills((prev) => [newRow, ...prev.filter((x) => x.id !== newRow.id)]);
+    return { id: newRow.id };
+  };
+
   // When the admin has uploaded a custom company logo, swap the browser
   // favicon + Apple home-screen icon to it. The static /favicon.svg stays
   // as the fallback (used before login + during the first paint), so the
@@ -5735,9 +5746,9 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
           else if (k === "invoices") setPendingInvoice(payload);
           else if (k === "payroll") setPendingPaySubId(payload);
         }} onToast={onToast} />}
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onAdminAddFb={handleAdminAddFb} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} />}
-        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
+        {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onAdminAddFb={handleAdminAddFb} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} generateCapabilityStatementPDF={generateCapabilityStatementPDF} />}
         {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} refreshContacts={refreshContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} generateCustomerStatementPDF={generateCustomerStatementPDF} />}
