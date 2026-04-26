@@ -63,7 +63,7 @@ export const QuickAddContactModal = ({ kind, onSave, onCancel, onToast }) => {
         <div style={{ padding: "16px 20px", background: kind === "sub" ? "#9A3412" : "#0369A1", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <div className="fbt-mono" style={{ fontSize: 10, opacity: 0.8 }}>QUICK ADD</div>
-            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>NEW {kind === "sub" ? "SUBCONTRACTOR" : "DRIVER"}</h3>
+            <h3 className="fbt-display" style={{ fontSize: 18, margin: "2px 0 0" }}>NEW {kind === "sub" ? "SUB HAULER" : "DRIVER"}</h3>
           </div>
           <button onClick={onCancel} style={{ background: "transparent", border: "none", color: "#FFF", cursor: "pointer" }}><X size={20} /></button>
         </div>

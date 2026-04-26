@@ -183,7 +183,7 @@ export const OnboardingPage = ({ token }) => {
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px 60px" }}>
         <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard-deep)", marginBottom: 8 }}>
-          ▸ DOCUMENT UPLOAD · {contact.type === "driver" ? "DRIVER" : "SUB-CONTRACTOR"}
+          ▸ DOCUMENT UPLOAD · {contact.type === "driver" ? "DRIVER" : "SUB HAULER"}
         </div>
         <h1 className="fbt-display" style={{ fontSize: 26, margin: "0 0 6px", lineHeight: 1.15 }}>
           {contact.companyName || contact.contactName || "Welcome"}

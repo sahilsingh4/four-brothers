@@ -1342,10 +1342,10 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 );
               })()}
 
-              {/* SUB-CONTRACTORS & DRIVERS (unified) */}
+              {/* SUB HAULERS & DRIVERS (unified) */}
               <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14, position: "relative" }}>
                 <label className="fbt-label">
-                  Sub-Contractors & Drivers{draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
+                  Sub Haulers & Drivers{draft.assignments?.length > 0 && ` · ${draft.assignments.length} ROW${draft.assignments.length !== 1 ? "S" : ""}`}
                   <LockChip field="assignments" label="Assignments" locks={locks} />
                 </label>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
