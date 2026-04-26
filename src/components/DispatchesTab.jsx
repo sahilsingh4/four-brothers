@@ -744,15 +744,23 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       }
     }
 
-    // Rate + min-hours block — gated by per-assignment `sendRates` flag.
-    // Treats undefined/missing as ON so dispatches that pre-date the flag still
-    // get rates in the text (matches the form's default behavior).
-    const includeRates = assignment ? assignment.sendRates !== false : false;
-    if (includeRates && assignment?.payRate) {
+    // Rate + min-hours block — gated by two separate per-assignment flags.
+    // Legacy `sendRates` (single bool) is honored as the default for both
+    // when the new flags aren't set, so existing dispatches keep behavior.
+    const sendRate = assignment
+      ? (assignment.sendRate !== undefined ? !!assignment.sendRate : assignment.sendRates !== false)
+      : false;
+    const sendMinHours = assignment
+      ? (assignment.sendMinHours !== undefined ? !!assignment.sendMinHours : assignment.sendRates !== false)
+      : false;
+    if (assignment?.payRate && (sendRate || sendMinHours)) {
       const method = assignment.payMethod || "hour";
       const methodLabel = method === "hour" ? "/hr" : method === "ton" ? "/ton" : "/load";
       const minH = project?.minimumHours;
-      lines.push(`Rate: $${assignment.payRate}${methodLabel}${method === "hour" && minH ? ` (${minH}hr min)` : ""}`);
+      const rateText = sendRate ? `$${assignment.payRate}${methodLabel}` : null;
+      const minText = sendMinHours && method === "hour" && minH ? `${minH}hr min` : null;
+      const parts = [rateText, minText].filter(Boolean);
+      if (parts.length > 0) lines.push(`Rate: ${parts.join(" · ")}`);
     }
     if (assignment && assignment.kind === "sub" && assignment.trucks > 1) {
       lines.push(`Trucks: ${assignment.trucks}`);
@@ -1192,7 +1200,13 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
             <div style={{ padding: 24, display: "grid", gap: 14 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
                 <div><label className="fbt-label">Date</label><input className="fbt-input" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></div>
-                <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
+                {/* Trucks Expected — only shown when there are NO assignments yet.
+                    Once assignments are added their truck-counts become the source
+                    of truth (avoids the dispatcher seeing two "trucks" fields that
+                    can disagree). */}
+                {(!draft.assignments || draft.assignments.length === 0) && (
+                  <div><label className="fbt-label">Trucks Expected</label><input className="fbt-input" type="number" min="1" value={draft.trucksExpected} onChange={(e) => setDraft({ ...draft, trucksExpected: e.target.value })} /></div>
+                )}
                 {!editingId && (
                   <div>
                     <label className="fbt-label" title="Create copies of this order for consecutive days. 1 = single order. Useful for long-running daily haul jobs.">Repeat for # days</label>
@@ -1245,7 +1259,6 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   <input className="fbt-input" type="number" min="0" value={draft.staggerMin ?? 5} onChange={(e) => setDraft({ ...draft, staggerMin: e.target.value === "" ? "" : Number(e.target.value) })} title="Minutes between each truck's start time when 'Apply stagger' is clicked" />
                 </div>
               </div>
-              <div><label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" locks={locks} /></label><input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} /></div>
               <div>
                 <label className="fbt-label">Customer (for tracking link & billing)</label>
                 {contacts.filter((c) => c.type === "customer").length > 0 ? (
@@ -1271,15 +1284,39 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           </option>
                         ))}
                     </select>
-                    <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>OR</span>
-                    <input
-                      className="fbt-input"
-                      style={{ flex: 1, minWidth: 120 }}
-                      value={draft.clientId ? "" : (draft.clientName || "")}
-                      onChange={(e) => setDraft({ ...draft, clientName: e.target.value, clientId: "" })}
-                      placeholder="Type new name"
-                      disabled={!!draft.clientId}
-                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const name = window.prompt("New customer name:");
+                        if (!name || !name.trim()) return;
+                        const newCustomer = {
+                          id: "temp-" + Date.now(),
+                          type: "customer",
+                          companyName: name.trim(),
+                          contactName: "", phone: "", phone2: "", email: "", address: "",
+                          notes: "", favorite: false,
+                          createdAt: new Date().toISOString(),
+                          updatedAt: new Date().toISOString(),
+                        };
+                        try {
+                          await setContacts([newCustomer, ...contacts]);
+                          // After save, we don't have the real id locally yet (setContacts
+                          // returns the saved row but the contacts prop won't update until
+                          // the next render). Just stash the name on the draft so save still
+                          // works; on re-open the dropdown will have the real customer.
+                          setDraft({ ...draft, clientName: name.trim(), clientId: "" });
+                          onToast?.("✓ CUSTOMER ADDED");
+                        } catch (e) {
+                          console.warn("add customer failed:", e);
+                          onToast?.("⚠ COULDN'T ADD CUSTOMER");
+                        }
+                      }}
+                      className="btn-ghost"
+                      style={{ padding: "8px 12px", fontSize: 11, whiteSpace: "nowrap" }}
+                      title="Add a new customer (saved to Contacts)"
+                    >
+                      + NEW CUSTOMER
+                    </button>
                   </div>
                 ) : (
                   <input className="fbt-input" value={draft.clientName || ""} onChange={(e) => setDraft({ ...draft, clientName: e.target.value })} placeholder="e.g. Mountain Cascade, Inc. — add as Customer in Contacts for dropdown" />
@@ -1322,6 +1359,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             if (p.defaultRate != null && p.defaultRate !== "" && (draft.ratePerHour === "142" || !draft.ratePerHour)) {
                               patch.ratePerHour = String(p.defaultRate);
                             }
+                            // Pull min hours from the project so the customer
+                            // bill section shows it pre-filled.
+                            if (p.minimumHours != null && p.minimumHours !== "" && !draft.minimumHours) {
+                              patch.minimumHours = String(p.minimumHours);
+                            }
                           }
                           setDraft({ ...draft, ...patch });
                         }}
@@ -1341,6 +1383,45 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   </div>
                 );
               })()}
+
+              {/* Job Name — placed AFTER Project so the dispatcher picks the
+                  context (customer + project) first, then names the specific
+                  haul. Pre-fills from the project when blank (see Project
+                  onChange handler above). */}
+              <div>
+                <label className="fbt-label">Job Name *<LockChip field="job" label="Job Name" locks={locks} /></label>
+                <input className="fbt-input" value={draft.jobName} onChange={(e) => setDraft({ ...draft, jobName: e.target.value })} placeholder="MCI #91684 — Salinas Stormwater Phase 2A" disabled={isFieldLocked("job")} />
+              </div>
+
+              {/* CUSTOMER BILL RATE — what we charge the customer. Sub/driver
+                  pay rate is set per-assignment below. Auto-filled from the
+                  selected project's defaultRate + minimumHours when blank. */}
+              <div style={{ padding: 10, background: "#F0F9FF", border: "2px solid #0EA5E9" }}>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", fontWeight: 700, marginBottom: 8 }}>
+                  ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {draft.projectId ? "(AUTO-FILLED FROM PROJECT)" : ""}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
+                  <div>
+                    <label className="fbt-label">Bill $/hr<LockChip field="rate" label="Hourly Bill Rate" locks={locks} /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 142.00" />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Bill $/ton<LockChip field="rate" label="Per-Ton Bill Rate" locks={locks} /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 14.50" />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Bill $/load<LockChip field="rate" label="Per-Load Bill Rate" locks={locks} /></label>
+                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerLoad} onChange={(e) => setDraft({ ...draft, ratePerLoad: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 450.00" />
+                  </div>
+                  <div>
+                    <label className="fbt-label">Min hours/FB</label>
+                    <input className="fbt-input" type="number" min="0" step="0.25" value={draft.minimumHours ?? ""} onChange={(e) => setDraft({ ...draft, minimumHours: e.target.value })} placeholder={draft.projectId ? "(from project)" : "e.g. 4"} />
+                  </div>
+                </div>
+                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6 }}>
+                  ▸ SUB/DRIVER PAY RATE IS SET PER-ASSIGNMENT BELOW (SEPARATE FROM WHAT WE BILL CUSTOMER)
+                </div>
+              </div>
 
               {/* SUB HAULERS & DRIVERS (unified) */}
               <div style={{ borderTop: "2px dashed var(--concrete)", paddingTop: 14, position: "relative" }}>
@@ -1517,21 +1598,37 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             )}
                           </div>
 
-                          {/* Row 2.5: Send-rates toggle (controls whether the dispatch SMS/email shows pay rate + min hours to this driver/sub) */}
-                          <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                            <input
-                              type="checkbox"
-                              id={`send-rates-${idx}`}
-                              checked={a.sendRates !== false}
-                              onChange={(e) => {
-                                const next = [...draft.assignments];
-                                next[idx] = { ...next[idx], sendRates: e.target.checked };
-                                setDraft({ ...draft, assignments: next });
-                              }}
-                              style={{ cursor: "pointer" }}
-                            />
-                            <label htmlFor={`send-rates-${idx}`} className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", cursor: "pointer", userSelect: "none" }}>
-                              ▸ INCLUDE PAY RATE + MIN HOURS IN {a.kind === "driver" ? "DRIVER" : "SUB"} SMS/EMAIL
+                          {/* Two separate flags — one toggles pay rate in
+                              the driver/sub dispatch SMS/email, the other
+                              toggles minimum hours. Default both ON for new
+                              rows; existing rows that only have the legacy
+                              sendRates flag fall back to that single value. */}
+                          <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 12 }}>
+                            <label className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+                              <input
+                                type="checkbox"
+                                checked={a.sendRate !== undefined ? !!a.sendRate : a.sendRates !== false}
+                                onChange={(e) => {
+                                  const next = [...draft.assignments];
+                                  next[idx] = { ...next[idx], sendRate: e.target.checked };
+                                  setDraft({ ...draft, assignments: next });
+                                }}
+                                style={{ cursor: "pointer" }}
+                              />
+                              ▸ INCLUDE PAY RATE
+                            </label>
+                            <label className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
+                              <input
+                                type="checkbox"
+                                checked={a.sendMinHours !== undefined ? !!a.sendMinHours : a.sendRates !== false}
+                                onChange={(e) => {
+                                  const next = [...draft.assignments];
+                                  next[idx] = { ...next[idx], sendMinHours: e.target.checked };
+                                  setDraft({ ...draft, assignments: next });
+                                }}
+                                style={{ cursor: "pointer" }}
+                              />
+                              ▸ INCLUDE MIN HOURS
                             </label>
                           </div>
 
@@ -1593,7 +1690,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 <button
                   type="button"
                   className="btn-ghost"
-                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1, payMethod: "hour", payRate: "", sendRates: true }] })}
+                  onClick={() => setDraft({ ...draft, assignments: [...(draft.assignments || []), { kind: "sub", contactId: null, name: "", trucks: 1, payMethod: "hour", payRate: "", sendRate: true, sendMinHours: true }] })}
                   style={{ padding: "6px 12px", fontSize: 11 }}
                 >
                   <Plus size={12} style={{ marginRight: 4 }} /> ADD SUB / DRIVER
@@ -1648,29 +1745,6 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 </div>
               </div>
 
-              {/* CUSTOMER BILL RATE — what we charge the customer. Sub/driver pay rate is set per-assignment below. */}
-              <div style={{ padding: 10, background: "#F0F9FF", border: "2px solid #0EA5E9", marginTop: 4 }}>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "#0369A1", fontWeight: 700, marginBottom: 8 }}>
-                  ▸ CUSTOMER BILL RATE · FILL AT LEAST ONE {draft.projectId ? "(AUTO-FILLED FROM PROJECT DEFAULT WHERE APPLICABLE)" : ""}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-                  <div>
-                    <label className="fbt-label">Bill $/hr<LockChip field="rate" label="Hourly Bill Rate" locks={locks} /></label>
-                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerHour} onChange={(e) => setDraft({ ...draft, ratePerHour: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 142.00" />
-                  </div>
-                  <div>
-                    <label className="fbt-label">Bill $/ton<LockChip field="rate" label="Per-Ton Bill Rate" locks={locks} /></label>
-                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerTon} onChange={(e) => setDraft({ ...draft, ratePerTon: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 14.50" />
-                  </div>
-                  <div>
-                    <label className="fbt-label">Bill $/load<LockChip field="rate" label="Per-Load Bill Rate" locks={locks} /></label>
-                    <input className="fbt-input" type="number" step="0.01" value={draft.ratePerLoad} onChange={(e) => setDraft({ ...draft, ratePerLoad: e.target.value })} disabled={isFieldLocked("rate")} placeholder="e.g. 450.00" />
-                  </div>
-                </div>
-                <div className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginTop: 6 }}>
-                  ▸ SUB/DRIVER PAY RATE IS SET PER-ASSIGNMENT BELOW (SEPARATE FROM WHAT WE BILL CUSTOMER)
-                </div>
-              </div>
               {quarries.length > 0 && (
                 <div>
                   <label className="fbt-label">Sourced From (Quarry)</label>
