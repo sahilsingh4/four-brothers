@@ -4,6 +4,7 @@ import { buildSMSLink, buildEmailLink, compressOrReadFile } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { ContactDetailModal } from "./ContactDetailModal";
 import { FilledFormViewer } from "./FilledFormViewer";
+import { DocPreviewModal } from "./DocPreviewModal";
 
 // Document kinds offered per contact type. CDL + medical_card trigger OCR
 // to suggest the expiration date. `template` (when present) points to a
@@ -456,6 +457,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
 const REQUIRED_KEY = (type) => `fbt:requiredDocs:${type}`;
 const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
   const [viewingForm, setViewingForm] = useState(null); // { formKey, values, completedAt }
+  const [previewDoc, setPreviewDoc] = useState(null);
   const [pendingKind, setPendingKind] = useState(kinds[0]?.v || "other");
   const [busy, setBusy] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -762,14 +764,14 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
                   <div className="fbt-mono" style={{ fontSize: 9, fontWeight: 700, marginTop: 4, textAlign: "center", padding: "0 4px" }}>FILLED<br/>FORM</div>
                 </button>
               ) : isImage ? (
-                <a href={d.dataUrl} target="_blank" rel="noopener noreferrer" title="Click to view full-size">
-                  <img src={d.dataUrl} alt="" style={{ width: 88, height: 88, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 4, cursor: "pointer", display: "block" }} />
-                </a>
+                <button type="button" onClick={() => setPreviewDoc(d)} title="Click to preview" style={{ padding: 0, background: "transparent", border: "none", cursor: "pointer" }}>
+                  <img src={d.dataUrl} alt="" style={{ width: 88, height: 88, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 4, display: "block" }} />
+                </button>
               ) : isPdf ? (
-                <a href={d.dataUrl} target="_blank" rel="noopener noreferrer" title="Click to open PDF" style={{ width: 88, height: 88, background: "#FEE2E2", border: "1px solid var(--safety)", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textDecoration: "none", color: "var(--safety)" }}>
+                <button type="button" onClick={() => setPreviewDoc(d)} title="Click to preview PDF" style={{ width: 88, height: 88, background: "#FEE2E2", border: "1px solid var(--safety)", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--safety)", cursor: "pointer", padding: 0 }}>
                   <FileDown size={24} />
                   <div className="fbt-mono" style={{ fontSize: 10, fontWeight: 700, marginTop: 4 }}>PDF</div>
-                </a>
+                </button>
               ) : (
                 <div style={{ width: 88, height: 88, background: "#F5F5F4", border: "1px solid var(--line)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <FileDown size={24} style={{ color: "var(--concrete)" }} />
@@ -830,6 +832,9 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
           contactName={draft.companyName || draft.contactName}
           onClose={() => setViewingForm(null)}
         />
+      )}
+      {previewDoc && (
+        <DocPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
     </div>
   );
