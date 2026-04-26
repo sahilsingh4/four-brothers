@@ -3,7 +3,7 @@ import { AlertTriangle, Camera, Clock, Lock, Save, ShieldCheck, Trash2, X } from
 import { compressImage, fmt$, nextLineId } from "../utils";
 import { deleteFreightBill, recoverFreightBill, logAudit } from "../db";
 
-export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, setDispatches, invoices = [], freightBills = [], onClose, onToast, currentUser }) => {
+export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreightBill, setDispatches, invoices = [], freightBills = [], onJumpToInvoice, onClose, onToast, currentUser }) => {
   const dispatch = dispatches.find((d) => d.id === fb.dispatchId);
   const project = dispatch ? projects.find((p) => p.id === dispatch.projectId) : null;
   const assignment = dispatch ? (dispatch.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
@@ -879,7 +879,23 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                   {unlocked ? "⚠ LOCK OVERRIDDEN — EDITS WILL CHANGE BILLED INVOICE/PAYROLL" : "🔒 FB LOCKED — DOWNSTREAM RECORDS EXIST"}
                 </div>
                 <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4, lineHeight: 1.4 }}>
-                  {lockedOnInvoice && <div>• On invoice <strong>{invoiceOnFb?.invoiceNumber || fb.invoiceId}</strong></div>}
+                  {lockedOnInvoice && (
+                    <div>
+                      • On invoice{" "}
+                      {onJumpToInvoice && invoiceOnFb ? (
+                        <button
+                          type="button"
+                          onClick={() => { onClose(); onJumpToInvoice(invoiceOnFb.id); }}
+                          style={{ background: "transparent", border: "none", padding: 0, margin: 0, color: "var(--hazard-deep)", fontWeight: 700, textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+                          title="Open this invoice in the Invoices tab"
+                        >
+                          {invoiceOnFb.invoiceNumber}
+                        </button>
+                      ) : (
+                        <strong>{invoiceOnFb?.invoiceNumber || fb.invoiceId}</strong>
+                      )}
+                    </div>
+                  )}
                   {fb.paidAt && <div>• Paid to sub/driver ${fb.paidAmount ? Number(fb.paidAmount).toFixed(2) : ""} on {new Date(fb.paidAt).toLocaleDateString()}</div>}
                   {fb.customerPaidAt && <div>• Customer paid ${fb.customerPaidAmount ? Number(fb.customerPaidAmount).toFixed(2) : ""} on {new Date(fb.customerPaidAt).toLocaleDateString()}</div>}
                 </div>

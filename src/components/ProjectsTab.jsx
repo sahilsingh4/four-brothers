@@ -286,7 +286,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
 
 
 // ========== PROJECTS TAB ==========
-export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freightBills, invoices, onToast }) => {
+export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freightBills, invoices, onJumpToDispatch, onToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -346,6 +346,7 @@ export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freig
           onEdit={() => { setEditing(viewing); setShowModal(true); }}
           onDelete={() => remove(viewing.id)}
           onClose={() => setViewing(null)}
+          onJumpToDispatch={onJumpToDispatch}
         />
       )}
 

@@ -4,8 +4,23 @@ import { fmt$ } from "../utils";
 import { logAudit, updateInvoice } from "../db";
 import { FBPhotoGallery } from "./FBPhotoGallery";
 
-export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], projects = [], editFreightBill, setInvoices, invoices = [], onJumpToPayroll, onClose, onToast }) => {
+export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatches = [], projects = [], editFreightBill, setInvoices, invoices = [], onJumpToPayroll, onJumpToDispatch, onClose, onToast }) => {
   const invFbs = (invoice.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
+  // Audit #5: surface the dispatches this invoice covers as click-to-jump
+  // chips. An invoice typically covers 1-3 dispatches (one job per invoice
+  // is the normal case); chips let the owner trace an unexpected total
+  // back to its dispatch without searching by FB.
+  const linkedDispatches = (() => {
+    const seen = new Set();
+    const out = [];
+    for (const fb of invFbs) {
+      if (fb.dispatchId == null || seen.has(fb.dispatchId)) continue;
+      seen.add(fb.dispatchId);
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      if (d) out.push(d);
+    }
+    return out;
+  })();
   const history = invoice.paymentHistory || [];
   const balance = (Number(invoice.total) || 0) - (Number(invoice.amountPaid) || 0);
   // v18 Batch 2 Session D: photo gallery toggle
@@ -230,6 +245,26 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
               </div>
             )}
           </div>
+
+          {linkedDispatches.length > 0 && (
+            <div>
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ DISPATCH{linkedDispatches.length !== 1 ? "ES" : ""} ({linkedDispatches.length})</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {linkedDispatches.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => { if (onJumpToDispatch) { onClose(); onJumpToDispatch(d.id); } }}
+                    disabled={!onJumpToDispatch}
+                    title={onJumpToDispatch ? `Open dispatch ${d.code} in Dispatches tab` : ""}
+                    style={{ padding: "4px 10px", fontSize: 11, background: "var(--steel)", color: "var(--cream)", border: "none", cursor: onJumpToDispatch ? "pointer" : "default", fontWeight: 700 }}
+                  >
+                    #{d.code}{d.jobName ? ` · ${d.jobName}` : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ FREIGHT BILLS ON THIS INVOICE ({invFbs.length})</div>

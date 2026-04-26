@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Camera, Search, ShieldCheck } from "lucide-react";
 import { FBEditModal } from "./FBEditModal";
 
-export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onToast }) => {
+export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onJumpToInvoice, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -130,6 +130,7 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
           freightBills={freightBills}
           editFreightBill={editFreightBill}
           invoices={invoices}
+          onJumpToInvoice={onJumpToInvoice}
           onClose={() => setEditing(null)}
           onToast={onToast}
           currentUser="admin"

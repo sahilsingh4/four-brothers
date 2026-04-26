@@ -570,7 +570,7 @@ export const generateCustomerStatementPDF = ({ customer, invoices, company, from
 
 
 // ========== INVOICES TAB ==========
-export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createInvoice, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onToast, generateCapabilityStatementPDF }) => {
+export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, createInvoice, company, setCompany, contacts = [], projects = [], editFreightBill, pendingInvoice, clearPendingInvoice, onJumpToPayroll, onJumpToDispatch, onToast, generateCapabilityStatementPDF }) => {
   const [showProfile, setShowProfile] = useState(false);
   // Session C: collapse the massive inline builder into a modal. All builder logic stays the same;
   // we just hide it until the user clicks "New Invoice".
@@ -1566,6 +1566,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
             setViewingInvoice(null);
             if (onJumpToPayroll) onJumpToPayroll(subId);
           }}
+          onJumpToDispatch={onJumpToDispatch}
           onClose={() => setViewingInvoice(null)}
           onToast={onToast}
         />
