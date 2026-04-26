@@ -35,6 +35,18 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     : 0;
   const paySeedHours = subMinHours > 0 ? Math.max(seedHours, subMinHours) : seedHours;
 
+  // Owner ask (followup #3): when the project has a minimum-hours floor and
+  // the FB is below it, auto-apply the floor by default. Previously the
+  // minHoursApplied checkbox started OFF and the admin had to actively check
+  // it on every short FB — easy to forget, easy to under-bill the customer.
+  // Default-ON only when the admin hasn't previously made an explicit
+  // decision (no audit stamp); once they've saved either way, respect that.
+  const projectMinHours = Number(project?.minimumHours) || 0;
+  const belowProjectMinAtLoad = projectMinHours > 0 && seedHours > 0 && seedHours < projectMinHours;
+  const minHoursAppliedDefault = fb.minHoursApprovedBy
+    ? !!fb.minHoursApplied      // admin already chose — keep their pick
+    : belowProjectMinAtLoad;     // new / untouched FB below min → auto-apply
+
   // v23 Session X: Duplicate FB# detection
   // Warning-only. A match on ANY of these three rules flags a potential duplicate:
   //   1. Same customer + same day + same FB#
@@ -107,7 +119,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     adminNotes: fb.adminNotes || "",
     photos: fb.photos || [],
     extras: fb.extras || [],
-    minHoursApplied: !!fb.minHoursApplied,
+    minHoursApplied: minHoursAppliedDefault,
 
     // BILLING SNAPSHOT — what we charge customer
     // Default: existing snapshot, or seed from submitted qty + dispatch rate
@@ -1271,7 +1283,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                   <div style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 8 }}>
                     Actual hours: <strong>{actualH.toFixed(2)}</strong> · Project "{project.name}" minimum: <strong>{minH}</strong> hrs
                     <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 4 }}>
-                      ▸ CUSTOMER WILL BE INVOICED FOR {minH} HRS · SUB PAID FOR {actualH.toFixed(2)} HRS (ACTUAL)
+                      ▸ {draft.minHoursApplied ? `CUSTOMER WILL BE INVOICED FOR ${minH} HRS` : `CUSTOMER WILL BE INVOICED FOR ${actualH.toFixed(2)} HRS (ACTUAL — minimum overridden)`} · SUB PAID FOR {actualH.toFixed(2)} HRS (ACTUAL)
                     </div>
                   </div>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
@@ -1281,7 +1293,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                       onChange={(e) => setDraft({ ...draft, minHoursApplied: e.target.checked })}
                       style={{ width: 16, height: 16, cursor: "pointer" }}
                     />
-                    CONFIRM — APPLY {minH}-HR MINIMUM ON INVOICE
+                    APPLY {minH}-HR MINIMUM ON INVOICE {draft.minHoursApplied ? "(uncheck to bill actual hours)" : "(unchecked — billing actual)"}
                   </label>
                   {fb.minHoursApplied && fb.minHoursApprovedBy && (
                     <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6 }}>
