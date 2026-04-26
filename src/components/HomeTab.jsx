@@ -269,6 +269,42 @@ export const HomeTab = ({
       .sort((a, b) => a.worst - b.worst);
   }, [contacts]);
 
+  // Compliance packet completeness — for each driver/sub, count which of
+  // the configured required-doc kinds are present in their documents[]
+  // array. Surfaces the laggards so the dispatcher can chase them. The
+  // required-kinds list lives in localStorage on the admin device (set via
+  // ContactModal's "Configure required" panel); falls back to "all kinds
+  // except 'other'" when nothing's been configured yet.
+  const complianceMissing = useMemo(() => {
+    const driverKinds = (() => {
+      try {
+        const raw = localStorage.getItem("fbt:requiredDocs:driver");
+        if (raw) return JSON.parse(raw);
+      } catch { /* noop */ }
+      return ["cdl", "medical_card", "mvr", "i9", "w4", "driver_app", "direct_deposit", "drug_test"];
+    })();
+    const subKinds = (() => {
+      try {
+        const raw = localStorage.getItem("fbt:requiredDocs:sub");
+        if (raw) return JSON.parse(raw);
+      } catch { /* noop */ }
+      return ["w9", "coi", "operating_authority", "ic_agreement", "workers_comp"];
+    })();
+    return (contacts || [])
+      .filter((c) => c.type === "driver" || c.type === "sub")
+      .map((c) => {
+        const required = c.type === "driver" ? driverKinds : subKinds;
+        if (required.length === 0) return null;
+        const docs = Array.isArray(c.documents) ? c.documents : [];
+        const have = required.filter((k) => docs.some((d) => d.kind === k || d.kind === `${k}_form`));
+        const missing = required.filter((k) => !have.includes(k));
+        if (missing.length === 0) return null; // fully compliant
+        return { contact: c, total: required.length, have: have.length, missing };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.missing.length - a.missing.length);
+  }, [contacts]);
+
   // v18 Dashboard rebuild: Money Out = approved + not-yet-paid FBs' pay nets by driver/sub.
   // Uses payingLines when available, falls back to paid snapshot.
   const moneyOut = useMemo(() => {
@@ -902,6 +938,31 @@ export const HomeTab = ({
             />
           ))}
           {driverDocAlerts.length > 5 && <Row left={`+ ${driverDocAlerts.length - 5} more…`} />}
+        </SectionCard>
+
+        {/* Compliance packet — drivers/subs missing required docs. Driven
+            by the same required-docs config the contact modal uses (in
+            localStorage), so it lights up only the kinds the dispatcher
+            cares about. Sorted by most-missing first. */}
+        <SectionCard
+          title="Compliance packet — missing docs"
+          icon={<ClipboardList size={18} />}
+          count={complianceMissing.length}
+          color={complianceMissing.length > 0 ? "var(--safety)" : "var(--good)"}
+          bg={complianceMissing.length > 0 ? "var(--danger-soft)" : "var(--good-soft)"}
+          onClick={() => onJumpTab("contacts")}
+          empty="All required docs on file ✓"
+        >
+          {complianceMissing.slice(0, 5).map(({ contact, total, have, missing }) => (
+            <Row
+              key={contact.id}
+              left={<><strong>{contact.companyName || contact.contactName}</strong> · {contact.type}</>}
+              sub={`${missing.length} missing: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? `, +${missing.length - 3} more` : ""}`}
+              right={`${have} / ${total}`}
+              onClick={() => onJumpTab("contacts", contact.id)}
+            />
+          ))}
+          {complianceMissing.length > 5 && <Row left={`+ ${complianceMissing.length - 5} more…`} />}
         </SectionCard>
 
         {/* Project profitability — top winners + losers by margin. Click jumps

@@ -1231,19 +1231,6 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                   </div>
                 )}
                 <div>
-                  <label className="fbt-label">Expected Tons/Truck</label>
-                  <input
-                    className="fbt-input"
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    placeholder="e.g. 24"
-                    value={draft.expectedTonnagePerTruck ?? ""}
-                    onChange={(e) => setDraft({ ...draft, expectedTonnagePerTruck: e.target.value })}
-                    title="Expected tonnage per truck/load. Used to flag overage on FB review (>20% over expected)."
-                  />
-                </div>
-                <div>
                   <label className="fbt-label">Shift</label>
                   <select className="fbt-select" value={draft.shift || "day"} onChange={(e) => setDraft({ ...draft, shift: e.target.value })}>
                     <option value="day">Day</option>
