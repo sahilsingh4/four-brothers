@@ -759,8 +759,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
       const minH = project?.minimumHours;
       const rateText = sendRate ? `$${assignment.payRate}${methodLabel}` : null;
       const minText = sendMinHours && method === "hour" && minH ? `${minH}hr min` : null;
-      const parts = [rateText, minText].filter(Boolean);
-      if (parts.length > 0) lines.push(`Rate: ${parts.join(" · ")}`);
+      // Use a contextual prefix so a min-hours-only message doesn't read
+      // "Rate: 4hr min" (malformed — looked like a missing dollar amount).
+      if (rateText && minText) lines.push(`Rate: ${rateText} · ${minText}`);
+      else if (rateText) lines.push(`Rate: ${rateText}`);
+      else if (minText) lines.push(`Min: ${minText}`);
     }
     if (assignment && assignment.kind === "sub" && assignment.trucks > 1) {
       lines.push(`Trucks: ${assignment.trucks}`);
@@ -1342,8 +1345,12 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                             // Same idea for pickup/dropoff/material — fill if blank, leave
                             // alone if the dispatcher already typed something order-specific.
                             if (!draft.pickup && p.location) patch.pickup = p.location;
-                            // Inherit project's default rate if order rate is still the default "142"
-                            if (p.defaultRate != null && p.defaultRate !== "" && (draft.ratePerHour === "142" || !draft.ratePerHour)) {
+                            // Inherit project's default rate ONLY when the
+                            // current rate field is truly blank — previously
+                            // we treated "142" as a magic "untouched" sentinel
+                            // which clobbered legitimate $142 rates the
+                            // dispatcher had typed.
+                            if (p.defaultRate != null && p.defaultRate !== "" && !draft.ratePerHour) {
                               patch.ratePerHour = String(p.defaultRate);
                             }
                             // Pull min hours from the project so the customer

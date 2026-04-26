@@ -896,6 +896,9 @@ export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches
       phone2: "",
       email: "",
       favorite: false,
+      // Don't carry over the source contact's driver→sub link; the new
+      // record is a different person, manually pick their employer.
+      drivesForId: null,
       createdAt: undefined,
       updatedAt: undefined,
     };
