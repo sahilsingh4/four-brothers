@@ -1422,13 +1422,26 @@ const FBSearchPanel = ({ freightBills, dispatches, setDispatches, contacts, proj
 // Include fields: user picks which fields appear in the metadata strip (localStorage persisted).
 
 const FB_ARCHIVE_FIELD_DEFAULTS = {
+  // Driver-entered + dispatch context
   date: true, fbNumber: true, loads: true, tons: true,
   startTime: true, endTime: true, hours: false,
   driver: true, truck: true, description: true, notes: true,
   customer: false, pickup: false, dropoff: false,
+  // Admin-approved billing snapshot (off by default — opt in per export
+  // since most invoices in Excel use the customer-facing bill from the
+  // existing invoice, not the raw billed-* fields)
+  material: false,
+  status: false,
+  billedRate: false, billedMethod: false,
+  billedHours: false, billedTons: false, billedLoads: false,
+  minHoursApplied: false,
 };
 const FB_ARCHIVE_STATUS_DEFAULTS = { pending: false, approved: true, invoiced: true, paid: true };
 const FB_ARCHIVE_LS_KEY = "fbt:fbArchivePrefs";
+// "Only include FBs with at least one attached photo" filter — default ON
+// because the whole point of the archive is to attach the proof-of-haul
+// pages to an invoice; FBs with zero photos are blank pages.
+const FB_ARCHIVE_PHOTOS_ONLY_DEFAULT = true;
 
 // ========== CAPABILITY STATEMENT PDF (v22 Session V) ==========
 // Generates a 1-page PDF suitable for emailing to contracting officers, primes,
@@ -1731,6 +1744,25 @@ const generateFBArchivePDF = async ({ fbs, dispatches, contacts, projects, compa
     if (fieldsInclude.loads && fb.loadCount) parts.push(`<span class="kv"><b>LOADS</b> ${esc(String(fb.loadCount))}</span>`);
     if (fieldsInclude.pickup && d?.pickup) parts.push(`<span class="kv"><b>FROM</b> ${esc(d.pickup)}</span>`);
     if (fieldsInclude.dropoff && d?.dropoff) parts.push(`<span class="kv"><b>TO</b> ${esc(d.dropoff)}</span>`);
+    if (fieldsInclude.material && fb.material) parts.push(`<span class="kv"><b>MATERIAL</b> ${esc(fb.material)}</span>`);
+    // Admin-approved billing snapshot (post-review numbers) — opt in
+    if (fieldsInclude.status) {
+      const isInvoiced = !!fb.invoiceId;
+      const isPaid = !!fb.paidAt || !!fb.customerPaidAt;
+      const statusLabel = isPaid ? "PAID" : isInvoiced ? "INVOICED" : (fb.status || "pending").toUpperCase();
+      parts.push(`<span class="kv"><b>STATUS</b> ${esc(statusLabel)}</span>`);
+    }
+    if (fieldsInclude.billedRate && fb.billedRate != null) {
+      const methodSuffix = fb.billedMethod === "ton" ? "/ton" : fb.billedMethod === "load" ? "/load" : "/hr";
+      parts.push(`<span class="kv"><b>BILL RATE</b> $${esc(String(fb.billedRate))}${methodSuffix}</span>`);
+    }
+    if (fieldsInclude.billedMethod && fb.billedMethod) parts.push(`<span class="kv"><b>BILL METHOD</b> ${esc(String(fb.billedMethod).toUpperCase())}</span>`);
+    if (fieldsInclude.billedHours && fb.billedHours != null) parts.push(`<span class="kv"><b>BILL HRS</b> ${esc(String(fb.billedHours))}</span>`);
+    if (fieldsInclude.billedTons && fb.billedTons != null) parts.push(`<span class="kv"><b>BILL TONS</b> ${esc(String(fb.billedTons))}</span>`);
+    if (fieldsInclude.billedLoads && fb.billedLoads != null) parts.push(`<span class="kv"><b>BILL LOADS</b> ${esc(String(fb.billedLoads))}</span>`);
+    if (fieldsInclude.minHoursApplied && fb.minHoursApplied) {
+      parts.push(`<span class="kv"><b>MIN-HRS</b> APPLIED${fb.minHoursApprovedBy ? ` by ${esc(fb.minHoursApprovedBy)}` : ""}</span>`);
+    }
 
     const description = fieldsInclude.description && (fb.description || fb.material)
       ? `<div class="desc"><b>DESCRIPTION:</b> ${esc(fb.description || fb.material || "")}</div>` : "";
@@ -1808,7 +1840,7 @@ ${pagesHtml}
   w.document.close();
 };
 
-const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company, onClose, onToast }) => {
+const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company, onClose, onToast, initialDispatchId = null }) => {
   // Load saved prefs from localStorage
   const savedPrefs = (() => {
     try { return JSON.parse(localStorage.getItem(FB_ARCHIVE_LS_KEY) || "{}"); } catch { return {}; }
@@ -1819,7 +1851,18 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
   const [customerId, setCustomerId] = useState(savedPrefs.customerId || "");
   const [projectId, setProjectId] = useState(savedPrefs.projectId || "");
   const [statusFilter, setStatusFilter] = useState(savedPrefs.statusFilter || FB_ARCHIVE_STATUS_DEFAULTS);
-  const [fieldsInclude, setFieldsInclude] = useState(savedPrefs.fieldsInclude || FB_ARCHIVE_FIELD_DEFAULTS);
+  // Merge saved prefs onto the latest defaults so newly-added field keys
+  // (admin-approved data added in a later release) appear pre-set with
+  // their default rather than being silently absent for existing users.
+  const [fieldsInclude, setFieldsInclude] = useState({ ...FB_ARCHIVE_FIELD_DEFAULTS, ...(savedPrefs.fieldsInclude || {}) });
+  const [photosOnly, setPhotosOnly] = useState(
+    savedPrefs.photosOnly !== undefined ? !!savedPrefs.photosOnly : FB_ARCHIVE_PHOTOS_ONLY_DEFAULT
+  );
+  // When the modal is launched from a specific dispatch card, pin the
+  // export to that dispatch's FBs (overrides customer/project filters).
+  // Admin can clear the pin to see other matches.
+  const [pinnedDispatchId, setPinnedDispatchId] = useState(initialDispatchId || null);
+  const pinnedDispatch = pinnedDispatchId ? dispatches.find((d) => d.id === pinnedDispatchId) : null;
 
   // Customers are contacts of type customer or broker
   const customerList = useMemo(() =>
@@ -1845,19 +1888,25 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
       if (toDate && fbDate > toDate) return false;
 
       const d = dispatches.find((x) => x.id === fb.dispatchId);
+      // Pinned-dispatch mode: filter to that dispatch's FBs only.
+      if (pinnedDispatchId && fb.dispatchId !== pinnedDispatchId) return false;
       if (customerId && String(d?.clientId) !== String(customerId)) return false;
       if (projectId && String(d?.projectId) !== String(projectId)) return false;
 
+      // "Only include FBs with photos" — the export attaches photos to an
+      // invoice; an FB with zero photos is a blank page in the bundle.
+      if (photosOnly && (!Array.isArray(fb.photos) || fb.photos.length === 0)) return false;
+
       return true;
     }).sort((a, b) => (a.submittedAt || "").localeCompare(b.submittedAt || ""));
-  }, [freightBills, dispatches, statusFilter, fromDate, toDate, customerId, projectId]);
+  }, [freightBills, dispatches, statusFilter, fromDate, toDate, customerId, projectId, photosOnly, pinnedDispatchId]);
 
   const totalPhotos = matchedFbs.reduce((s, fb) => s + (fb.photos?.length || 0), 0);
 
   const savePrefs = () => {
     try {
       localStorage.setItem(FB_ARCHIVE_LS_KEY, JSON.stringify({
-        fromDate, toDate, customerId, projectId, statusFilter, fieldsInclude,
+        fromDate, toDate, customerId, projectId, statusFilter, fieldsInclude, photosOnly,
       }));
     } catch { /* noop: localStorage can fail in private mode */ }
   };
@@ -1899,6 +1948,17 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
         </div>
 
         <div style={{ padding: 20, display: "grid", gap: 16 }}>
+          {pinnedDispatch && (
+            <div style={{ padding: "10px 12px", background: "#F0FDF4", border: "2px solid var(--good)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ fontSize: 12 }}>
+                <strong>📌 Pinned to order #{pinnedDispatch.code}</strong>
+                {pinnedDispatch.jobName ? ` · ${pinnedDispatch.jobName}` : ""}
+                <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>Customer / project filters below are ignored while pinned.</div>
+              </div>
+              <button onClick={() => setPinnedDispatchId(null)} className="btn-ghost" style={{ padding: "4px 10px", fontSize: 11 }}>CLEAR PIN</button>
+            </div>
+          )}
+
           {/* Filters */}
           <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ FILTERS</div>
@@ -1951,12 +2011,19 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
                 ))}
               </div>
             </div>
+
+            <div style={{ marginTop: 12, padding: "8px 10px", background: photosOnly ? "#F0FDF4" : "#FFF", border: "1.5px solid " + (photosOnly ? "var(--good)" : "var(--concrete)") }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}>
+                <input type="checkbox" checked={photosOnly} onChange={(e) => setPhotosOnly(e.target.checked)} />
+                <span><strong>ONLY INCLUDE FBs WITH PHOTOS</strong> · skips blank-page FBs that have no scale ticket attached</span>
+              </label>
+            </div>
           </div>
 
           {/* Field checkboxes */}
           <div className="fbt-card" style={{ padding: 14, background: "#F5F5F4" }}>
-            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10, fontWeight: 700 }}>▸ INCLUDE IN HEADER STRIP</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, fontWeight: 700 }}>▸ DRIVER-ENTERED + DISPATCH CONTEXT</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {fieldCheckbox("date", "DATE")}
               {fieldCheckbox("fbNumber", "FB #")}
               {fieldCheckbox("customer", "CUSTOMER")}
@@ -1969,8 +2036,19 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
               {fieldCheckbox("loads", "LOADS")}
               {fieldCheckbox("pickup", "FROM")}
               {fieldCheckbox("dropoff", "TO")}
+              {fieldCheckbox("material", "MATERIAL")}
               {fieldCheckbox("description", "DESCRIPTION")}
               {fieldCheckbox("notes", "NOTES")}
+            </div>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 6, fontWeight: 700 }}>▸ ADMIN-APPROVED BILLING DATA</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {fieldCheckbox("status", "STATUS")}
+              {fieldCheckbox("billedRate", "BILL RATE")}
+              {fieldCheckbox("billedMethod", "BILL METHOD")}
+              {fieldCheckbox("billedHours", "BILL HRS")}
+              {fieldCheckbox("billedTons", "BILL TONS")}
+              {fieldCheckbox("billedLoads", "BILL LOADS")}
+              {fieldCheckbox("minHoursApplied", "MIN-HRS APPLIED")}
             </div>
           </div>
 
@@ -5577,6 +5655,9 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
   const [pendingPaySubId, setPendingPaySubId] = useState(null); // Sub/driver id for Payroll tab
+  // FB Archive modal state — `null` closed, `{ dispatchId }` open and pinned
+  // to that dispatch (or open with no pin when dispatchId is null).
+  const [fbArchiveOpen, setFbArchiveOpen] = useState(null);
 
   // Admin-side "paper FB came in" path. Auto-approves on save because the
   // admin is the one entering it — no second review needed. Inserts via
@@ -5746,7 +5827,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
           else if (k === "invoices") setPendingInvoice(payload);
           else if (k === "payroll") setPendingPaySubId(payload);
         }} onToast={onToast} />}
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onAdminAddFb={handleAdminAddFb} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onAdminAddFb={handleAdminAddFb} onExportFbBundle={(dispatchId) => setFbArchiveOpen({ dispatchId })} onToast={onToast} />}
         {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onAdminAddFb={handleAdminAddFb} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
@@ -5841,6 +5922,20 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "data" && <DataTab state={state} setters={setters} onToast={onToast} />}
       </div>
       <BottomTabNav tabs={tabs} active={tab} setTab={setTab} />
+
+      {/* FB Archive modal — also reachable from per-dispatch EXPORT FB BUNDLE button */}
+      {fbArchiveOpen && (
+        <FBArchiveModal
+          freightBills={freightBills}
+          dispatches={dispatches}
+          contacts={contacts}
+          projects={projects}
+          company={company}
+          initialDispatchId={fbArchiveOpen.dispatchId || null}
+          onClose={() => setFbArchiveOpen(null)}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 };

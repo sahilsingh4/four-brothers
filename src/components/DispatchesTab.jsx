@@ -136,7 +136,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onAdminAddFb, onToast }) => {
+export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onAdminAddFb, onExportFbBundle, onToast }) => {
   const [showNew, setShowNew] = useState(false);
   // Admin manual FB entry — { dispatch, assignment } when open, null when closed
   const [adminAddFb, setAdminAddFb] = useState(null);
@@ -2433,6 +2433,16 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => copyLink(d.code)}><Link2 size={12} style={{ marginRight: 4 }} /> COPY LINK</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => printDriverSheet(d, `${window.location.origin}${window.location.pathname}#/submit/${d.code}`, onToast)} title="Print driver sheet with QR"><Printer size={12} style={{ marginRight: 4 }} /> PRINT</button>
+                      {onExportFbBundle && (
+                        <button
+                          className="btn-ghost"
+                          style={{ padding: "8px 14px", fontSize: 11 }}
+                          onClick={() => onExportFbBundle(d.id)}
+                          title="Export this order's freight bills + scale ticket photos as a printable PDF bundle for invoicing in Excel"
+                        >
+                          <FileText size={12} style={{ marginRight: 4 }} /> EXPORT FB BUNDLE
+                        </button>
+                      )}
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => openEditDispatch(d)} title="Edit this order"><Edit2 size={12} style={{ marginRight: 4 }} /> EDIT</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => duplicateDispatch(d)} title="Create a new order copying this one's job, customer, trucks, drivers, and rates"><Plus size={12} style={{ marginRight: 4 }} /> DUPLICATE</button>
                       <button className="btn-ghost" style={{ padding: "8px 14px", fontSize: 11 }} onClick={() => setActiveDispatch(d.id)}><Eye size={12} style={{ marginRight: 4 }} /> OPEN</button>
