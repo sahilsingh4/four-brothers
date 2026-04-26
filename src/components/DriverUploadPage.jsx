@@ -411,6 +411,10 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
               setSubmitError("");  // v18 Session E: clear any stale error
               setForm({ freightBillNumber: "", driverName: form.driverName, truckNumber: form.truckNumber, material: dispatch.material || "", tonnage: "", loadCount: "1", pickupTime: "", dropoffTime: "", signedOutStatus: "", signedOutAt: "", notes: "", extras: [] });
               setPhotos([]);
+              // Clear per-field unlock flags — driver overrode lockedDriverName
+              // on FB1, but the autofilled UI should re-show on FB2 so they
+              // can confirm the truck/driver again.
+              setUnlockedFields({});
               window.scrollTo(0, 0);
             }}><Plus size={16} /> LOG ANOTHER TRUCK</button>
             <button className="btn-ghost" onClick={onBack}>
@@ -1029,14 +1033,14 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                     {photos.length} ATTACHED · TAP TO ADD MORE
                   </div>
                 )}
-                <input id="big-camera-input" type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+                <input id="big-camera-input" type="file" accept="image/*" capture="environment" multiple style={{ display: "none" }} onChange={(e) => { handlePhotos(e.target.files); e.target.value = ""; }} />
               </label>
 
               {/* Secondary gallery option */}
               <div style={{ marginTop: 8, textAlign: "center" }}>
                 <label style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--concrete)", padding: "6px 10px" }}>
                   <Upload size={12} /> OR PICK FROM GALLERY
-                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+                  <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { handlePhotos(e.target.files); e.target.value = ""; }} />
                 </label>
               </div>
 
