@@ -82,7 +82,9 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     else if (pricing.method === "load") qty = Number(fb.loadCount) || 1;
     else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
     const desc = pricing.method === "ton" ? "TONS" : pricing.method === "load" ? "LOAD" : "HOURLY";
-    const amt = qty * rate;
+    // Round at the line level so the subtotal accumulator doesn't carry
+    // floating-point noise when many lines sum together.
+    const amt = Number((qty * rate).toFixed(2));
     return `<tr class="line line-first">
       <td>${esc(fbDate)}</td>
       <td>${esc(fb.freightBillNumber || '—')}</td>
@@ -103,7 +105,7 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
     if (pricing.method === "ton") qty = Number(fb.tonnage) || 0;
     else if (pricing.method === "load") qty = Number(fb.loadCount) || 1;
     else if (pricing.method === "hour") qty = Number(fb.hoursOverride || 0);
-    return s + qty * rate;
+    return s + Number((qty * rate).toFixed(2));
   }, 0);
 
   // Invoice-level extras, fees, discount (rendered as extra table rows under the FBs)

@@ -405,6 +405,11 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     setDraft((d) => {
       const next = (d.billingLines || []).map((ln) => {
         if (ln.id !== id) return ln;
+        // Lock guard: when the FB's billing snapshot is locked (invoice
+        // stamped) and this line is NOT a post-lock adjustment, refuse the
+        // patch. The UI disables the row but a programmatic / race path
+        // could still call updateBillingLine — this is the last-mile defense.
+        if (billingSnapshotLocked && !ln.isAdjustment) return ln;
         const merged = { ...ln, ...patch };
         // If Br? just turned on AND line has no pct yet, snapshot customer %
         if (patch.brokerable === true && !ln.brokerable && (!merged.brokeragePct || merged.brokeragePct === 8)) {
@@ -447,6 +452,9 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
     setDraft((d) => {
       const next = (d.payingLines || []).map((ln) => {
         if (ln.id !== id) return ln;
+        // Same lock guard as updateBillingLine — pay-statement-locked
+        // non-adjustment lines stay frozen even if the UI gating fails.
+        if (paySnapshotLocked && !ln.isAdjustment) return ln;
         const merged = { ...ln, ...patch };
         if (patch.brokerable === true && !ln.brokerable) {
           merged.brokeragePct = getContactBrokeragePct();
