@@ -542,12 +542,17 @@ export const deleteContact = async (id) => {
 export const fetchContactForOnboarding = async (token) => {
   const { data, error } = await supabase.rpc("fetch_contact_for_onboarding", { t: token });
   if (error) {
+    // Distinguish backend failure from "token doesn't exist". The page can
+    // show a different message ("backend down — try later") for the former
+    // instead of "expired link" which makes admin chase a non-issue.
     console.warn("fetch_contact_for_onboarding RPC failed (run the SQL migration?):", error);
-    return null;
+    const e = new Error(error.message || "RPC failed");
+    e.code = "RPC_ERROR";
+    throw e;
   }
   // RPC RETURNS TABLE → array result; LIMIT 1 in SQL means 0 or 1 row
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return null;
+  if (!row) return null; // null = legitimately no match (token revoked / wrong)
   return {
     id: row.id,
     type: row.type,

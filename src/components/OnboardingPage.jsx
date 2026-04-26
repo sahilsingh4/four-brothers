@@ -59,10 +59,21 @@ export const OnboardingPage = ({ token }) => {
     (async () => {
       try {
         const data = await fetchContactForOnboarding(token);
-        if (!data) setError("Invalid or expired link. Ask the dispatcher for a new one.");
-        else setContact(data);
-      } catch {
-        setError("Failed to load — please try again.");
+        if (!data) {
+          // Real "token doesn't match a contact" case — link revoked or wrong.
+          setError("Invalid or expired link. Ask the dispatcher for a new one.");
+        } else {
+          setContact(data);
+        }
+      } catch (e) {
+        // Backend / network failure — different message so the contact
+        // doesn't think their link is bad when really the server is down
+        // or the SQL migration wasn't run.
+        if (e?.code === "RPC_ERROR") {
+          setError("Server error loading your link — try again in a minute, or ask the dispatcher to refresh.");
+        } else {
+          setError("Failed to load — check your connection and try again.");
+        }
       } finally {
         setLoading(false);
       }

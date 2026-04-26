@@ -391,7 +391,11 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
         payStatementNumber,  // v19b Session J: shared across all FBs in this pay run
       };
 
-      // Distribute the amount across each FB proportionally to its gross
+      // Distribute the amount across each FB proportionally to its gross.
+      // CRITICAL: numerator + denominator must use the SAME field (adjustedGross
+      // when present, else gross) — previously the sum used adjustedGross while
+      // the share used raw gross, which silently double-paid subs whenever
+      // adjustments were applied.
       const grossByFb = fbs.map((x) => x.adjustedGross !== undefined ? x.adjustedGross : x.gross);
       const grossSum = grossByFb.reduce((s, v) => s + v, 0) || 1;
       const totalAmt = Number(form.amount);
@@ -400,7 +404,7 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
       const paidFbs = [];
       for (let i = 0; i < fbs.length; i++) {
         const entry = fbs[i];
-        const share = grossSum > 0 ? (entry.gross / grossSum) * totalAmt : totalAmt / fbs.length;
+        const share = grossSum > 0 ? (grossByFb[i] / grossSum) * totalAmt : totalAmt / fbs.length;
         const updatedFb = {
           ...entry.fb,
           ...stamp,

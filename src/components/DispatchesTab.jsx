@@ -11,6 +11,7 @@ import {
 import {
   fetchDispatches, updateDispatch, deleteDispatch, recoverDispatch,
   fetchFreightBills, deleteFreightBill, recoverFreightBill, logAudit,
+  insertContact,
 } from "../db";
 import { Lightbox } from "./Lightbox";
 import { QRCodeBlock } from "./QRCodeBlock";
@@ -1289,12 +1290,17 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           updatedAt: new Date().toISOString(),
                         };
                         try {
-                          await setContacts([newCustomer, ...contacts]);
-                          // After save, we don't have the real id locally yet (setContacts
-                          // returns the saved row but the contacts prop won't update until
-                          // the next render). Just stash the name on the draft so save still
-                          // works; on re-open the dropdown will have the real customer.
-                          setDraft({ ...draft, clientName: name.trim(), clientId: "" });
+                          // Insert directly so we get the real DB-assigned ID
+                          // back synchronously and can attach it to the order
+                          // draft. Previously we used the setContacts wrapper
+                          // which doesn't return the saved row, so the order
+                          // saved with clientId: "" and a stranded clientName.
+                          const { id: _drop, ...rest } = newCustomer;
+                          const saved = await insertContact(rest);
+                          // Splice the new contact into local state so the
+                          // dropdown refreshes immediately with the real ID.
+                          await setContacts([saved, ...contacts]);
+                          setDraft({ ...draft, clientName: saved.companyName || saved.contactName || name.trim(), clientId: saved.id });
                           onToast?.("✓ CUSTOMER ADDED");
                         } catch (e) {
                           console.warn("add customer failed:", e);
