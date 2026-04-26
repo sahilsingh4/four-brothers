@@ -4,6 +4,10 @@
 export const fmt$ = (n) =>
   `$${(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Quantity formatter for invoice/payroll line item tables — bare 2-decimal
+// number, no currency. Used by InvoicesTab + PayrollTab PDF generators.
+export const fmtQty = (n) => Number(n || 0).toFixed(2);
+
 export const fmtDate = (iso) => {
   if (!iso) return "—";
   try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); }

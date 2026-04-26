@@ -1270,16 +1270,6 @@ export const fetchBids = async () => {
   return (data || []).map(bidFromDB);
 };
 
-export const fetchDeletedBids = async () => {
-  const { data, error } = await supabase
-    .from("bids")
-    .select("*")
-    .not("deleted_at", "is", null)
-    .order("deleted_at", { ascending: false });
-  if (error) { console.error("fetchDeletedBids:", error); return []; }
-  return (data || []).map(bidFromDB);
-};
-
 export const insertBid = async (bid) => {
   const { data, error } = await supabase
     .from("bids")
@@ -1319,19 +1309,6 @@ export const deleteBid = async (id, { deletedBy = "admin", reason = "" } = {}) =
     })
     .eq("id", id);
   if (error) { console.error("deleteBid (soft):", error); throw error; }
-};
-
-export const recoverBid = async (id) => {
-  const { error } = await supabase
-    .from("bids")
-    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
-    .eq("id", id);
-  if (error) { console.error("recoverBid:", error); throw error; }
-};
-
-export const hardDeleteBid = async (id) => {
-  const { error } = await supabase.from("bids").delete().eq("id", id);
-  if (error) { console.error("hardDeleteBid:", error); throw error; }
 };
 
 export const subscribeToBids = (callback) => {
@@ -1410,15 +1387,6 @@ export const fetchAuditLog = async ({ entityId = null, actionType = null, limit 
   const { data, error } = await q;
   if (error) { console.error("fetchAuditLog:", error); return []; }
   return (data || []).map(auditFromDB);
-};
-
-// Optionally call on app boot to purge logs older than 90 days
-export const purgeOldAuditLogs = async () => {
-  try {
-    const { error } = await supabase.rpc("purge_old_audit_logs");
-    if (error) { console.warn("purgeOldAuditLogs:", error.message); return 0; }
-    return 1;
-  } catch (e) { console.warn("purgeOldAuditLogs threw:", e?.message); return 0; }
 };
 
 // ========== TESTIMONIALS (v22 Session T) ==========

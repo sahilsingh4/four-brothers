@@ -17,11 +17,12 @@ import {
   seedHoursForFb,
   billableHoursForInvoice,
   contactBrokeragePct,
-  fmt$,
   canDeleteDispatch,
   canDeleteFreightBill,
   canDeleteInvoice,
 } from "./math";
+// fmt$ moved to utils.js (math.js had a duplicate export, removed for DRY).
+import { fmt$ } from "./utils";
 
 // ============================================================================
 // hoursFromTimes

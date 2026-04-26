@@ -793,9 +793,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const smsDispatch = (dispatch, assignment, phone) => {
     if (!phone) { onToast("NO PHONE NUMBER"); return; }
     const text = buildDispatchText(dispatch, assignment);
-    const cleanPhone = phone.replace(/[^0-9+]/g, "");
-    const url = `sms:${cleanPhone}?&body=${encodeURIComponent(text)}`;
-    window.location.href = url;
+    window.location.href = buildSMSLink(phone, text);
   };
 
   // Index freight bills by dispatchId once so inline lookups are O(1)
@@ -1014,10 +1012,9 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                       const text = buildDispatchText(dispatch, a);
                       const phone = contact?.phone || "";
                       const email = contact?.email || "";
-                      const cleanPhone = phone.replace(/[^0-9+]/g, "");
-                      const smsHref = cleanPhone ? `sms:${cleanPhone}?&body=${encodeURIComponent(text)}` : null;
                       const subject = `Dispatch — Order #${dispatch.code} · ${dispatch.date || ""}`;
-                      const mailHref = email ? `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` : null;
+                      const smsHref = phone ? buildSMSLink(phone, text) : null;
+                      const mailHref = email ? buildEmailLink(email, subject, text) : null;
 
                       return (
                         <div key={a.aid} style={{ border: "1.5px solid var(--steel)", background: "#FFF", padding: 12 }}>
@@ -1082,11 +1079,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                 <FileText size={12} style={{ marginRight: 4 }} /> COPY
                               </button>
                               {/* v23 Session W: Dedicated Upload Link button — sends just the /submit URL */}
-                              {cleanPhone && (() => {
+                              {phone && (() => {
                                 const origin = `${window.location.origin}${window.location.pathname}`;
                                 const uploadUrl = `${origin}#/submit/${dispatch.code}/a/${a.aid}`;
                                 const uploadMsg = `${company?.name || "4 Brothers Trucking"} — Order #${dispatch.code}\n\nWhen your loads are done, upload your freight bill here:\n\n${uploadUrl}\n\nThanks!`;
-                                const uploadSmsHref = `sms:${cleanPhone}?&body=${encodeURIComponent(uploadMsg)}`;
+                                const uploadSmsHref = buildSMSLink(phone, uploadMsg);
                                 return (
                                   <a
                                     href={uploadSmsHref}

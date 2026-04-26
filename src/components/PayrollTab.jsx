@@ -8,7 +8,7 @@ import {
   AlertTriangle, Banknote, Briefcase, Building2, CheckCircle2, ChevronDown,
   DollarSign, Download, Edit2, FileDown, Printer, RefreshCw, Search, Trash2, User, X,
 } from "lucide-react";
-import { fmt$, nextLineId } from "../utils";
+import { fmt$, fmtQty, nextLineId } from "../utils";
 import { logAudit } from "../db";
 import { FBEditModal } from "./FBEditModal";
 import { FBTraceModal } from "./FBTraceModal";
@@ -23,7 +23,6 @@ import { FBTraceModal } from "./FBTraceModal";
 const generatePayStubPDF = ({ subName, subKind, subId, fbs, payRecord, allDispatches, company, contact, statementNumber = null }) => {
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
-  const fmtQty = (n) => Number(n || 0).toFixed(2);
   const methodLabel = { check: "Check", ach: "ACH / Bank Transfer", cash: "Cash", zelle: "Zelle", venmo: "Venmo", other: "Other" };
   const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
   const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
