@@ -3,6 +3,7 @@ import { CheckCircle2, FileDown, Mail, MessageSquare, Phone, Search, Star, Trash
 import { buildSMSLink, buildEmailLink, compressOrReadFile } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { ContactDetailModal } from "./ContactDetailModal";
+import { FilledFormViewer } from "./FilledFormViewer";
 
 // Document kinds offered per contact type. CDL + medical_card trigger OCR
 // to suggest the expiration date. `template` (when present) points to a
@@ -16,7 +17,7 @@ const DRIVER_DOC_KINDS = [
   { v: "mvr", label: "Motor vehicle record" },
   { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf" },
   { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf" },
-  { v: "driver_app", label: "Driver application (DOT 391.21)" },
+  { v: "driver_app", label: "Driver application (DOT 391.21)", inlineForm: "driver_app" },
   { v: "direct_deposit", label: "Direct deposit form" },
   { v: "drug_test", label: "Drug test result" },
   { v: "other", label: "Other" },
@@ -454,6 +455,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
 // the public link returns "Invalid or expired".
 const REQUIRED_KEY = (type) => `fbt:requiredDocs:${type}`;
 const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
+  const [viewingForm, setViewingForm] = useState(null); // { formKey, values, completedAt }
   const [pendingKind, setPendingKind] = useState(kinds[0]?.v || "other");
   const [busy, setBusy] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -742,9 +744,24 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
           {docs.map((d) => {
             const isPdf = /\.pdf$/i.test(d.fileName || "") || (d.dataUrl || "").startsWith("data:application/pdf");
             const isImage = !!d.dataUrl && !isPdf;
+            // Filled-form docs (kind ending in `_form`) carry a formData
+            // object instead of a dataUrl. Render them with a green
+            // "FILLED FORM" tile + a View button that opens FilledFormViewer.
+            const isFilledForm = !!d.formData && /_form$/.test(d.kind || "");
+            const formKey = isFilledForm ? d.kind.replace(/_form$/, "") : null;
             return (
             <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 10, background: "#FFF", border: "1px solid var(--line)", borderRadius: 4 }}>
-              {isImage ? (
+              {isFilledForm ? (
+                <button
+                  type="button"
+                  onClick={() => setViewingForm({ formKey, values: d.formData, completedAt: d.uploadedAt })}
+                  style={{ width: 88, height: 88, background: "#F0FDF4", border: "1px solid var(--good)", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--good)" }}
+                  title="View filled form"
+                >
+                  <CheckCircle2 size={24} />
+                  <div className="fbt-mono" style={{ fontSize: 9, fontWeight: 700, marginTop: 4, textAlign: "center", padding: "0 4px" }}>FILLED<br/>FORM</div>
+                </button>
+              ) : isImage ? (
                 <a href={d.dataUrl} target="_blank" rel="noopener noreferrer" title="Click to view full-size">
                   <img src={d.dataUrl} alt="" style={{ width: 88, height: 88, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 4, cursor: "pointer", display: "block" }} />
                 </a>
@@ -761,7 +778,7 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>{d.label || labelFor(d.kind)}</div>
                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 3 }}>
-                  {d.fileName || "—"}
+                  {isFilledForm ? "Filled & signed in-app" : (d.fileName || "—")}
                 </div>
                 {(d.expiryDate || d.uploadedAt) && (
                   <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
@@ -771,15 +788,27 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
                   </div>
                 )}
               </div>
-              <a
-                href={d.dataUrl}
-                download={d.fileName || `${d.kind}-${d.id}`}
-                className="btn-ghost"
-                style={{ padding: "4px 8px", fontSize: 10, textDecoration: "none" }}
-                title="Download"
-              >
-                <FileDown size={11} />
-              </a>
+              {isFilledForm ? (
+                <button
+                  type="button"
+                  onClick={() => setViewingForm({ formKey, values: d.formData, completedAt: d.uploadedAt })}
+                  className="btn-ghost"
+                  style={{ padding: "4px 10px", fontSize: 11 }}
+                  title="View filled form"
+                >
+                  VIEW
+                </button>
+              ) : (
+                <a
+                  href={d.dataUrl}
+                  download={d.fileName || `${d.kind}-${d.id}`}
+                  className="btn-ghost"
+                  style={{ padding: "4px 8px", fontSize: 10, textDecoration: "none" }}
+                  title="Download"
+                >
+                  <FileDown size={11} />
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => removeDoc(d.id)}
@@ -792,6 +821,15 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
             );
           })}
         </div>
+      )}
+      {viewingForm && (
+        <FilledFormViewer
+          formKey={viewingForm.formKey}
+          values={viewingForm.values}
+          completedAt={viewingForm.completedAt}
+          contactName={draft.companyName || draft.contactName}
+          onClose={() => setViewingForm(null)}
+        />
       )}
     </div>
   );
