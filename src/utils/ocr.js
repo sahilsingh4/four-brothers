@@ -53,11 +53,16 @@ const parseFields = (text, kind = "scale_ticket") => {
   // Tonnage — prefer "NET" weight if present (gross - tare). Look for:
   //   "NET ... 25.40 TONS"  or  "NET WT 25.40"  or  "25.40 TON" near "NET"
   // Tesseract often misreads decimals; we accept 1-3 decimal places.
+  // Sanity range tightened from 0..200 to 5..50 — a dump-truck load is
+  // 10-30T typical and Tesseract sometimes drops the decimal (reads
+  // "21.5T" as "215T") which would silently overwrite a correct entry.
+  const SANE_MIN = 5;
+  const SANE_MAX = 50;
   const netNearby = /NET[^.\n]{0,30}?(\d{1,3}(?:\.\d{1,3})?)\s*(?:T|TON|TONS|TN)?\b/;
   const m2 = upper.match(netNearby);
   if (m2) {
     const v = Number(m2[1]);
-    if (v > 0 && v < 200) out.tonnage = v; // sanity bound (a dump truck is 10-30T typical)
+    if (v >= SANE_MIN && v <= SANE_MAX) out.tonnage = v;
   }
   // Fallback: standalone "NN.NN TON" without NET keyword
   if (out.tonnage == null) {
@@ -65,7 +70,7 @@ const parseFields = (text, kind = "scale_ticket") => {
     const m3 = upper.match(tonRx);
     if (m3) {
       const v = Number(m3[1]);
-      if (v > 0 && v < 200) out.tonnage = v;
+      if (v >= SANE_MIN && v <= SANE_MAX) out.tonnage = v;
     }
   }
   return out;

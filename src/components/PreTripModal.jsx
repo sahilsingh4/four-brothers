@@ -88,6 +88,20 @@ export const PreTripModal = ({ truckNumber, driverName, onSubmit, onClose, mode 
         </div>
 
         <div style={{ padding: 16, display: "grid", gap: 8 }}>
+          {/* Mark-all-OK shortcut — driver hits this when nothing's wrong
+              and skips tapping 12 buttons individually. They can still
+              flip a single item to DEFECT after if needed. */}
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => setResults(Object.fromEntries(ITEMS.map((i) => [i.id, "ok"])))}
+              className="btn-ghost"
+              style={{ fontSize: 11, padding: "4px 10px" }}
+              title="Mark every item OK at once. Flip any individual one to DEFECT after if needed."
+            >
+              ✓ MARK ALL OK
+            </button>
+          </div>
           {ITEMS.map((item) => {
             const result = results[item.id];
             return (
