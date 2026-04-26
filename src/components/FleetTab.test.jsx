@@ -8,6 +8,25 @@ vi.mock("../utils", async (importOriginal) => {
   return { ...orig, storageSet: vi.fn().mockResolvedValue() };
 });
 
+// FleetTab now reaches into Supabase for per-truck compliance docs. Mock the
+// db module so the test doesn't need a live connection. Each helper is a
+// no-op resolving to an empty result — fine for the existing rendering
+// tests, which don't exercise the doc upload flow.
+vi.mock("../db", () => ({
+  COMPLIANCE_DOC_TYPES: [
+    { key: "registration", label: "Registration", appliesTo: "truck" },
+    { key: "truck_insurance", label: "Truck Insurance", appliesTo: "truck" },
+  ],
+  fetchComplianceDocs: vi.fn().mockResolvedValue([]),
+  insertComplianceDoc: vi.fn().mockResolvedValue({}),
+  updateComplianceDoc: vi.fn().mockResolvedValue({}),
+  deleteComplianceDoc: vi.fn().mockResolvedValue(true),
+  uploadComplianceFile: vi.fn().mockResolvedValue({ filePath: "x", fileName: "x", fileSize: 0, fileMime: "" }),
+  getComplianceFileUrl: vi.fn().mockResolvedValue("https://example.com/x"),
+  deleteComplianceFile: vi.fn().mockResolvedValue(undefined),
+  getComplianceStatus: () => ({ status: "no_date", daysUntilExpiry: null, severity: 0 }),
+}));
+
 import { FleetTab } from "./FleetTab";
 
 describe("<FleetTab />", () => {
