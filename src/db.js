@@ -1527,13 +1527,23 @@ export const fetchSubPayByToken = async (token) => {
 
 // Known document types with human-readable labels
 export const COMPLIANCE_DOC_TYPES = [
-  { key: "drug_test",         label: "Drug Test / Consortium",    appliesTo: "driver" },
-  { key: "medical_card",      label: "Medical Card / DOT Physical", appliesTo: "driver" },
-  { key: "mvr_license",       label: "MVR / Driver License",      appliesTo: "driver" },
-  { key: "coi",               label: "Certificate of Insurance",  appliesTo: "sub" },
-  { key: "additional_insured", label: "Additional Insured",       appliesTo: "sub" },
-  { key: "truck_inspection",  label: "DOT / BIT Inspection",      appliesTo: "truck" },
-  { key: "other",             label: "Other",                      appliesTo: "any" },
+  { key: "drug_test",          label: "Drug Test / Consortium",     appliesTo: "driver" },
+  { key: "medical_card",       label: "Medical Card / DOT Physical", appliesTo: "driver" },
+  { key: "mvr_license",        label: "MVR / Driver License",       appliesTo: "driver" },
+  { key: "coi",                label: "Certificate of Insurance",   appliesTo: "sub" },
+  { key: "additional_insured", label: "Additional Insured",         appliesTo: "sub" },
+  // Truck-level docs — uploaded against fleet units. The cop-roadside
+  // portal (future PR) shows these. Driver PII (CDL, medical) is
+  // intentionally NOT in this list because the truck portal renders
+  // appliesTo="truck" docs only.
+  { key: "registration",       label: "Registration",                appliesTo: "truck" },
+  { key: "truck_insurance",    label: "Truck Insurance",             appliesTo: "truck" },
+  { key: "truck_inspection",   label: "DOT / BIT Inspection",        appliesTo: "truck" },
+  { key: "smog_cert",          label: "Smog Certificate",            appliesTo: "truck" },
+  { key: "ifta",               label: "IFTA",                        appliesTo: "truck" },
+  { key: "plate_sticker",      label: "Plate Sticker",               appliesTo: "truck" },
+  { key: "loan_doc",           label: "Loan / Title",                appliesTo: "truck" },
+  { key: "other",              label: "Other",                       appliesTo: "any" },
 ];
 
 // Compute status + days remaining from expiry_date. Called client-side.

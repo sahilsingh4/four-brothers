@@ -1,6 +1,17 @@
-import { useState, useMemo } from "react";
-import { AlertTriangle, Plus, Trash2, Truck, Wrench, X } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { AlertTriangle, Download, FileText, Plus, Trash2, Truck, Upload, Wrench, X } from "lucide-react";
 import { storageSet, fmtDate } from "../utils";
+import {
+  COMPLIANCE_DOC_TYPES,
+  fetchComplianceDocs,
+  insertComplianceDoc,
+  updateComplianceDoc,
+  deleteComplianceDoc,
+  uploadComplianceFile,
+  getComplianceFileUrl,
+  deleteComplianceFile,
+  getComplianceStatus,
+} from "../db";
 
 // Helper: days from today (negative = expired)
 const daysUntil = (dateStr) => {
@@ -403,6 +414,8 @@ const UnitDetailModal = ({ unit, onClose, onUpdate, onAddMaintenance, onRemoveMa
           <button onClick={onClose} className="btn-ghost" style={{ padding: "6px 8px" }}><X size={16} /></button>
         </div>
         <div style={{ padding: 22, display: "grid", gap: 16 }}>
+          <TruckDocumentsSection truckUnit={unit.unit} />
+
           {/* Mileage + service config */}
           <div className="fbt-card" style={{ padding: 14 }}>
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>▸ Service planning</div>
@@ -453,6 +466,214 @@ const UnitDetailModal = ({ unit, onClose, onUpdate, onAddMaintenance, onRemoveMa
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// Per-truck documents — registration, insurance, loan, plate sticker, IFTA,
+// smog, DOT/BIT inspection. Stored in Supabase Storage (compliance-docs
+// bucket) + compliance_documents row keyed by truck_unit. The storage layer
+// is the same one driver compliance docs *will* use; using it here too sets
+// up the eventual public roadside portal cleanly.
+const TRUCK_DOC_KINDS = COMPLIANCE_DOC_TYPES.filter((t) => t.appliesTo === "truck");
+
+const docTypeLabel = (key) => {
+  const found = COMPLIANCE_DOC_TYPES.find((t) => t.key === key);
+  return found ? found.label : key;
+};
+
+const expirySeverityChipBg = (sev) => ({
+  4: "var(--safety)",       // expired
+  3: "var(--safety)",       // critical (≤30d)
+  2: "var(--warn-fg)",      // warning (≤60d)
+  1: "var(--concrete)",     // upcoming (≤90d)
+  0: "var(--good)",         // current
+}[sev] || "var(--concrete)");
+
+const TruckDocumentsSection = ({ truckUnit }) => {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [pendingType, setPendingType] = useState(TRUCK_DOC_KINDS[0]?.key || "other");
+  const [customLabel, setCustomLabel] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [issuedDate, setIssuedDate] = useState("");
+
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      const all = await fetchComplianceDocs();
+      // Filter to this truck. truck_unit is matched as a string — fleet
+      // unit numbers are typically short (e.g. "103") and stored as text.
+      setDocs(all.filter((d) => d.truckUnit === truckUnit));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch on mount + whenever the truck changes. The set-state inside an
+  // effect is unavoidable here (fetch is async) — same pattern as
+  // ReviewTab's pendingFB consume. The fetch is guarded by truckUnit so
+  // it doesn't fire for unsaved/blank truck rows.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(() => {
+    if (truckUnit) refresh();
+  }, [truckUnit]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  const upload = async (file) => {
+    if (!truckUnit) { alert("Set a unit number on this truck first."); return; }
+    if (!file) return;
+    setBusy(true);
+    try {
+      const meta = await uploadComplianceFile(file);
+      if (!meta) { alert("Upload failed — try again."); return; }
+      const row = await insertComplianceDoc({
+        truckUnit,
+        docType: pendingType,
+        customTypeLabel: pendingType === "other" ? (customLabel || null) : null,
+        issuedDate: issuedDate || null,
+        expiryDate: expiryDate || null,
+        filePath: meta.filePath,
+        fileName: meta.fileName,
+        fileSize: meta.fileSize,
+        fileMime: meta.fileMime,
+      });
+      setDocs((prev) => [...prev, row]);
+      setExpiryDate("");
+      setIssuedDate("");
+      setCustomLabel("");
+    } catch (e) {
+      console.error("upload truck doc:", e);
+      alert("Upload failed: " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const view = async (doc) => {
+    if (!doc.filePath) return;
+    const url = await getComplianceFileUrl(doc.filePath);
+    if (!url) { alert("Couldn't generate a view link — try again."); return; }
+    window.open(url, "_blank");
+  };
+
+  const remove = async (doc) => {
+    if (!confirm(`Delete ${doc.fileName || "this doc"}? Soft-deletes the record (recoverable for 30 days) and removes the file from storage.`)) return;
+    try {
+      // Soft-delete the row first (so list updates immediately even if
+      // the storage delete is slow/fails — record is recoverable, file
+      // is the easier piece to re-upload).
+      await deleteComplianceDoc(doc.id);
+      if (doc.filePath) await deleteComplianceFile(doc.filePath);
+      setDocs((prev) => prev.filter((d) => d.id !== doc.id));
+    } catch (e) {
+      console.error("delete truck doc:", e);
+      alert("Delete failed: " + (e?.message || "unknown error"));
+    }
+  };
+
+  const updateExpiry = async (doc, newDate) => {
+    try {
+      await updateComplianceDoc(doc.id, { ...doc, expiryDate: newDate || null });
+      setDocs((prev) => prev.map((d) => d.id === doc.id ? { ...d, expiryDate: newDate || null } : d));
+    } catch (e) {
+      console.error("update expiry:", e);
+    }
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 14 }}>
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>
+        ▸ Documents · {loading ? "loading…" : `${docs.length} on file`}
+      </div>
+
+      {/* Upload form */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, padding: 10, background: "var(--surface)", border: "1px solid var(--line)", marginBottom: 10 }}>
+        <div>
+          <label className="fbt-label">Type</label>
+          <select className="fbt-input" value={pendingType} onChange={(e) => setPendingType(e.target.value)}>
+            {TRUCK_DOC_KINDS.map((k) => (<option key={k.key} value={k.key}>{k.label}</option>))}
+            <option value="other">Other</option>
+          </select>
+        </div>
+        {pendingType === "other" && (
+          <div>
+            <label className="fbt-label">Label</label>
+            <input className="fbt-input" value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="e.g. PrePass" />
+          </div>
+        )}
+        <div>
+          <label className="fbt-label">Issued</label>
+          <input className="fbt-input" type="date" value={issuedDate} onChange={(e) => setIssuedDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="fbt-label">Expires</label>
+          <input className="fbt-input" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <label className="btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.7 : 1 }}>
+            <Upload size={14} /> {busy ? "Uploading…" : "Upload file"}
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              style={{ display: "none" }}
+              disabled={busy}
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* List */}
+      {loading ? null : docs.length === 0 ? (
+        <div style={{ padding: 14, textAlign: "center", color: "var(--concrete)", fontSize: 12 }}>
+          No documents yet. Upload registration, insurance, DOT inspection, etc.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 6 }}>
+          {docs.map((d) => {
+            const status = getComplianceStatus(d.expiryDate);
+            return (
+              <div key={d.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, padding: 10, border: "1px solid var(--line)", background: "#FFF", alignItems: "center" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <FileText size={14} style={{ color: "var(--concrete)" }} />
+                    <strong style={{ fontSize: 13 }}>
+                      {d.docType === "other" ? (d.customTypeLabel || "Other") : docTypeLabel(d.docType)}
+                    </strong>
+                    {d.expiryDate && (
+                      <span className="chip" style={{ background: expirySeverityChipBg(status.severity), color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                        {status.status === "expired" ? "EXPIRED" : status.status === "no_date" ? "NO DATE" : `${status.daysUntilExpiry}d`}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {d.fileName || "—"}{d.fileSize ? ` · ${Math.round(d.fileSize / 1024)} KB` : ""}{d.expiryDate ? ` · expires ${fmtDate(d.expiryDate)}` : ""}
+                  </div>
+                  {/* Inline expiry edit — useful if user uploaded without a date and wants to add it */}
+                  <div style={{ marginTop: 4 }}>
+                    <input
+                      type="date"
+                      value={d.expiryDate || ""}
+                      onChange={(e) => updateExpiry(d, e.target.value)}
+                      style={{ padding: "2px 6px", fontSize: 11, border: "1px solid var(--line)" }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button className="btn-ghost" onClick={() => view(d)} style={{ padding: "4px 10px", fontSize: 11 }} title="Open in a new tab">
+                    <Download size={12} />
+                  </button>
+                  <button className="btn-danger" onClick={() => remove(d)} style={{ padding: "4px 10px" }} title="Delete">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
