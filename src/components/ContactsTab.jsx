@@ -1,28 +1,34 @@
 import { useState, useEffect, useMemo } from "react";
 import { CheckCircle2, FileDown, Mail, MessageSquare, Phone, Search, Star, Trash2, Upload, UserPlus, Users, X } from "lucide-react";
-import { buildSMSLink, buildEmailLink, compressImage } from "../utils";
+import { buildSMSLink, buildEmailLink, compressOrReadFile } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { ContactDetailModal } from "./ContactDetailModal";
 
 // Document kinds offered per contact type. CDL + medical_card trigger OCR
-// to suggest the expiration date; everything else is just upload + label.
+// to suggest the expiration date. `template` (when present) points to a
+// blank fillable form the contact can download, fill in, and re-upload —
+// these are the official IRS / USCIS PDFs hosted on the agency websites
+// so we don't need to bundle anything ourselves.
 const DRIVER_DOC_KINDS = [
   { v: "cdl", label: "CDL (driver's license)", ocrExpiry: true },
   { v: "medical_card", label: "Medical card / DOT physical", ocrExpiry: true },
+  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "mvr", label: "Motor vehicle record" },
-  { v: "i9", label: "I-9" },
-  { v: "w4", label: "W-4" },
+  { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf" },
+  { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf" },
+  { v: "driver_app", label: "Driver application (DOT 391.21)" },
   { v: "direct_deposit", label: "Direct deposit form" },
   { v: "drug_test", label: "Drug test result" },
   { v: "other", label: "Other" },
 ];
 const SUB_DOC_KINDS = [
-  { v: "w9", label: "W-9" },
+  { v: "w9", label: "W-9 (taxpayer ID)", template: "https://www.irs.gov/pub/irs-pdf/fw9.pdf" },
   { v: "coi", label: "Certificate of insurance (COI)" },
   { v: "operating_authority", label: "Operating authority / MC certificate" },
   { v: "ic_agreement", label: "Independent contractor agreement" },
   { v: "1099", label: "1099 (year-end)" },
   { v: "workers_comp", label: "Workers' comp waiver/certificate" },
+  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "other", label: "Other" },
 ];
 
@@ -357,7 +363,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
             </div>
           )}
 
-          {(draft.type === "sub" || draft.type === "driver") && (
+          {draft.type === "sub" && (
             <>
               <div>
                 <label className="fbt-label">USDOT / MC # / CA MCP</label>
@@ -492,7 +498,7 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
     setBusy(true);
     try {
       const file = files[0];
-      const dataUrl = await compressImage(file, 1800, 0.8);
+      const dataUrl = await compressOrReadFile(file, 1800, 0.8);
       const newDoc = {
         id: Date.now() + Math.random(),
         kind: pendingKind,
@@ -658,6 +664,23 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
           />
         </label>
       </div>
+
+      {/* Blank-form download — for kinds that have an official template
+          (I-9 USCIS, W-4 + W-9 IRS), give the admin a one-click way to
+          fetch the latest agency PDF so they can email/print it for the
+          contact to fill in. */}
+      {(() => {
+        const k = kinds.find((x) => x.v === pendingKind);
+        if (!k?.template) return null;
+        return (
+          <div style={{ marginBottom: 10, padding: 8, background: "#FEF3C7", border: "1px solid var(--hazard)", borderRadius: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard-deep)", fontWeight: 700 }}>BLANK FORM:</span>
+            <a href={k.template} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--steel)", textDecoration: "underline" }}>
+              Download official {k.label} (PDF)
+            </a>
+          </div>
+        );
+      })()}
 
       {docs.length === 0 ? (
         <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>

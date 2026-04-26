@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, FileDown, Trash2, Upload } from "lucide-react";
 import { fetchContactForOnboarding, updateContactDocsByToken } from "../db";
-import { compressImage } from "../utils";
+import { compressOrReadFile } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { GlobalStyles } from "./GlobalStyles";
 import { Logo } from "./Logo";
@@ -18,20 +18,23 @@ import { Logo } from "./Logo";
 const DRIVER_DOC_KINDS = [
   { v: "cdl", label: "CDL (driver's license)", ocrExpiry: true },
   { v: "medical_card", label: "Medical card / DOT physical", ocrExpiry: true },
+  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "mvr", label: "Motor vehicle record" },
-  { v: "i9", label: "I-9" },
-  { v: "w4", label: "W-4" },
+  { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf" },
+  { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf" },
+  { v: "driver_app", label: "Driver application (DOT 391.21)" },
   { v: "direct_deposit", label: "Direct deposit form" },
   { v: "drug_test", label: "Drug test result" },
   { v: "other", label: "Other" },
 ];
 const SUB_DOC_KINDS = [
-  { v: "w9", label: "W-9" },
+  { v: "w9", label: "W-9 (taxpayer ID)", template: "https://www.irs.gov/pub/irs-pdf/fw9.pdf" },
   { v: "coi", label: "Certificate of insurance (COI)" },
   { v: "operating_authority", label: "Operating authority / MC certificate" },
   { v: "ic_agreement", label: "Independent contractor agreement" },
   { v: "1099", label: "1099 (year-end)" },
   { v: "workers_comp", label: "Workers' comp waiver/certificate" },
+  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "other", label: "Other" },
 ];
 
@@ -110,7 +113,7 @@ export const OnboardingPage = ({ token }) => {
     setBusy(true);
     try {
       const file = files[0];
-      const dataUrl = await compressImage(file, 1800, 0.8);
+      const dataUrl = await compressOrReadFile(file, 1800, 0.8);
       const newDoc = {
         id: Date.now() + Math.random(),
         kind: effectiveKind,
@@ -225,6 +228,24 @@ export const OnboardingPage = ({ token }) => {
                 <option key={k.v} value={k.v}>{k.label}</option>
               ))}
             </select>
+            {/* Blank-form download link — appears whenever the selected kind
+                has an official template (I-9, W-4, W-9). Lets the contact
+                fetch the latest agency PDF, fill it on their phone (most
+                PDF viewers support form fill), then upload it back. */}
+            {(() => {
+              const k = kinds.find((x) => x.v === effectiveKind);
+              if (!k?.template) return null;
+              return (
+                <a
+                  href={k.template}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: "var(--steel)", textDecoration: "underline", padding: "6px 0" }}
+                >
+                  ▸ Download blank {k.label} (PDF)
+                </a>
+              );
+            })()}
             <label
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -237,7 +258,6 @@ export const OnboardingPage = ({ token }) => {
               <input
                 type="file"
                 accept="image/*,application/pdf"
-                capture="environment"
                 style={{ display: "none" }}
                 disabled={busy}
                 onChange={(e) => handleUpload(e.target.files)}
