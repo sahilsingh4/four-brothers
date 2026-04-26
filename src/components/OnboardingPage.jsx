@@ -24,7 +24,7 @@ const DRIVER_DOC_KINDS = [
   { v: "mvr", label: "Motor vehicle record" },
   { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf", inlineForm: "i9" },
   { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf", inlineForm: "w4" },
-  { v: "driver_app", label: "Driver application (DOT 391.21)" },
+  { v: "driver_app", label: "Driver application (DOT 391.21)", inlineForm: "driver_app" },
   { v: "direct_deposit", label: "Direct deposit form", inlineForm: "direct_deposit" },
   { v: "drug_test", label: "Drug test result" },
   { v: "other", label: "Other" },
