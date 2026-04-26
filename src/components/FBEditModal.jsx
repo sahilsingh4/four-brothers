@@ -948,6 +948,15 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               const contact = contacts.find((c) => c.id === contactId);
               if (!contact) { onToast("CONTACT NOT FOUND"); return; }
               if (!setDispatches) { onToast("⚠ CANNOT REASSIGN — DISPATCH UPDATE NOT AVAILABLE"); return; }
+              // Refuse reassignment when the FB is locked by a billing or
+              // pay-statement snapshot. Reassigning would silently change
+              // who owes (or got paid) on a record that's already been
+              // settled — breaks the lock invariant. Admin must override
+              // the lock first (which is logged) if they really need to.
+              if (billingSnapshotLocked || paySnapshotLocked) {
+                onToast("⚠ FB IS LOCKED — OVERRIDE LOCK ABOVE BEFORE REASSIGNING");
+                return;
+              }
 
               // Check if an assignment for this contact already exists on this dispatch — reuse it if so
               const existing = assignments.find((a) => a.kind === kind && a.contactId === contactId);

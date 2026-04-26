@@ -701,7 +701,7 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
             accept="image/*,application/pdf"
             style={{ display: "none" }}
             disabled={busy}
-            onChange={(e) => addDoc(e.target.files)}
+            onChange={(e) => { addDoc(e.target.files); e.target.value = ""; }}
           />
         </label>
       </div>

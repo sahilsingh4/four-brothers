@@ -336,7 +336,7 @@ export const OnboardingPage = ({ token }) => {
                 accept="image/*,application/pdf"
                 style={{ display: "none" }}
                 disabled={busy}
-                onChange={(e) => handleUpload(e.target.files)}
+                onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }}
               />
             </label>
             {savedAt && !saveError && (

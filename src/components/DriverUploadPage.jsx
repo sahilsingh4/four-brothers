@@ -250,6 +250,15 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
       return;
     }
 
+    // Block submit when no usable photos are attached — the freight bill
+    // is the proof-of-haul; submitting blank means the admin has to chase
+    // the driver later. Mirrors AdminAddFbModal's required-photo check.
+    const usablePhotos = photos.filter((p) => !p.status || p.status === "done");
+    if (usablePhotos.length === 0) {
+      setSubmitError("Attach at least one photo of the freight bill or scale ticket before submitting.");
+      return;
+    }
+
     setSubmitError("");
     setSubmitting(true);
     try {

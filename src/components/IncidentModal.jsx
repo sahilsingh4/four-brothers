@@ -184,7 +184,7 @@ export const IncidentModal = ({ truckNumber, driverName, onSubmit, onClose }) =>
             <label className="fbt-label">Photos</label>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", border: "2px dashed var(--concrete)", cursor: "pointer", fontSize: 12 }}>
               📷 ADD PHOTOS
-              <input type="file" accept="image/*" multiple capture="environment" style={{ display: "none" }} onChange={(e) => handlePhotos(e.target.files)} />
+              <input type="file" accept="image/*" multiple capture="environment" style={{ display: "none" }} onChange={(e) => { handlePhotos(e.target.files); e.target.value = ""; }} />
             </label>
             {busy && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginLeft: 8 }}>Compressing…</span>}
             {photos.length > 0 && (

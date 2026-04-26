@@ -79,13 +79,35 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
 
       if (fbsToStamp.length > 0) {
         const baseSum = fbsToStamp.reduce((s, fb) => s + fbEstimate(fb), 0);
+        // Atomicity: stamp every FB BEFORE touching the invoice. If any
+        // stamp throws, abort and surface the error — don't write the
+        // invoice payment_history because that would leave the system in
+        // a state where the invoice says "paid" but only some FBs reflect
+        // it (visible inconsistency the admin can't easily clean up). A
+        // retry is safe: editFreightBill is idempotent for the same
+        // amount, and any FBs already stamped just get the same value.
+        const stampFailures = [];
         for (const fb of fbsToStamp) {
           const share = baseSum > 0 ? (fbEstimate(fb) / baseSum) * amt : amt / fbsToStamp.length;
-          await editFreightBill(fb.id, {
-            ...fb,
-            customerPaidAt: new Date(form.date).toISOString(),
-            customerPaidAmount: Number(share.toFixed(2)),
-          });
+          try {
+            await editFreightBill(fb.id, {
+              ...fb,
+              customerPaidAt: new Date(form.date).toISOString(),
+              customerPaidAmount: Number(share.toFixed(2)),
+            });
+          } catch (e) {
+            console.error("Stamp FB customerPaidAt failed:", fb.id, e);
+            stampFailures.push({ fbNum: fb.freightBillNumber || fb.id, err: e?.message || String(e) });
+          }
+        }
+        if (stampFailures.length > 0) {
+          alert(
+            `Couldn't stamp ${stampFailures.length} of ${fbsToStamp.length} freight bill${fbsToStamp.length !== 1 ? "s" : ""} — payment NOT recorded.\n\nFailed:\n` +
+            stampFailures.map((f) => `  • FB #${f.fbNum}: ${f.err}`).join("\n") +
+            "\n\nNothing has been written. Try again in a moment, or check your network."
+          );
+          setSaving(false);
+          return;
         }
       }
 
