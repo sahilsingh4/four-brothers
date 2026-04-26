@@ -1,7 +1,7 @@
 import { Edit2, Trash2, X } from "lucide-react";
 import { fmt$, fmtDate } from "../utils";
 
-export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills, invoices, onEdit, onDelete, onClose }) => {
+export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills, invoices, onEdit, onDelete, onClose, onJumpToDispatch }) => {
   const customer = contacts.find((c) => c.id === project.customerId);
   const projectDispatches = dispatches.filter((d) => d.projectId === project.id);
   const projectBills = freightBills.filter((fb) => projectDispatches.some((d) => d.id === fb.dispatchId));
@@ -105,8 +105,20 @@ export const ProjectDetailModal = ({ project, contacts, dispatches, freightBills
               <div style={{ display: "grid", gap: 6 }}>
                 {projectDispatches.slice(0, 15).map((d) => {
                   const bills = freightBills.filter((fb) => fb.dispatchId === d.id);
+                  // Audit #8: each dispatch row jumps to that dispatch in
+                  // the Dispatches tab when the parent threaded the
+                  // onJumpToDispatch callback. Falls back to a static row
+                  // (existing behavior) if the prop isn't passed.
+                  const clickable = !!onJumpToDispatch;
                   return (
-                    <div key={d.id} style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", fontSize: 12, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <div
+                      key={d.id}
+                      onClick={clickable ? () => { onClose(); onJumpToDispatch(d.id); } : undefined}
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      title={clickable ? `Open ${d.code} in Dispatches tab` : ""}
+                      style={{ padding: 10, border: "1px solid var(--steel)", background: "#FFF", fontSize: 12, display: "flex", justifyContent: "space-between", gap: 8, cursor: clickable ? "pointer" : "default" }}
+                    >
                       <div><strong>#{d.code}</strong> · {d.jobName}</div>
                       <div style={{ color: "var(--concrete)" }}>{fmtDate(d.date)} · {bills.length}/{d.trucksExpected} FB</div>
                     </div>

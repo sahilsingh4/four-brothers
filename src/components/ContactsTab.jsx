@@ -968,6 +968,7 @@ export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches
           contact={viewing}
           dispatches={dispatches}
           freightBills={freightBills}
+          invoices={invoices}
           company={company}
           onEdit={() => { setEditing(viewing); setShowModal(true); }}
           onDelete={() => remove(viewing.id)}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Edit2, Link2, Lock, Mail, MessageSquare, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import { fmtDate, buildSMSLink, buildEmailLink } from "../utils";
 
-export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, onDelete, onClose, onToast, onSaveContact }) => {
+export const ContactDetailModal = ({ contact, dispatches, freightBills, invoices = [], onEdit, onDelete, onClose, onToast, onSaveContact }) => {
   const history = useMemo(() => {
     return dispatches.filter((d) => d.subContractorId === contact.id || (d.subContractor && contact.companyName && d.subContractor.toLowerCase() === contact.companyName.toLowerCase()));
   }, [dispatches, contact]);
@@ -11,6 +11,27 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
   const totalTons = history.reduce((s, d) => {
     return s + freightBills.filter((fb) => fb.dispatchId === d.id).reduce((ss, fb) => ss + (Number(fb.tonnage) || 0), 0);
   }, 0);
+
+  // Audit #7: roll up invoice + revenue for the contact. For customers we
+  // sum invoices billed-to them; for subs we sum invoices that included
+  // FBs from any of their dispatches. Both bring "are they current?" and
+  // "how much have they earned/owed" into one view without leaving the
+  // modal.
+  const isCustomer = contact?.type === "customer";
+  const linkedInvoices = useMemo(() => {
+    if (isCustomer) {
+      return invoices.filter((i) => i.billToContactId === contact.id);
+    }
+    // Sub / driver: invoices whose FBs come from dispatches in this contact's history
+    const dispatchIds = new Set(history.map((d) => d.id));
+    return invoices.filter((inv) => (inv.freightBillIds || []).some((fbId) => {
+      const fb = freightBills.find((f) => f.id === fbId);
+      return fb && dispatchIds.has(fb.dispatchId);
+    }));
+  }, [invoices, history, freightBills, isCustomer, contact.id]);
+  const totalBilled = linkedInvoices.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const totalPaid = linkedInvoices.reduce((s, i) => s + (Number(i.amountPaid) || 0), 0);
+  const totalOutstanding = totalBilled - totalPaid;
 
   // Portal link generation for customer contacts
   const generateToken = () => {
@@ -239,6 +260,31 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
                 )}
               </div>
             </>
+          )}
+
+          {/* Audit #7: invoice + revenue rollup. Only show when there's
+              data — keeps the modal clean for new contacts. */}
+          {linkedInvoices.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 14, padding: 12, background: "#F5F5F4", border: "1px solid var(--line)" }}>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>INVOICES</div>
+                <div className="fbt-display" style={{ fontSize: 18 }}>{linkedInvoices.length}</div>
+              </div>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>{isCustomer ? "BILLED" : "INVOICED"}</div>
+                <div className="fbt-display" style={{ fontSize: 18 }}>${totalBilled.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              <div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>PAID</div>
+                <div className="fbt-display" style={{ fontSize: 18, color: "var(--good)" }}>${totalPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              </div>
+              {totalOutstanding > 0.01 && (
+                <div>
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>OUTSTANDING</div>
+                  <div className="fbt-display" style={{ fontSize: 18, color: "var(--safety)" }}>${totalOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Job history */}
