@@ -297,3 +297,24 @@ export const compressImage = (file, maxDim = 1600, quality = 0.7) =>
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+
+// Read any file as a data URL — used for PDFs and other non-image documents
+// the compliance flow accepts. Bypasses canvas/Image (which only handle
+// rasters) so a PDF select doesn't silently fail at img.onerror.
+export const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+// Pick the right encoder for a doc upload — image files run through the
+// resizer/JPEG-encoder; everything else (PDF, doc, etc.) is base64'd raw.
+export const compressOrReadFile = async (file, maxDim, quality) => {
+  if (file && file.type && file.type.startsWith("image/")) {
+    try { return await compressImage(file, maxDim, quality); }
+    catch { /* fall through to raw read */ }
+  }
+  return await readFileAsDataUrl(file);
+};
