@@ -44,10 +44,41 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
   });
   const [showTaxId, setShowTaxId] = useState(false); // masked by default
 
+  // Normalize identifiers so "John Smith" / "john smith" / "Jonh  smith"
+  // match without false-positives on minor whitespace / case.
+  const normName = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const normPhone = (s) => String(s || "").replace(/\D/g, "");
+  const normEmail = (s) => String(s || "").toLowerCase().trim();
+
   const save = async () => {
     if (!draft.companyName && !draft.contactName) {
       alert("Add at least a company name or contact name.");
       return;
+    }
+    // Pre-save duplicate check — flag any existing contact (any type) that
+    // matches the draft on company name, contact name, phone, or email.
+    // Skip self when editing.
+    const myCompany = normName(draft.companyName);
+    const myContact = normName(draft.contactName);
+    const myPhone = normPhone(draft.phone);
+    const myPhone2 = normPhone(draft.phone2);
+    const myEmail = normEmail(draft.email);
+    const matches = (contacts || []).filter((c) => {
+      if (c.id && c.id === draft.id) return false;
+      if (myCompany && (normName(c.companyName) === myCompany)) return true;
+      if (myContact && (normName(c.contactName) === myContact)) return true;
+      if (myPhone && [normPhone(c.phone), normPhone(c.phone2)].includes(myPhone)) return true;
+      if (myPhone2 && [normPhone(c.phone), normPhone(c.phone2)].includes(myPhone2)) return true;
+      if (myEmail && normEmail(c.email) === myEmail) return true;
+      return false;
+    });
+    if (matches.length > 0) {
+      const list = matches.slice(0, 3).map((c) => `• ${c.companyName || c.contactName} (${c.type})${c.phone ? ` · ${c.phone}` : ""}`).join("\n");
+      const more = matches.length > 3 ? `\n+ ${matches.length - 3} more` : "";
+      const ok = window.confirm(
+        `Possible duplicate — an existing contact matches:\n\n${list}${more}\n\nSave anyway?`
+      );
+      if (!ok) return;
     }
     await onSave({
       ...draft,
@@ -814,6 +845,35 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
   const customersCount = contacts.filter((c) => c.type === "customer").length;
   const brokersCount = contacts.filter((c) => c.type === "broker").length;
 
+  // Build a duplicate-ID set across the whole contacts list (any type).
+  // Two contacts are flagged as duplicates when they share any of:
+  // company name, contact name, phone, alt phone, or email — normalized
+  // for case + whitespace + non-digits-on-phones. Indexed once per
+  // contacts change so the chip render is O(1) per row.
+  const duplicateIds = useMemo(() => {
+    const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const normPh = (s) => String(s || "").replace(/\D/g, "");
+    const buckets = new Map(); // key → [ids]
+    const push = (key, id) => {
+      if (!key) return;
+      const arr = buckets.get(key) || [];
+      arr.push(id);
+      buckets.set(key, arr);
+    };
+    contacts.forEach((c) => {
+      if (norm(c.companyName)) push(`co:${norm(c.companyName)}`, c.id);
+      if (norm(c.contactName)) push(`nm:${norm(c.contactName)}`, c.id);
+      if (normPh(c.phone)) push(`ph:${normPh(c.phone)}`, c.id);
+      if (normPh(c.phone2)) push(`ph:${normPh(c.phone2)}`, c.id);
+      if (norm(c.email)) push(`em:${norm(c.email)}`, c.id);
+    });
+    const dups = new Set();
+    buckets.forEach((ids) => {
+      if (ids.length > 1) ids.forEach((id) => dups.add(id));
+    });
+    return dups;
+  }, [contacts]);
+
   return (
     <div style={{ display: "grid", gap: 24 }}>
       {showModal && (
@@ -917,6 +977,11 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
                             : c.type === "broker" ? "BROKER"
                             : "DRIVER"}
                         </span>
+                        {duplicateIds.has(c.id) && (
+                          <span className="chip" title="Another contact shares the same company name, person, phone, or email. Open both and merge or delete one." style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
+                            ⚠ POSSIBLE DUP
+                          </span>
+                        )}
                         {jobCount > 0 && <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>{jobCount} job{jobCount !== 1 ? "s" : ""}</span>}
                       </div>
                       <div className="fbt-display" style={{ fontSize: 18, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -991,9 +1056,9 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
                         onClick={(e) => { e.stopPropagation(); duplicateContact(c); }}
                         className="btn-ghost"
                         style={{ padding: "6px 10px", fontSize: 10, flex: 1, justifyContent: "center", display: "flex", alignItems: "center" }}
-                        title="Create a new driver/sub from this one's defaults (rate, method, brokerage). Identity fields stay blank."
+                        title="Start a new contact pre-filled with this one's defaults (rate, method, brokerage). Identity fields stay blank."
                       >
-                        <UserPlus size={11} style={{ marginRight: 4 }} /> DUPLICATE
+                        <UserPlus size={11} style={{ marginRight: 4 }} /> CLONE DEFAULTS
                       </button>
                     )}
                   </div>
