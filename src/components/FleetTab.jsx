@@ -411,7 +411,7 @@ const UnitDetailModal = ({ unit, onClose, onUpdate, onAddMaintenance, onRemoveMa
             <div className="fbt-display" style={{ fontSize: 18, margin: 0 }}>{unit.unit} · service history</div>
             <div style={{ fontSize: 12, color: "var(--concrete)", marginTop: 2 }}>{unit.type}{unit.licensePlate ? ` · ${unit.licensePlate}` : ""}</div>
           </div>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: "6px 8px" }}><X size={16} /></button>
+          <button onClick={onClose} className="btn-ghost" style={{ padding: "10px 12px" }} title="Close"><X size={20} /></button>
         </div>
         <div style={{ padding: 22, display: "grid", gap: 16 }}>
           <TruckDocumentsSection truckUnit={unit.unit} />

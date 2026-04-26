@@ -91,6 +91,27 @@ export const GlobalStyles = () => (
     }
     .btn-danger:hover { background: var(--safety); color: #FFF; }
 
+    /* Icon button intended to live on a dark (var(--steel)) header bar.
+       Off-white tile with a dark icon for high contrast — replaces the
+       low-contrast cream-on-steel ghost buttons that were hard to tap on
+       phones (and read as dull on the blue-tinted slate). 40x40 hits the
+       Apple HIG 44-pt touch target with the inner icon centered. */
+    .btn-icon-on-dark {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px;
+      background: #FFF; color: var(--steel);
+      border: 1px solid rgba(255,255,255,0.85);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s, transform 0.08s;
+      padding: 0;
+    }
+    .btn-icon-on-dark:hover { background: #F1F5F9; }
+    .btn-icon-on-dark:active { transform: translateY(1px); }
+    .btn-icon-on-dark.danger { color: var(--safety); }
+    .btn-icon-on-dark.danger:hover { background: #FEE2E2; }
+    .btn-icon-on-dark:disabled { opacity: 0.5; cursor: not-allowed; }
+
     /* === Inputs === */
     .fbt-input, .fbt-select, .fbt-textarea {
       width: 100%;

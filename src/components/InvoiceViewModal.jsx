@@ -209,7 +209,7 @@ export const InvoiceViewModal = ({ invoice, freightBills, contacts = [], dispatc
                 <Camera size={12} style={{ marginRight: 4, verticalAlign: "middle" }} /> PHOTOS ({invoicePhotoCount})
               </button>
             )}
-            <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+            <button onClick={onClose} className="btn-icon-on-dark" title="Close"><X size={20} /></button>
           </div>
         </div>
 

@@ -18,8 +18,8 @@ const daysUntilDate = (dateStr) => {
 };
 
 export const HomeTab = ({
-  freightBills, dispatches, contacts, projects, invoices, quotes, bids = [], fleet = [], company,
-  onJumpTab,
+  freightBills, dispatches, contacts, setContacts, projects, invoices, quotes, bids = [], fleet = [], company,
+  onJumpTab, onToast,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -452,14 +452,18 @@ export const HomeTab = ({
             {missingFbs.map((m, idx) => {
               const phone = m.contact?.phone;
               const email = m.contact?.email;
-              const smsMsg = encodeURIComponent(
+              // Include the per-assignment upload link so the driver can tap
+              // straight in — pasted plain (not URL-encoded again) so iOS
+              // Messages renders it as a tappable link.
+              const uploadUrl = `${window.location.origin}${window.location.pathname}#/submit/${m.dispatch.code || ""}/a/${m.assignment.aid}`;
+              const reminderText =
                 `Hi ${m.name}, this is 4 Brothers Trucking. ` +
                 `We're missing your freight bill for order ${m.dispatch.code || ""} ` +
                 `on ${new Date(m.dispatch.date).toLocaleDateString()}. ` +
-                `Please upload it ASAP. Thanks!`
-              );
+                `Upload here: ${uploadUrl}`;
+              const smsMsg = encodeURIComponent(reminderText);
               const emailSubj = encodeURIComponent(`Missing freight bill — order ${m.dispatch.code || ""}`);
-              const emailBody = smsMsg;
+              const emailBody = encodeURIComponent(reminderText);
               return (
                 <div key={`${m.dispatch.id}-${m.assignment.aid}-${idx}`} style={{ padding: 10, background: m.daysLate >= 2 ? "#FEE2E2" : "#FEF3C7", border: `1.5px solid ${m.daysLate >= 2 ? "var(--safety)" : "var(--hazard-deep)"}`, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
                   <div>
@@ -954,12 +958,16 @@ export const HomeTab = ({
           empty="All required docs on file ✓"
         >
           {complianceMissing.slice(0, 5).map(({ contact, total, have, missing }) => (
-            <Row
+            <ComplianceRow
               key={contact.id}
-              left={<><strong>{contact.companyName || contact.contactName}</strong> · {contact.type}</>}
-              sub={`${missing.length} missing: ${missing.slice(0, 3).join(", ")}${missing.length > 3 ? `, +${missing.length - 3} more` : ""}`}
-              right={`${have} / ${total}`}
-              onClick={() => onJumpTab("contacts", contact.id)}
+              contact={contact}
+              total={total}
+              have={have}
+              missing={missing}
+              setContacts={setContacts}
+              onJumpTab={onJumpTab}
+              onToast={onToast}
+              companyName={company?.name}
             />
           ))}
           {complianceMissing.length > 5 && <Row left={`+ ${complianceMissing.length - 5} more…`} />}
@@ -1171,6 +1179,74 @@ export const HomeTab = ({
             })}
         </SectionCard>
       </div>
+    </div>
+  );
+};
+
+// One row in the "Compliance packet — missing docs" section. Displays the
+// contact's status and offers a TEXT button that opens the SMS app
+// pre-filled with the missing-doc list + the contact's onboarding link.
+// If the contact doesn't have an upload portal token yet, the button
+// generates one and persists it via setContacts before opening SMS.
+const ComplianceRow = ({ contact, total, have, missing, setContacts, onJumpTab, onToast, companyName }) => {
+  const phone = contact?.phone;
+  const handleText = async (e) => {
+    e.stopPropagation();
+    if (!phone) return;
+    let token = contact.portalToken;
+    let needsSave = false;
+    if (!token || !contact.portalEnabled) {
+      // Generate a fresh URL-safe token if missing, mark portalEnabled
+      const bytes = new Uint8Array(15);
+      crypto.getRandomValues(bytes);
+      token = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, "").slice(0, 20);
+      needsSave = true;
+    }
+    if (needsSave && setContacts) {
+      try {
+        setContacts((prev) =>
+          prev.map((c) => c.id === contact.id ? { ...c, portalToken: token, portalEnabled: true } : c)
+        );
+      } catch (err) {
+        console.warn("enable portal from home compliance row:", err);
+        onToast?.("⚠ Couldn't enable upload link — try from Contacts");
+      }
+    }
+    const url = `${window.location.origin}${window.location.pathname}#/onboard/${token}`;
+    const body = encodeURIComponent(
+      `Hi ${contact.contactName || contact.companyName || "there"}, this is ${companyName || "4 Brothers Trucking"}. ` +
+      `We still need: ${missing.join(", ")}. ` +
+      `Upload here: ${url}`
+    );
+    window.location.href = `sms:${phone}?body=${body}`;
+  };
+
+  return (
+    <div
+      onClick={() => onJumpTab && onJumpTab("contacts", contact.id)}
+      style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--line)", cursor: "pointer" }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13 }}>
+          <strong>{contact.companyName || contact.contactName}</strong>
+          <span style={{ color: "var(--concrete)" }}> · {contact.type}</span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {missing.length} missing: {missing.slice(0, 3).join(", ")}{missing.length > 3 ? `, +${missing.length - 3} more` : ""}
+        </div>
+      </div>
+      {phone && (
+        <button
+          type="button"
+          onClick={handleText}
+          className="btn-primary"
+          style={{ padding: "5px 10px", fontSize: 10 }}
+          title={`Text ${contact.contactName || contact.companyName} with the upload link`}
+        >
+          📱 TEXT
+        </button>
+      )}
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", whiteSpace: "nowrap" }}>{have} / {total}</div>
     </div>
   );
 };
