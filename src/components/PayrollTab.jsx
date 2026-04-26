@@ -795,6 +795,22 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
     });
   }, [freightBills, paidFilter, fromDate, toDate]);
 
+  // Pre-PR-#101 freight bills don't have assignmentId stamped, so the gross
+  // calculator can't pin them to a specific roster slot — they get silently
+  // skipped in the payroll grid below. Surface them in a banner so admin
+  // can fix the assignment in Review (or clean up legacy records) instead
+  // of wondering why payroll totals look low.
+  const orphanFbs = useMemo(() => {
+    return filteredFbs.filter((fb) => {
+      if (fb.assignmentId) return false;  // properly attributed
+      const d = dispatches.find((x) => x.id === fb.dispatchId);
+      // Only flag when the dispatch DOES have assignments (meaning the FB
+      // could-and-should have one stamped). A dispatch with no roster
+      // means the admin chose freeform entry — not an orphan.
+      return d && Array.isArray(d.assignments) && d.assignments.length > 0;
+    });
+  }, [filteredFbs, dispatches]);
+
   // Calculate gross for an FB based on its assignment's pay rate + method
   const calcGross = (fb, dispatch) => {
     const assignment = (dispatch?.assignments || []).find((a) => a.aid === fb.assignmentId);
@@ -2045,6 +2061,22 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
           </div>
         </div>
       </div>
+
+      {/* Orphan FBs banner — pre-PR-#101 freight bills with no
+          assignmentId can't be paid (no roster slot to attribute to). */}
+      {orphanFbs.length > 0 && (
+        <div style={{ padding: 12, background: "var(--warn-bg, #FEF3C7)", border: "2px solid var(--hazard-deep)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ fontSize: 12 }}>
+            <strong>⚠ {orphanFbs.length} freight bill{orphanFbs.length !== 1 ? "s" : ""} not paid — no assignment</strong>
+            <div style={{ fontSize: 11, color: "var(--concrete)", marginTop: 3 }}>
+              Approved FB{orphanFbs.length !== 1 ? "s" : ""} from before assignment-tracking was added. Open each in Review and re-pick the driver/sub from the &quot;ASSIGNED TO&quot; row to bring it back into payroll.
+            </div>
+          </div>
+          <span className="chip" style={{ background: "var(--hazard-deep)", color: "#FFF", fontSize: 10, padding: "3px 8px" }}>
+            FB#{(orphanFbs[0].freightBillNumber || orphanFbs[0].id)}{orphanFbs.length > 1 ? `, +${orphanFbs.length - 1} more` : ""}
+          </span>
+        </div>
+      )}
 
       {/* Grouped results */}
       {grouped.length === 0 ? (

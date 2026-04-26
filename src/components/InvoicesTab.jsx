@@ -922,7 +922,10 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           else qty = billableHoursForInvoice(fb);
         }
       }
-      subtotal += qty * fbRate;
+      // Round each line before accumulation so a long invoice doesn't drift
+      // by float-arithmetic noise (3 × 33.33 = 99.98999... etc). The modern
+      // billingLines path already does this; the legacy pre-v16 path did not.
+      subtotal += Number((qty * fbRate).toFixed(2));
 
       // Legacy billing adjustments
       billingAdjSum += (fb.billingAdjustments || []).reduce((s, x) => s + (Number(x.amount) || 0), 0);
