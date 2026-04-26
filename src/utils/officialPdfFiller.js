@@ -114,17 +114,35 @@ const tryCheck = (form, candidates) => {
   return false;
 };
 
+// Where to fetch the bundled fillable PDFs from. Prefer the local /public
+// path so we don't depend on the GitHub network at runtime; if that 404s
+// (Vercel deploy lag, dev without files copied, etc.), fall back to the
+// raw GitHub URL on main so the feature works the moment files land.
+const RAW_GH_BASE = "https://raw.githubusercontent.com/sahilsingh4/four-brothers/main/public/forms";
+
+const fetchPdfBytes = async (relPath) => {
+  // Try local /forms/<file>.pdf first
+  try {
+    const r = await fetch(relPath);
+    if (r.ok) return await r.arrayBuffer();
+  } catch { /* fall through to GH */ }
+  // Fallback to raw GitHub
+  const fileName = relPath.replace(/^\/forms\//, "");
+  const ghUrl = `${RAW_GH_BASE}/${fileName}`;
+  const r2 = await fetch(ghUrl);
+  if (!r2.ok) {
+    throw new Error(`Couldn't fetch ${relPath} (local + GitHub both failed: ${r2.status}). Confirm the file exists at public/forms/${fileName}.`);
+  }
+  return await r2.arrayBuffer();
+};
+
 // Fill the official PDF for `formKey` ("i9" / "w4" / "w9") with `formData`,
 // return a Uint8Array of the saved PDF. Throws if the PDF can't be fetched.
 export const fillOfficialPdf = async (formKey, formData) => {
   const cfg = fieldMaps[formKey];
   if (!cfg) throw new Error(`No field map for ${formKey}`);
 
-  const res = await fetch(cfg.pdfFile);
-  if (!res.ok) {
-    throw new Error(`Couldn't fetch ${cfg.pdfFile} (${res.status}). Run the README setup in /public/forms/.`);
-  }
-  const bytes = await res.arrayBuffer();
+  const bytes = await fetchPdfBytes(cfg.pdfFile);
   const doc = await PDFDocument.load(bytes);
   const form = doc.getForm();
 
