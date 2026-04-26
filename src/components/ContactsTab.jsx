@@ -48,36 +48,41 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
   // match without false-positives on minor whitespace / case.
   const normName = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
   const normPhone = (s) => String(s || "").replace(/\D/g, "");
-  const normEmail = (s) => String(s || "").toLowerCase().trim();
 
   const save = async () => {
     if (!draft.companyName && !draft.contactName) {
       alert("Add at least a company name or contact name.");
       return;
     }
-    // Pre-save duplicate check — flag any existing contact (any type) that
-    // matches the draft on company name, contact name, phone, or email.
-    // Skip self when editing.
+    // Pre-save duplicate check — only triggers when a NAME match is found
+    // (company name OR contact name). A name match alone is a soft warning.
+    // A name match PLUS a phone match is treated as a near-certain duplicate
+    // and prompts a stronger warning. Email-only / phone-only matches aren't
+    // flagged anymore (too noisy — shared family numbers, generic emails).
     const myCompany = normName(draft.companyName);
     const myContact = normName(draft.contactName);
     const myPhone = normPhone(draft.phone);
     const myPhone2 = normPhone(draft.phone2);
-    const myEmail = normEmail(draft.email);
+    const phoneMatch = (c) => {
+      const cPhones = [normPhone(c.phone), normPhone(c.phone2)].filter(Boolean);
+      if (myPhone && cPhones.includes(myPhone)) return true;
+      if (myPhone2 && cPhones.includes(myPhone2)) return true;
+      return false;
+    };
     const matches = (contacts || []).filter((c) => {
       if (c.id && c.id === draft.id) return false;
-      if (myCompany && (normName(c.companyName) === myCompany)) return true;
-      if (myContact && (normName(c.contactName) === myContact)) return true;
-      if (myPhone && [normPhone(c.phone), normPhone(c.phone2)].includes(myPhone)) return true;
-      if (myPhone2 && [normPhone(c.phone), normPhone(c.phone2)].includes(myPhone2)) return true;
-      if (myEmail && normEmail(c.email) === myEmail) return true;
-      return false;
+      const nameHit = (myCompany && normName(c.companyName) === myCompany)
+        || (myContact && normName(c.contactName) === myContact);
+      return nameHit;
     });
     if (matches.length > 0) {
+      const strongMatches = matches.filter(phoneMatch);
       const list = matches.slice(0, 3).map((c) => `• ${c.companyName || c.contactName} (${c.type})${c.phone ? ` · ${c.phone}` : ""}`).join("\n");
       const more = matches.length > 3 ? `\n+ ${matches.length - 3} more` : "";
-      const ok = window.confirm(
-        `Possible duplicate — an existing contact matches:\n\n${list}${more}\n\nSave anyway?`
-      );
+      const message = strongMatches.length > 0
+        ? `LIKELY DUPLICATE — same name AND phone as:\n\n${list}${more}\n\nThis is almost certainly the same person/company. Save anyway?`
+        : `Same name as an existing contact:\n\n${list}${more}\n\nDifferent phone — could be a different person with the same name. Save anyway?`;
+      const ok = window.confirm(message);
       if (!ok) return;
     }
     await onSave({
@@ -90,7 +95,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
     onClose();
   };
 
-  const typeLabel = { sub: "Sub Hauler", driver: "Driver", customer: "Customer", broker: "Broker" }[draft.type] || "Contact";
+  const typeLabel = { sub: "Sub Hauler", driver: "Driver", customer: "Customer", broker: "Broker", other: "Other Company" }[draft.type] || "Contact";
   const companyLabel = draft.type === "driver" ? "Full Name" : "Company Name";
   const companyPlaceholder = {
     sub: "ACME Trucking Inc.",
@@ -128,6 +133,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
                 <option value="driver">Driver</option>
                 <option value="customer">Customer</option>
                 <option value="broker">Broker</option>
+                <option value="other">Other company</option>
               </select>
             </div>
             <div>
@@ -768,7 +774,7 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
 // generateCustomerStatementPDF is injected as a prop so this module doesn't
 // have to carry the ~300-line PDF generator. App.jsx still owns it;
 // extracting the PDF helper is a future refactor.
-export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, invoices = [], company, onToast, generateCustomerStatementPDF }) => {
+export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches, freightBills, invoices = [], company, onToast, generateCustomerStatementPDF }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -845,32 +851,30 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
   const customersCount = contacts.filter((c) => c.type === "customer").length;
   const brokersCount = contacts.filter((c) => c.type === "broker").length;
 
-  // Build a duplicate-ID set across the whole contacts list (any type).
-  // Two contacts are flagged as duplicates when they share any of:
-  // company name, contact name, phone, alt phone, or email — normalized
-  // for case + whitespace + non-digits-on-phones. Indexed once per
-  // contacts change so the chip render is O(1) per row.
+  // Build a duplicate-ID set — only flag rows that share BOTH a name
+  // (company OR contact) AND a phone (primary OR alt) with another contact.
+  // Pure name match alone (e.g. two different "John Smith"s with different
+  // phones) doesn't get flagged, since that's expected. Both-axis matching
+  // catches the actual duplicate-entry mistakes without false positives.
   const duplicateIds = useMemo(() => {
     const norm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
     const normPh = (s) => String(s || "").replace(/\D/g, "");
-    const buckets = new Map(); // key → [ids]
-    const push = (key, id) => {
-      if (!key) return;
-      const arr = buckets.get(key) || [];
-      arr.push(id);
-      buckets.set(key, arr);
-    };
-    contacts.forEach((c) => {
-      if (norm(c.companyName)) push(`co:${norm(c.companyName)}`, c.id);
-      if (norm(c.contactName)) push(`nm:${norm(c.contactName)}`, c.id);
-      if (normPh(c.phone)) push(`ph:${normPh(c.phone)}`, c.id);
-      if (normPh(c.phone2)) push(`ph:${normPh(c.phone2)}`, c.id);
-      if (norm(c.email)) push(`em:${norm(c.email)}`, c.id);
-    });
     const dups = new Set();
-    buckets.forEach((ids) => {
-      if (ids.length > 1) ids.forEach((id) => dups.add(id));
-    });
+    for (let i = 0; i < contacts.length; i++) {
+      for (let j = i + 1; j < contacts.length; j++) {
+        const a = contacts[i], b = contacts[j];
+        const aNames = [norm(a.companyName), norm(a.contactName)].filter(Boolean);
+        const bNames = [norm(b.companyName), norm(b.contactName)].filter(Boolean);
+        const aPhones = [normPh(a.phone), normPh(a.phone2)].filter(Boolean);
+        const bPhones = [normPh(b.phone), normPh(b.phone2)].filter(Boolean);
+        const nameHit = aNames.some((n) => bNames.includes(n));
+        const phoneHit = aPhones.some((p) => bPhones.includes(p));
+        if (nameHit && phoneHit) {
+          dups.add(a.id);
+          dups.add(b.id);
+        }
+      }
+    }
     return dups;
   }, [contacts]);
 
@@ -929,18 +933,55 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
         </div>
       </div>
 
+      {/* Sub-tab strip — Drivers / Sub Haulers / Customers / Brokers /
+          Other / All. Replaces the old dropdown filter. Counts show how
+          many records of each type exist. */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {[
+          { v: "all", label: "All", count: contacts.length },
+          { v: "driver", label: "Drivers", count: driversCount },
+          { v: "sub", label: "Sub Haulers", count: subsCount },
+          { v: "customer", label: "Customers", count: customersCount },
+          { v: "broker", label: "Brokers", count: brokersCount },
+          { v: "other", label: "Other companies", count: contacts.filter((c) => c.type === "other").length },
+        ].map((t) => (
+          <button
+            key={t.v}
+            type="button"
+            onClick={() => setTypeFilter(t.v)}
+            style={{
+              padding: "6px 12px",
+              fontSize: 12,
+              fontWeight: 700,
+              border: `2px solid ${typeFilter === t.v ? "var(--steel)" : "var(--line)"}`,
+              background: typeFilter === t.v ? "var(--steel)" : "#FFF",
+              color: typeFilter === t.v ? "var(--cream)" : "var(--steel)",
+              cursor: "pointer",
+              borderRadius: 6,
+            }}
+          >
+            {t.label} <span style={{ opacity: 0.7, fontWeight: 400 }}>· {t.count}</span>
+          </button>
+        ))}
+      </div>
+
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
           <Search size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--concrete)" }} />
           <input className="fbt-input" style={{ paddingLeft: 38 }} placeholder="Search name, phone, notes…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select className="fbt-select" style={{ width: "auto" }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-          <option value="all">All Types</option>
-          <option value="customer">Customers Only</option>
-          <option value="sub">Subs Only</option>
-          <option value="driver">Drivers Only</option>
-          <option value="broker">Brokers Only</option>
-        </select>
+        {refreshContacts && (
+          <button
+            onClick={async () => {
+              await refreshContacts();
+              onToast?.("✓ REFRESHED");
+            }}
+            className="btn-ghost"
+            title="Pull latest contacts from the server (use this if a driver/sub uploaded docs via their link but you don't see them yet)"
+          >
+            ↻ REFRESH
+          </button>
+        )}
         <button onClick={() => { setEditing(null); setShowModal(true); }} className="btn-primary">
           <UserPlus size={16} /> NEW CONTACT
         </button>
@@ -958,7 +999,16 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
           {filtered.map((c) => {
             const jobCount = dispatches.filter((d) => d.subContractorId === c.id || (d.subContractor && c.companyName && d.subContractor.toLowerCase() === c.companyName.toLowerCase())).length;
             return (
-              <div key={c.id} className="fbt-card" style={{ padding: 0, overflow: "hidden", cursor: "pointer" }} onClick={() => setViewing(c)}>
+              <div key={c.id} className="fbt-card" style={{ padding: 0, overflow: "hidden", cursor: "pointer" }} onClick={async () => {
+                // Pull the latest version from DB before opening so any
+                // documents the contact uploaded via their public link
+                // (which doesn't trigger our local realtime if that's not
+                // enabled on the contacts table) show up immediately.
+                let fresh = null;
+                if (refreshContacts) { try { fresh = await refreshContacts(); } catch { /* noop */ } }
+                const updated = (fresh || contacts || []).find((x) => x.id === c.id) || c;
+                setViewing(updated);
+              }}>
                 <div className="hazard-stripe-thin" style={{ height: 6 }} />
                 <div style={{ padding: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
@@ -975,6 +1025,7 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
                           {c.type === "sub" ? "SUB"
                             : c.type === "customer" ? "CUSTOMER"
                             : c.type === "broker" ? "BROKER"
+                            : c.type === "other" ? "OTHER"
                             : "DRIVER"}
                         </span>
                         {duplicateIds.has(c.id) && (
