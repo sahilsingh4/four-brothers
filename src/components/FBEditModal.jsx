@@ -823,7 +823,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               Submitted {fb.submittedAt ? new Date(fb.submittedAt).toLocaleString() : "—"}
             </div>
           </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+          <button onClick={onClose} className="btn-icon-on-dark" title="Close"><X size={20} /></button>
         </div>
 
         <div style={{ padding: 24, display: "grid", gap: 14 }}>

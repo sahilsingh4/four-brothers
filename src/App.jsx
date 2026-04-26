@@ -5577,6 +5577,27 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
   const [pendingPaySubId, setPendingPaySubId] = useState(null); // Sub/driver id for Payroll tab
+
+  // When the admin has uploaded a custom company logo, swap the browser
+  // favicon + Apple home-screen icon to it. The static /favicon.svg stays
+  // as the fallback (used before login + during the first paint), so the
+  // brand-aligned default kicks in for new users; the custom logo takes
+  // over once company state hydrates.
+  useEffect(() => {
+    const url = company?.logoDataUrl;
+    if (!url) return;
+    const setLink = (rel) => {
+      let el = document.querySelector(`link[rel="${rel}"]`);
+      if (!el) {
+        el = document.createElement("link");
+        el.rel = rel;
+        document.head.appendChild(el);
+      }
+      el.href = url;
+    };
+    setLink("icon");
+    setLink("apple-touch-icon");
+  }, [company?.logoDataUrl]);
   const tabs = [
     { k: "home", l: "Home", ico: <Activity size={16} /> },
     { k: "dispatches", l: "Orders", ico: <ClipboardList size={16} /> },
@@ -5706,7 +5727,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         </div>
       </div>
       <div className="fbt-page-content" style={{ maxWidth: 1400, margin: "0 auto", padding: "20px 12px 80px" }}>
-        {tab === "home" && <HomeTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} quotes={quotes || []} bids={bids || []} fleet={fleet || []} company={company} onJumpTab={(k, payload) => {
+        {tab === "home" && <HomeTab freightBills={freightBills} dispatches={dispatches} contacts={contacts} setContacts={setContacts} projects={projects || []} invoices={invoices || []} quotes={quotes || []} bids={bids || []} fleet={fleet || []} company={company} onJumpTab={(k, payload) => {
           setTab(k);
           if (!payload) return;
           if (k === "dispatches") setPendingDispatch(payload);

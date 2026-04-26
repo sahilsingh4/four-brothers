@@ -87,9 +87,9 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, invoices
             )}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={onEdit} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "6px 12px", fontSize: 11 }}><Edit2 size={12} /></button>
-            <button onClick={onDelete} className="btn-danger" style={{ color: "var(--hazard)", borderColor: "var(--hazard)" }}><Trash2 size={12} /></button>
-            <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+            <button onClick={onEdit} className="btn-icon-on-dark" title="Edit contact"><Edit2 size={18} /></button>
+            <button onClick={onDelete} className="btn-icon-on-dark danger" title="Delete contact"><Trash2 size={18} /></button>
+            <button onClick={onClose} className="btn-icon-on-dark" title="Close"><X size={20} /></button>
           </div>
         </div>
 

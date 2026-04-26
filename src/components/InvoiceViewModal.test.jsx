@@ -106,7 +106,11 @@ describe("<InvoiceViewModal />", () => {
         onToast={vi.fn()}
       />
     );
-    await user.click(screen.getByRole("button", { name: /^CLOSE$/i }));
+    // Disambiguate from the new icon-only header X (which has title="Close").
+    // We're testing the bottom CLOSE button, which has visible text.
+    const buttons = screen.getAllByRole("button", { name: /^close$/i });
+    const bottomClose = buttons.find((b) => /close/i.test(b.textContent || ""));
+    await user.click(bottomClose);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
