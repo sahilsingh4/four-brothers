@@ -1077,6 +1077,15 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
                               <div style={{ fontSize: 9, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }} title={p.name}>
                                 {p.name}
                               </div>
+                              {/* B3: surface the actual error reason (compression
+                                  failed / file too big / unreadable image). The
+                                  full message is in the title attribute for
+                                  long-press inspection on phones. */}
+                              {isFailed && p.error && (
+                                <div title={p.error} style={{ fontSize: 8, color: "var(--safety)", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.2, maxWidth: "100%" }}>
+                                  {p.error}
+                                </div>
+                              )}
                               {isFailed && (
                                 <button
                                   type="button"

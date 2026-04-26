@@ -1988,9 +1988,14 @@ const FBArchiveModal = ({ freightBills, dispatches, contacts, projects, company,
                 <label className="fbt-label">Project</label>
                 <select className="fbt-select" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
                   <option value="">All projects</option>
-                  {(projects || []).map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {/* Filter to selected customer's projects when one is
+                      picked — otherwise the admin sees every project from
+                      every customer and has to scroll past unrelated ones. */}
+                  {(projects || [])
+                    .filter((p) => !customerId || String(p.customerId) === String(customerId))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                 </select>
               </div>
             </div>
@@ -5913,7 +5918,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
             onToast("⚠ CONVERT FAILED");
           }
         }} onToast={onToast} />}
-        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} freightBills={freightBills} onToast={onToast} />}
+        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} freightBills={freightBills} onJumpToContact={() => setTab("contacts")} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
         {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "recovery" && <RecoveryTab onToast={onToast} />}

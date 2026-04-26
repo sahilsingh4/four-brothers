@@ -2370,11 +2370,35 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
                     paid: "var(--good)", partial: "var(--hazard)",
                     overdue: "var(--safety)", outstanding: "var(--concrete)",
                   }[status];
+                  // Audit #9: surface the linked project so the admin can
+                  // see at a glance which project an invoice belongs to.
+                  // Falls back to the dispatch's project when invoice.projectId
+                  // isn't stamped (legacy invoices).
+                  const invFbsForRow = (inv.freightBillIds || []).map((id) => freightBills.find((fb) => fb.id === id)).filter(Boolean);
+                  const linkedProjectId = inv.projectId
+                    || (() => {
+                      const dIds = new Set(invFbsForRow.map((fb) => fb.dispatchId).filter((x) => x != null));
+                      for (const did of dIds) {
+                        const d = dispatches.find((x) => x.id === did);
+                        if (d?.projectId) return d.projectId;
+                      }
+                      return null;
+                    })();
+                  const linkedProject = linkedProjectId
+                    ? projects.find((p) => p.id === linkedProjectId)
+                    : null;
                   return (
                     <tr key={inv.invoiceNumber}>
                       <td><strong>{inv.invoiceNumber}</strong></td>
                       <td>{inv.invoiceDate}</td>
-                      <td>{inv.billToName}</td>
+                      <td>
+                        {inv.billToName}
+                        {linkedProject && (
+                          <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                            ▸ {linkedProject.name}
+                          </div>
+                        )}
+                      </td>
                       <td>{inv.freightBillIds?.length || 0}</td>
                       <td style={{ color: "var(--hazard-deep)", fontWeight: 700 }}>{fmt$(inv.total)}</td>
                       <td style={{ color: "var(--good)", fontWeight: 600 }}>{paid > 0 ? fmt$(paid) : "—"}</td>

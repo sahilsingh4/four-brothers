@@ -298,6 +298,14 @@ export const GlobalStyles = () => (
       .modal-body [style*="repeat(auto-fill"] {
         grid-template-columns: 1fr !important;
       }
+      /* Wide tables (Invoices list, Dispatches list) clip badly on a 375px
+         iPhone — let them scroll horizontally inside their container so
+         columns stay readable instead of wrapping into illegible stacks. */
+      .fbt-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
     }
     @media (max-width: 640px) {
       .nav-tab { padding: 6px 10px; font-size: 12px; gap: 5px; }

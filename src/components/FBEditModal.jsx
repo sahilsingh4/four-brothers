@@ -1003,6 +1003,23 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                   <div className="fbt-mono" style={{ fontSize: 11, color: kindColor, fontWeight: 700 }}>
                     🚚 ASSIGNED TO · {currentAssignment ? kindLabel : "UNASSIGNED"}
                   </div>
+                  {/* Audit #12: roster context badge — surfaces this FB's slot
+                      number in the dispatch's roster ("3 of 5") and the
+                      truck number, so admin can tell at a glance which
+                      assignment slot this load belongs to without leaving
+                      the modal. Only shows when the FB has a real
+                      assignmentId (legacy FBs without one stay quiet). */}
+                  {currentAssignment && (() => {
+                    const slotNumber = assignments.findIndex((a) => a.aid === currentAssignment.aid) + 1;
+                    const totalSlots = assignments.length;
+                    const truck = currentAssignment.truckNumber || fb.truckNumber || "—";
+                    const contactName = currentContact?.companyName || currentContact?.contactName || currentAssignment.name || "—";
+                    return (
+                      <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", whiteSpace: "nowrap" }}>
+                        SLOT {slotNumber} of {totalSlots} · T{truck} · {contactName}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* v18: cascading Kind → Contact pickers */}
