@@ -1648,3 +1648,107 @@ export const deleteComplianceFile = async (filePath) => {
     .remove([filePath]);
   if (error) console.error("deleteComplianceFile:", error);
 };
+
+// ========== FLEET PORTAL (truck roadside-share) ==========
+// Maps a truck's unit number to a public-share token so a driver can show
+// a cop their truck's registration / insurance / DOT inspection without
+// logging in. Backed by `fleet_portals` table + `fetch_truck_for_public`
+// RPC (run supabase/fleet_portals.sql once before this works) plus the
+// `truck-doc-signed-url` Edge Function for fetching individual files.
+
+// Read this truck's portal config (token + enabled flag). Returns null when
+// no row exists yet (truck has never been opened up to roadside sharing).
+export const fetchTruckPortal = async (truckUnit) => {
+  if (!truckUnit) return null;
+  const { data, error } = await supabase
+    .from("fleet_portals")
+    .select("truck_unit, portal_token, portal_enabled, created_at, updated_at")
+    .eq("truck_unit", truckUnit)
+    .maybeSingle();
+  if (error) { console.error("fetchTruckPortal:", error); return null; }
+  if (!data) return null;
+  return {
+    truckUnit: data.truck_unit,
+    portalToken: data.portal_token,
+    portalEnabled: !!data.portal_enabled,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+};
+
+// Create or refresh this truck's portal token. `token` is generated client-
+// side (see ContactDetailModal-style generator). Sets portal_enabled=true so
+// the link works the moment it's saved.
+export const upsertTruckPortal = async (truckUnit, token) => {
+  if (!truckUnit || !token) throw new Error("truckUnit + token required");
+  const row = {
+    truck_unit: truckUnit,
+    portal_token: token,
+    portal_enabled: true,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("fleet_portals")
+    .upsert(row, { onConflict: "truck_unit" })
+    .select()
+    .single();
+  if (error) { console.error("upsertTruckPortal:", error); throw error; }
+  return data;
+};
+
+// Disable (revoke) the link without deleting the row. Re-enabling later
+// keeps the same token, so admin can pause-and-resume sharing.
+export const setTruckPortalEnabled = async (truckUnit, enabled) => {
+  if (!truckUnit) throw new Error("truckUnit required");
+  const { error } = await supabase
+    .from("fleet_portals")
+    .update({ portal_enabled: !!enabled, updated_at: new Date().toISOString() })
+    .eq("truck_unit", truckUnit);
+  if (error) { console.error("setTruckPortalEnabled:", error); throw error; }
+};
+
+// Public read path used by the /#/truck/<token> portal page. Returns the
+// truck's unit number + array of compliance_documents rows. Driver PII docs
+// (CDL, medical) never appear here because they have null truck_unit.
+export const fetchTruckForPublic = async (token) => {
+  if (!token) return null;
+  const { data, error } = await supabase.rpc("fetch_truck_for_public", { p_token: token });
+  if (error) {
+    console.warn("fetch_truck_for_public RPC failed (run the SQL migration?):", error);
+    const e = new Error(error.message || "RPC failed");
+    e.code = "RPC_ERROR";
+    throw e;
+  }
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0) return null;  // unknown / disabled token
+  const truckUnit = rows[0].truck_unit;
+  // Filter out the LEFT JOIN's all-null row that appears when a truck has
+  // no docs yet (RPC returns 1 row with truck_unit + null doc fields).
+  const docs = rows
+    .filter((r) => r.doc_id != null)
+    .map((r) => ({
+      docId: r.doc_id,
+      docType: r.doc_type,
+      customTypeLabel: r.custom_type_label,
+      fileName: r.file_name,
+      filePath: r.file_path,
+      fileMime: r.file_mime,
+      expiryDate: r.expiry_date,
+      issuedDate: r.issued_date,
+    }));
+  return { truckUnit, docs };
+};
+
+// Calls the truck-doc-signed-url Edge Function to mint a fresh 60-second
+// signed URL for ONE doc. Public — only needs a valid portal token.
+export const fetchTruckDocSignedUrl = async (token, docId) => {
+  if (!token || !docId) return null;
+  const { data, error } = await supabase.functions.invoke("truck-doc-signed-url", {
+    body: { token, doc_id: docId },
+  });
+  if (error) {
+    console.error("fetchTruckDocSignedUrl:", error);
+    return null;
+  }
+  return data?.url || null;
+};

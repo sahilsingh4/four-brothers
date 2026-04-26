@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { AlertTriangle, Download, FileText, Plus, Trash2, Truck, Upload, Wrench, X } from "lucide-react";
+import { AlertTriangle, Copy, Download, FileText, Link2, Lock, Plus, RefreshCw, Trash2, Truck, Upload, Wrench, X } from "lucide-react";
 import { storageSet, fmtDate } from "../utils";
 import {
   COMPLIANCE_DOC_TYPES,
@@ -11,6 +11,9 @@ import {
   getComplianceFileUrl,
   deleteComplianceFile,
   getComplianceStatus,
+  fetchTruckPortal,
+  upsertTruckPortal,
+  setTruckPortalEnabled,
 } from "../db";
 
 // Helper: days from today (negative = expired)
@@ -426,6 +429,7 @@ const UnitDetailModal = ({ unit, onClose, onUpdate, onAddMaintenance, onRemoveMa
         </div>
         <div style={{ padding: 22, display: "grid", gap: 16 }}>
           <TruckDocumentsSection truckUnit={unit.unit} />
+          <RoadsidePortalSection truckUnit={unit.unit} />
 
           {/* Mileage + service config */}
           <div className="fbt-card" style={{ padding: 14 }}>
@@ -683,6 +687,151 @@ const TruckDocumentsSection = ({ truckUnit }) => {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Roadside-share link section — admin enables a public /#/truck/<token>
+// portal for one truck so a driver can show registration / insurance /
+// DOT inspection to a cop without logging in. Requires the
+// fleet_portals SQL migration + truck-doc-signed-url Edge Function.
+const RoadsidePortalSection = ({ truckUnit }) => {
+  const [loading, setLoading] = useState(true);
+  const [portal, setPortal] = useState(null);  // { portalToken, portalEnabled } | null
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!truckUnit) return;
+    (async () => {
+      setLoading(true);
+      try { setPortal(await fetchTruckPortal(truckUnit)); }
+      finally { setLoading(false); }
+    })();
+  }, [truckUnit]);
+
+  const generateToken = () => {
+    // 24-char URL-safe hex token (longer than the doc spec's 8-min so it's
+    // unguessable). Matches the regex cap on /#/truck/<...{8,64}>.
+    const arr = new Uint8Array(12);
+    (crypto && crypto.getRandomValues) ? crypto.getRandomValues(arr) : arr.forEach((_, i) => arr[i] = Math.floor(Math.random() * 256));
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const portalUrl = portal?.portalToken
+    ? `${window.location.origin}${window.location.pathname}#/truck/${portal.portalToken}`
+    : null;
+
+  const enable = async () => {
+    if (!truckUnit) { alert("Set the unit number first."); return; }
+    setBusy(true);
+    try {
+      const token = portal?.portalToken || generateToken();
+      await upsertTruckPortal(truckUnit, token);
+      setPortal({ portalToken: token, portalEnabled: true });
+    } catch (e) {
+      console.error("enable truck portal:", e);
+      alert("Couldn't enable: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const regenerate = async () => {
+    if (!confirm("Regenerate the link? The CURRENT link will stop working immediately.")) return;
+    setBusy(true);
+    try {
+      const token = generateToken();
+      await upsertTruckPortal(truckUnit, token);
+      setPortal({ portalToken: token, portalEnabled: true });
+    } catch (e) {
+      console.error("regenerate truck portal:", e);
+      alert("Couldn't regenerate: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    if (!confirm("Disable the roadside link? The driver's CURRENT link will stop working.")) return;
+    setBusy(true);
+    try {
+      await setTruckPortalEnabled(truckUnit, false);
+      setPortal((p) => p ? { ...p, portalEnabled: false } : null);
+    } catch (e) {
+      console.error("disable truck portal:", e);
+      alert("Couldn't disable: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!portalUrl) return;
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+    } catch {
+      window.prompt("Copy this link:", portalUrl);
+    }
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 14 }}>
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>
+        ▸ Roadside link · for showing a cop registration + insurance
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--concrete)" }}>Loading…</div>
+      ) : portal && portal.portalEnabled ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "var(--good-soft)", border: "1.5px solid var(--good)", fontSize: 11 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--good)" }}></span>
+            <strong>ACTIVE</strong>
+            <span style={{ color: "var(--concrete)" }}>· anyone with the link can view this truck's docs</span>
+          </div>
+          <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--line)", borderRadius: 4, fontSize: 11, wordBreak: "break-all", fontFamily: "Inter, monospace" }}>
+            {portalUrl}
+          </code>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" className="btn-ghost" onClick={copy} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <Copy size={12} /> COPY LINK
+            </button>
+            <button type="button" className="btn-ghost" onClick={regenerate} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <RefreshCw size={12} /> NEW LINK
+            </button>
+            <button type="button" className="btn-danger" onClick={disable} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <Lock size={12} /> DISABLE
+            </button>
+          </div>
+        </div>
+      ) : portal && !portal.portalEnabled ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ padding: "8px 10px", background: "var(--surface)", border: "1px solid var(--line)", fontSize: 12, color: "var(--concrete)" }}>
+            Roadside link disabled. Re-enable to use the same token, or generate a new one.
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn-primary" onClick={enable} disabled={busy} style={{ fontSize: 11, padding: "6px 12px" }}>
+              <Link2 size={12} /> RE-ENABLE
+            </button>
+            <button type="button" className="btn-ghost" onClick={regenerate} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <RefreshCw size={12} /> NEW LINK
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--concrete)", lineHeight: 1.5 }}>
+            Generate a public link the driver can open if a cop pulls them over. The link shows this truck's registration, insurance, DOT inspection — nothing else. Driver CDLs and medical cards are kept private.
+          </div>
+          <button type="button" className="btn-primary" onClick={enable} disabled={busy || !truckUnit} style={{ fontSize: 12, padding: "8px 14px", justifySelf: "start" }}>
+            <Link2 size={14} /> {busy ? "Generating…" : "GENERATE ROADSIDE LINK"}
+          </button>
+          {!truckUnit && (
+            <div style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+              Set a unit number on this truck first.
+            </div>
+          )}
         </div>
       )}
     </div>

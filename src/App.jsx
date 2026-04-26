@@ -144,6 +144,7 @@ const DriverPayPortalPage = lazy(() => import("./components/DriverPayPortalPage"
 const DriverUploadPage = lazy(() => import("./components/DriverUploadPage").then((m) => ({ default: m.DriverUploadPage })));
 const CustomerPortal = lazy(() => import("./components/CustomerPortal").then((m) => ({ default: m.CustomerPortal })));
 const OnboardingPage = lazy(() => import("./components/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
+const TruckPortalPage = lazy(() => import("./components/TruckPortalPage").then((m) => ({ default: m.TruckPortalPage })));
 const PublicSite = lazy(() => import("./components/PublicSite").then((m) => ({ default: m.PublicSite })));
 
 // Suspense fallback shown while a lazy chunk is in flight.
@@ -6673,6 +6674,7 @@ export default function App() {
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]{4,16})/i);
   const payMatch = route.match(/^#\/pay\/([a-f0-9]{8,64})/i);  // v23 Session Y
   const onboardMatch = route.match(/^#\/onboard\/([A-Za-z0-9]{8,64})/i);
+  const truckMatch = route.match(/^#\/truck\/([A-Za-z0-9]{8,64})/i);
 
   if (!loaded) {
     return (
@@ -6795,6 +6797,17 @@ export default function App() {
     return (
       <Suspense fallback={<RouteLoading />}>
         <DriverPayPortalPage token={token} onBack={() => { window.location.hash = ""; }} />
+      </Suspense>
+    );
+  }
+
+  // Public truck-roadside portal — driver shows a cop registration / insurance / DOT inspection.
+  // Requires fleet_portals SQL migration + truck-doc-signed-url Edge Function deployed.
+  if (truckMatch) {
+    const token = truckMatch[1];
+    return (
+      <Suspense fallback={<RouteLoading />}>
+        <TruckPortalPage token={token} onBack={() => { window.location.hash = ""; }} />
       </Suspense>
     );
   }
