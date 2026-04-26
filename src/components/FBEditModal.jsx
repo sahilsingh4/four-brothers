@@ -904,7 +904,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
               ? contacts.find((c) => c.id === currentAssignment.contactId)
               : null;
             const kindColor = currentAssignment?.kind === "sub" ? "#9A3412" : "#0369A1";
-            const kindLabel = currentAssignment?.kind === "sub" ? "SUBCONTRACTOR" : "DRIVER";
+            const kindLabel = currentAssignment?.kind === "sub" ? "SUB HAULER" : "DRIVER";
 
             // When admin picks a new contact, create a new assignment on the dispatch + repoint FB.
             const reassign = async (kind, contactId) => {
@@ -989,7 +989,7 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
                     >
                       <option value="">— Choose —</option>
                       <option value="driver">DRIVER</option>
-                      <option value="sub">SUBCONTRACTOR</option>
+                      <option value="sub">SUB HAULER</option>
                     </select>
                   </div>
                   <div>

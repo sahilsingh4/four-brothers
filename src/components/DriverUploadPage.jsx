@@ -484,7 +484,7 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         {assignment && (
           <div className="fbt-card" style={{ padding: 18, marginBottom: 20, background: "var(--steel)", color: "var(--cream)", borderLeft: "6px solid var(--hazard)" }}>
             <div className="fbt-mono" style={{ fontSize: 10, color: "var(--hazard)", marginBottom: 4 }}>
-              ▸ {assignment.kind === "driver" ? "DRIVER LINK" : "SUB-CONTRACTOR LINK"}
+              ▸ {assignment.kind === "driver" ? "DRIVER LINK" : "SUB HAULER LINK"}
             </div>
             <div className="fbt-display" style={{ fontSize: 18, marginBottom: 6 }}>{assignment.name}</div>
             <div className="fbt-mono" style={{ fontSize: 12 }}>

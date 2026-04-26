@@ -284,7 +284,7 @@ const exportAllCSVs = (state) => {
 
   // Dispatches
   downloadCSV(`4brothers-dispatches-${ts}.csv`, [
-    ["Code", "Date", "Job", "Sub-Contractor", "Pickup", "Dropoff", "Material", "Trucks Expected", "Trucks Submitted", "Rate $/hr", "Rate $/ton", "Status", "Notes", "Created"],
+    ["Code", "Date", "Job", "Sub Hauler", "Pickup", "Dropoff", "Material", "Trucks Expected", "Trucks Submitted", "Rate $/hr", "Rate $/ton", "Status", "Notes", "Created"],
     ...dispatches.map((d) => [
       d.code, d.date, d.jobName, d.subContractor || "", d.pickup || "", d.dropoff || "",
       d.material || "", d.trucksExpected, freightBills.filter((fb) => fb.dispatchId === d.id).length,
@@ -726,7 +726,7 @@ const openReportPrintWindow = (report, company, onToast) => {
 </div>
 ${metricsHtml}
 ${section("Top Clients by Tonnage", listTable(report.topClients, [{ key: "name", label: "Client" }, { key: "tons", label: "Tons", r: true, fmt: (v) => v.toFixed(2) }]))}
-${section("Top Sub-Contractors by Dispatches", listTable(report.topSubs, [{ key: "name", label: "Sub-Contractor" }, { key: "count", label: "Dispatches", r: true }]))}
+${section("Top Sub Haulers by Dispatches", listTable(report.topSubs, [{ key: "name", label: "Sub Hauler" }, { key: "count", label: "Dispatches", r: true }]))}
 ${section("Quarry Usage", listTable(report.quarryUsage, [{ key: "name", label: "Quarry" }, { key: "tons", label: "Tons Sourced", r: true, fmt: (v) => v.toFixed(2) }]))}
 ${section("New Quote Requests", listTable(report.quotesList, [{ key: "name", label: "Name" }, { key: "company", label: "Company" }, { key: "service", label: "Service" }, { key: "submittedAt", label: "Received", fmt: (v) => v ? new Date(v).toLocaleDateString() : "—" }]))}
 ${section("Invoices Generated", listTable(report.invoicesList, [{ key: "num", label: "Invoice #" }, { key: "billTo", label: "Bill To" }, { key: "date", label: "Date" }, { key: "total", label: "Total", r: true, fmt: (v) => money(v) }]))}
@@ -766,8 +766,8 @@ const downloadReportCSV = (report) => {
   report.topClients.forEach((c) => push([c.name, c.tons.toFixed(2)]));
   push([]);
 
-  push(["TOP SUB-CONTRACTORS"]);
-  push(["Sub-Contractor", "Dispatches"]);
+  push(["TOP SUB HAULERS"]);
+  push(["Sub Hauler", "Dispatches"]);
   report.topSubs.forEach((s) => push([s.name, s.count]));
   push([]);
 
@@ -4209,7 +4209,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
 
   const exportCSV = () => {
     const rows = [[
-      scope === "drivers" ? "Driver" : "Subcontractor",
+      scope === "drivers" ? "Driver" : "Sub Hauler",
       "Loads", "Tons", "Hours",
       "Revenue Contributed", "Direct Pay Cost", "Margin",
       "Expected Trucks", "Submitted", "Reliability %",
@@ -4250,7 +4250,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
         <BarChart3 size={22} style={{ color: "var(--steel)" }} />
         <div style={{ flex: 1, minWidth: 200 }}>
           <div className="fbt-display" style={{ fontSize: 18 }}>
-            {scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"} PERFORMANCE
+            {scope === "drivers" ? "DRIVER" : "SUB HAULER"} PERFORMANCE
           </div>
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
             {performance.length} {scope === "drivers" ? "DRIVER" : "SUB"}{performance.length !== 1 ? "S" : ""} · {totals.loadCount} LOAD{totals.loadCount !== 1 ? "S" : ""} · {totals.totalTons.toFixed(0)} TONS
@@ -4313,7 +4313,7 @@ const DriverPerformancePanel = ({ freightBills = [], dispatches = [], contacts =
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 720 }}>
             <thead>
               <tr style={{ background: "var(--steel)", color: "var(--cream)" }}>
-                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10 }}>{scope === "drivers" ? "DRIVER" : "SUBCONTRACTOR"}</th>
+                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 10 }}>{scope === "drivers" ? "DRIVER" : "SUB HAULER"}</th>
                 <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>LOADS</th>
                 <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>TONS</th>
                 <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 10 }}>REVENUE</th>
@@ -4995,10 +4995,10 @@ const ReportsTab = ({ dispatches, setDispatches, freightBills, invoices, quotes,
         <div className="fbt-card" style={{ padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
             <Users size={18} style={{ color: "var(--hazard-deep)" }} />
-            <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>TOP SUB-CONTRACTORS</h3>
+            <h3 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>TOP SUB HAULERS</h3>
           </div>
           {report.topSubs.length === 0 ? (
-            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No sub-contractor activity</div>
+            <div style={{ padding: 14, background: "#F5F5F4", fontSize: 13, color: "var(--concrete)", textAlign: "center" }}>No sub hauler activity</div>
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
               {report.topSubs.map((s, i) => (

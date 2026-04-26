@@ -55,7 +55,7 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, onEdit, 
         <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
           <div>
             <div className="fbt-mono" style={{ fontSize: 11, color: "var(--hazard)" }}>
-              {contact.type === "sub" ? "SUB-CONTRACTOR"
+              {contact.type === "sub" ? "SUB HAULER"
                 : contact.type === "customer" ? "CUSTOMER"
                 : contact.type === "broker" ? "BROKER"
                 : "DRIVER"}{contact.favorite && " · ★ PREFERRED"}

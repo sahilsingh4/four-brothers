@@ -53,7 +53,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
     onClose();
   };
 
-  const typeLabel = { sub: "Sub-Contractor", driver: "Driver", customer: "Customer", broker: "Broker" }[draft.type] || "Contact";
+  const typeLabel = { sub: "Sub Hauler", driver: "Driver", customer: "Customer", broker: "Broker" }[draft.type] || "Contact";
   const companyLabel = draft.type === "driver" ? "Full Name" : "Company Name";
   const companyPlaceholder = {
     sub: "ACME Trucking Inc.",
@@ -87,7 +87,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
             <div>
               <label className="fbt-label">Type</label>
               <select className="fbt-select" value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value })}>
-                <option value="sub">Sub-Contractor</option>
+                <option value="sub">Sub Hauler</option>
                 <option value="driver">Driver</option>
                 <option value="customer">Customer</option>
                 <option value="broker">Broker</option>
@@ -116,7 +116,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
 
           {draft.type === "driver" && subContacts.length > 0 && (
             <div>
-              <label className="fbt-label">Drives For (Sub-Contractor, optional)</label>
+              <label className="fbt-label">Drives For (Sub Hauler, optional)</label>
               <select
                 className="fbt-select"
                 value={draft.drivesForId || ""}
@@ -743,6 +743,33 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
 
   };
 
+  // Duplicate a driver / sub. Clones the source contact's defaults (pay rate,
+  // pay method, brokerage, truck #) but starts FRESH on identity fields
+  // (name, phone, email) and the per-contact compliance state (documents,
+  // CDL/medical expiry, portal token). Opens the modal pre-filled so the
+  // admin can fill in the new contact's name + phone + save.
+  const duplicateContact = (c) => {
+    const fresh = {
+      ...c,
+      id: undefined,
+      portalToken: "",
+      portalEnabled: false,
+      documents: [],
+      cdlExpiry: "",
+      medicalCardExpiry: "",
+      contactName: "",
+      companyName: c.companyName ? `${c.companyName} (copy)` : "",
+      phone: "",
+      phone2: "",
+      email: "",
+      favorite: false,
+      createdAt: undefined,
+      updatedAt: undefined,
+    };
+    setEditing(fresh);
+    setShowModal(true);
+  };
+
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return contacts
@@ -801,7 +828,7 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
         </div>
         <div className="fbt-card" style={{ padding: 20 }}>
           <div className="stat-num">{subsCount}</div>
-          <div className="stat-label">Sub-Contractors</div>
+          <div className="stat-label">Sub Haulers</div>
         </div>
         <div className="fbt-card" style={{ padding: 20 }}>
           <div className="stat-num">{driversCount}</div>
@@ -931,6 +958,17 @@ export const ContactsTab = ({ contacts, setContacts, dispatches, freightBills, i
                         title="Generate open-balance statement for this customer"
                       >
                         <FileDown size={11} style={{ marginRight: 4 }} /> STATEMENT
+                      </button>
+                    )}
+                    {(c.type === "driver" || c.type === "sub") && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); duplicateContact(c); }}
+                        className="btn-ghost"
+                        style={{ padding: "6px 10px", fontSize: 10, flex: 1, justifyContent: "center", display: "flex", alignItems: "center" }}
+                        title="Create a new driver/sub from this one's defaults (rate, method, brokerage). Identity fields stay blank."
+                      >
+                        <UserPlus size={11} style={{ marginRight: 4 }} /> DUPLICATE
                       </button>
                     )}
                   </div>

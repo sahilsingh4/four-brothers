@@ -208,7 +208,7 @@ export const DriverPayPortalPage = ({ token, onBack }) => {
             <div className="fbt-mono" style={{ fontSize: 12, color: "#D6D3D1", marginTop: 4 }}>{contact.companyName}</div>
           )}
           <div className="fbt-mono" style={{ fontSize: 10, color: "#A8A29E", marginTop: 10 }}>
-            {(contact.type === "subcontractor" || contact.type === "sub") ? "SUBCONTRACTOR" : "DRIVER"} · VIEWED {new Date().toLocaleDateString()}
+            {(contact.type === "subcontractor" || contact.type === "sub") ? "SUB HAULER" : "DRIVER"} · VIEWED {new Date().toLocaleDateString()}
           </div>
         </div>
 

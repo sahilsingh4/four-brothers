@@ -1376,7 +1376,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
           </button>
         </div>
         <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", flex: 1 }}>
-          ▸ BUILDING PAY STATEMENT FOR {payScope === "drivers" ? "EMPLOYEE DRIVERS" : "SUBCONTRACTORS"}
+          ▸ BUILDING PAY STATEMENT FOR {payScope === "drivers" ? "EMPLOYEE DRIVERS" : "SUB HAULERS"}
         </div>
       </div>
 
@@ -1638,7 +1638,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
 
           <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
             <div>
-              <label className="fbt-label" style={{ fontSize: 10 }}>Select Subcontractor</label>
+              <label className="fbt-label" style={{ fontSize: 10 }}>Select Sub Hauler</label>
               <select
                 className="fbt-select"
                 value={subContactId}
@@ -1837,7 +1837,7 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
                               return;
                             }
                             generatePayStubPDF({
-                              subName: subContactRec?.companyName || subContactRec?.contactName || "Subcontractor",
+                              subName: subContactRec?.companyName || subContactRec?.contactName || "Sub Hauler",
                               subKind: "sub",
                               subId: subContactId,
                               fbs: selectedFbs,
