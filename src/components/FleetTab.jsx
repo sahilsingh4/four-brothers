@@ -72,10 +72,42 @@ const newDraft = () => ({
   notes: "", maintenanceLog: [],
 });
 
-export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
+export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], onToast }) => {
   const [draft, setDraft] = useState(newDraft());
   const [openUnitId, setOpenUnitId] = useState(null); // for maintenance log modal
   const driverContacts = contacts.filter((c) => c.type === "driver");
+
+  // Recent inspection-defect index keyed by truck number. Scans freight bills
+  // from the last 30 days for any pre-trip / post-trip with at least one
+  // defect item; surfaces them on the fleet card so the owner sees defects
+  // that were reported but might've slipped past the daily review.
+  const defectsByTruck = useMemo(() => {
+    // Date.now() is technically impure for React's purity model, but the
+    // per-render staleness is fine here — a 30-day cutoff doesn't need
+    // millisecond accuracy and the freight bills array dependency triggers
+    // the recompute when new FBs land.
+    // eslint-disable-next-line react-hooks/purity
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const map = new Map(); // truckNumber → [{ when, defects, signedBy, kind }]
+    (freightBills || []).forEach((fb) => {
+      const ts = fb.submittedAt ? new Date(fb.submittedAt).getTime() : 0;
+      if (ts < cutoff) return;
+      const truck = (fb.truckNumber || "").trim();
+      if (!truck) return;
+      [
+        ["pretrip", fb.pretripInspection],
+        ["posttrip", fb.posttripInspection],
+      ].forEach(([kind, insp]) => {
+        if (!insp || !Array.isArray(insp.items)) return;
+        const defects = insp.items.filter((i) => i.result === "defect");
+        if (defects.length === 0) return;
+        const arr = map.get(truck) || [];
+        arr.push({ when: insp.completedAt || fb.submittedAt, defects, signedBy: insp.signedBy, kind });
+        map.set(truck, arr);
+      });
+    });
+    return map;
+  }, [freightBills]);
 
   const persist = async (next) => { setFleet(next); await storageSet("fbt:fleet", next); };
 
@@ -245,8 +277,49 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], onToast }) => {
                           SMOG · {expiryLabel(f.nextSmogCheck)}
                         </span>
                       )}
+                      {(() => {
+                        // Recent inspection defects (last 30 days) on this truck.
+                        const events = defectsByTruck.get((f.unit || "").trim()) || [];
+                        const totalDefects = events.reduce((s, e) => s + e.defects.length, 0);
+                        if (totalDefects === 0) return null;
+                        const labels = [...new Set(events.flatMap((e) => e.defects.map((d) => d.label || d.id)))].slice(0, 3).join(", ");
+                        const more = totalDefects > 3 ? ` (+${totalDefects - 3})` : "";
+                        return (
+                          <span className="chip" title={`Recent inspection defects (last 30d): ${labels}${more}`} style={{ background: "var(--safety)", color: "#FFF", borderColor: "var(--safety)" }}>
+                            ⚠ {totalDefects} DEF
+                          </span>
+                        );
+                      })()}
                     </div>
                   )}
+
+                  {/* Recent defect detail — collapsed list when there are any. */}
+                  {(() => {
+                    const events = defectsByTruck.get((f.unit || "").trim()) || [];
+                    if (events.length === 0) return null;
+                    const flat = events.flatMap((e) => e.defects.map((d) => ({ ...d, when: e.when, signedBy: e.signedBy, kind: e.kind })));
+                    return (
+                      <div style={{ marginTop: 10, padding: 8, background: "#FEF2F2", border: "1px solid var(--safety)", borderRadius: 4 }}>
+                        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--safety)", fontWeight: 700, marginBottom: 4 }}>
+                          ▸ INSPECTION DEFECTS (LAST 30 DAYS)
+                        </div>
+                        <div style={{ display: "grid", gap: 3 }}>
+                          {flat.slice(0, 5).map((d, idx) => (
+                            <div key={idx} style={{ fontSize: 11, color: "var(--steel)" }}>
+                              • <strong>{d.label || d.id}</strong>
+                              {d.note ? ` — ${d.note}` : ""}
+                              <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", marginLeft: 6 }}>
+                                {d.kind === "posttrip" ? "post-trip" : "pre-trip"} · {new Date(d.when).toLocaleDateString()}{d.signedBy ? ` · ${d.signedBy}` : ""}
+                              </span>
+                            </div>
+                          ))}
+                          {flat.length > 5 && (
+                            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>+ {flat.length - 5} more</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Mileage + service */}
                   {(f.mileage || f.lastServiceDate || f.nextServiceDueMileage) && (
