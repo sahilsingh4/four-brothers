@@ -4,9 +4,13 @@
 // raw JSON download. Includes a "Print" button so the admin can save as
 // PDF or print on paper for files.
 
-import { useEffect } from "react";
-import { Printer, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Printer, X } from "lucide-react";
 import { FORM_SPECS } from "./formSpecs";
+import { fillOfficialPdf } from "../utils/officialPdfFiller";
+
+// Form keys that have an official IRS / USCIS PDF available in /public/forms/.
+const OFFICIAL_PDF_AVAILABLE = ["i9", "w4", "w9"];
 
 const formatValue = (field, raw) => {
   if (raw === undefined || raw === null || raw === "") return <span style={{ color: "var(--concrete)" }}>—</span>;
@@ -20,6 +24,28 @@ const formatValue = (field, raw) => {
 
 export const FilledFormViewer = ({ formKey, values, onClose, contactName, completedAt }) => {
   const spec = FORM_SPECS[formKey];
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
+
+  const downloadOfficialPdf = async () => {
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      const bytes = await fillOfficialPdf(formKey, values);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${formKey}-${(contactName || "form").replace(/\s+/g, "_")}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      console.error("Official PDF fill failed:", e);
+      setPdfError(e.message || "Couldn't fill PDF");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
@@ -61,8 +87,19 @@ export const FilledFormViewer = ({ formKey, values, onClose, contactName, comple
               </div>
             )}
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button onClick={handlePrint} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "4px 10px", fontSize: 11 }} title="Print or save as PDF">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {OFFICIAL_PDF_AVAILABLE.includes(formKey) && (
+              <button
+                onClick={downloadOfficialPdf}
+                className="btn-ghost"
+                disabled={pdfBusy}
+                style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "4px 10px", fontSize: 11 }}
+                title={`Fill the official IRS/USCIS ${formKey.toUpperCase()} PDF with this data and download it`}
+              >
+                <Download size={14} /> {pdfBusy ? "Filling…" : `OFFICIAL ${formKey.toUpperCase()} PDF`}
+              </button>
+            )}
+            <button onClick={handlePrint} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "4px 10px", fontSize: 11 }} title="Print or save the data summary as PDF">
               <Printer size={14} /> PRINT
             </button>
             <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer", padding: 4 }}>
@@ -70,6 +107,11 @@ export const FilledFormViewer = ({ formKey, values, onClose, contactName, comple
             </button>
           </div>
         </div>
+        {pdfError && (
+          <div className="fbt-mono" style={{ padding: 10, fontSize: 11, color: "var(--safety)", background: "#FEF2F2", borderBottom: "1px solid var(--safety)" }}>
+            ⚠ {pdfError}
+          </div>
+        )}
         <div style={{ padding: 16, display: "grid", gap: 14 }}>
           {spec.sections.map((section) => (
             <div key={section.title} style={{ display: "grid", gap: 4 }}>
