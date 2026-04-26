@@ -27,6 +27,7 @@ import {
   fetchTestimonials,
   insertTestimonial, updateTestimonial, deleteTestimonial,
   COMPLIANCE_DOC_TYPES,
+  fetchComplianceDocs, getComplianceFileUrl,
 } from "./db";
 import {
   Activity,
@@ -5159,6 +5160,66 @@ const DataTab = ({ state, setters, onToast }) => {
     }
   };
 
+  // Bundle every compliance file from the Supabase 'compliance-docs' bucket
+  // into a single ZIP. JSON backups don't include Storage objects, so this
+  // is the only way to get CDLs / med cards / drug tests onto local disk
+  // for disaster recovery.
+  const [complianceBusy, setComplianceBusy] = useState(false);
+  const handleComplianceZip = async () => {
+    setComplianceBusy(true);
+    try {
+      const docs = await fetchComplianceDocs();
+      const withFiles = docs.filter((d) => d.filePath);
+      if (withFiles.length === 0) {
+        onToast("NO COMPLIANCE FILES TO BACK UP");
+        return;
+      }
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
+      const manifest = [];
+      let okCount = 0;
+      for (const d of withFiles) {
+        try {
+          const url = await getComplianceFileUrl(d.filePath);
+          if (!url) { manifest.push({ id: d.id, fileName: d.fileName, error: "NO_SIGNED_URL" }); continue; }
+          const r = await fetch(url);
+          if (!r.ok) { manifest.push({ id: d.id, fileName: d.fileName, error: `HTTP_${r.status}` }); continue; }
+          const buf = await r.arrayBuffer();
+          // Prefix with contact + doc type so files are sortable in the ZIP
+          const safeName = (d.fileName || `${d.id}.bin`).replace(/[/\\?%*:|"<>]/g, "_");
+          const folder = (d.docType || "other").toLowerCase();
+          zip.file(`${folder}/${d.id}-${safeName}`, buf);
+          manifest.push({ id: d.id, contactId: d.contactId, docType: d.docType, fileName: d.fileName, expiryDate: d.expiryDate });
+          okCount++;
+        } catch (e) {
+          manifest.push({ id: d.id, fileName: d.fileName, error: e.message || "FETCH_FAILED" });
+        }
+      }
+      zip.file("manifest.json", JSON.stringify({
+        _format: "4brothers-compliance-backup",
+        _version: 1,
+        _exportedAt: new Date().toISOString(),
+        totalDocs: withFiles.length,
+        successCount: okCount,
+        items: manifest,
+      }, null, 2));
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const ts = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `4brothers-compliance-${ts}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      onToast(`COMPLIANCE ZIP DOWNLOADED · ${okCount}/${withFiles.length} FILES`);
+    } catch (e) {
+      console.error(e);
+      onToast("COMPLIANCE ZIP FAILED");
+    } finally {
+      setComplianceBusy(false);
+    }
+  };
+
   const handleFilePick = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -5315,6 +5376,25 @@ const DataTab = ({ state, setters, onToast }) => {
             </div>
             <button onClick={handleCSVExport} className="btn-ghost" style={{ width: "100%", justifyContent: "center" }}>
               <Download size={14} style={{ marginRight: 6 }} /> DOWNLOAD CSVS
+            </button>
+          </div>
+
+          {/* Compliance docs ZIP — CDLs, med cards, drug tests live in
+              Supabase Storage, not the JSON backup. This is the only way
+              to get them onto local disk in case the bucket is wiped. */}
+          <div style={{ border: "2px solid var(--steel)", padding: 20, background: "#FFF" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <FileDown size={18} />
+              <h4 className="fbt-display" style={{ fontSize: 16, margin: 0 }}>COMPLIANCE DOCS (.ZIP)</h4>
+            </div>
+            <p style={{ fontSize: 13, color: "var(--concrete)", margin: "0 0 14px", lineHeight: 1.5 }}>
+              All driver CDLs, medical cards, drug tests and other compliance files in one ZIP. <strong>Not included in the JSON backup</strong> — download separately.
+            </p>
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 14, lineHeight: 1.5 }}>
+              ▸ FILES GROUPED BY DOC TYPE; <code>manifest.json</code> INSIDE LISTS WHAT WAS BACKED UP.
+            </div>
+            <button onClick={handleComplianceZip} className="btn-ghost" disabled={complianceBusy} style={{ width: "100%", justifyContent: "center" }}>
+              <Download size={14} style={{ marginRight: 6 }} /> {complianceBusy ? "PREPARING…" : "DOWNLOAD COMPLIANCE ZIP"}
             </button>
           </div>
         </div>
