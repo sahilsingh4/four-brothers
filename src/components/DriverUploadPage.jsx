@@ -269,6 +269,12 @@ export const DriverUploadPage = ({ dispatch, onSubmitTruck, onBack, availableDri
         extras: cleanExtras,
         id: "temp-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
         dispatchId: dispatch.id,
+        // Critical: stamp assignmentId so payroll can attribute this FB to the
+        // correct driver/sub roster slot. Without this, a dispatch with
+        // multiple assignments collapses every FB into a single bucket and
+        // payroll can't tell whose load it was. Falls back to null when the
+        // QR link didn't include /a/<aid> (legacy / generic submit code).
+        assignmentId: assignment?.aid || null,
         photos: photosToSend,
         submittedAt,
         // Attach the pre-trip inspection only on the FIRST FB submission of

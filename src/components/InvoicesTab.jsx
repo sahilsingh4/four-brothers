@@ -1280,12 +1280,20 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
         }
       }
 
+      // Atomicity: if even one unlock failed, abort the delete. Otherwise we'd
+      // soft-delete the invoice while some FBs still reference it via
+      // invoiceId/billingLockedAt — those FBs would appear "already invoiced"
+      // forever (they'd point at a deleted invoice that the user can't
+      // re-open to clear the lock). Better to leave everything as-is and
+      // let the user retry once the underlying error (transient DB blip,
+      // network) clears.
       if (unlockFailures.length > 0) {
         alert(
-          `⚠ Unlocked ${affectedFbs.length - unlockFailures.length} of ${affectedFbs.length} FBs.\n\nThese failed and are still locked:\n` +
+          `Couldn't unlock ${unlockFailures.length} of ${affectedFbs.length} freight bill${affectedFbs.length !== 1 ? "s" : ""} — invoice NOT deleted.\n\nFailed:\n` +
           unlockFailures.map((f) => `  • FB #${f.fbNum}: ${f.err}`).join("\n") +
-          "\n\nTry re-opening those FBs to force unlock manually."
+          "\n\nNothing has changed. Try the delete again in a moment, or check your network connection."
         );
+        return;
       }
 
       // 2. Soft-delete the invoice
@@ -1304,8 +1312,7 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
           reason,
           total: inv.total,
           billToName: inv.billToName,
-          fbsUnlocked: affectedFbs.length - unlockFailures.length,
-          unlockFailures: unlockFailures.length,
+          fbsUnlocked: affectedFbs.length,
         },
       });
 
