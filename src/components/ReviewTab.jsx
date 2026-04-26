@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
-import { Camera, Search, ShieldCheck } from "lucide-react";
+import { Camera, Plus, Search, ShieldCheck } from "lucide-react";
 import { FBEditModal } from "./FBEditModal";
+import { AdminAddFbModal } from "./AdminAddFbModal";
 
-export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onJumpToInvoice, onToast }) => {
+export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, editFreightBill, invoices = [], pendingFB, clearPendingFB, onJumpToInvoice, onAdminAddFb, onToast }) => {
   const [filter, setFilter] = useState("pending");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null);
+  const [adminAdding, setAdminAdding] = useState(false);
   // Bulk-select: per-row checkboxes feed this Set; user can approve a subset.
   const [selectedIds, setSelectedIds] = useState(new Set());
   const toggleSelected = (id) => {
@@ -135,6 +137,29 @@ export const ReviewTab = ({ freightBills, dispatches, setDispatches, contacts, e
           onToast={onToast}
           currentUser="admin"
         />
+      )}
+      {adminAdding && onAdminAddFb && (
+        <AdminAddFbModal
+          dispatches={dispatches}
+          contacts={contacts}
+          onSubmit={onAdminAddFb}
+          onClose={() => setAdminAdding(false)}
+          onToast={onToast}
+        />
+      )}
+
+      {/* Top toolbar — paper FB entry. Sits above the stat tiles. */}
+      {onAdminAddFb && (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => setAdminAdding(true)}
+            className="btn-primary"
+            title="Manually enter a paper freight bill — auto-approves on save."
+          >
+            <Plus size={14} /> ADD FB MANUALLY
+          </button>
+        </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>

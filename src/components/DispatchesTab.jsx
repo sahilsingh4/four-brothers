@@ -17,6 +17,7 @@ import { Lightbox } from "./Lightbox";
 import { QRCodeBlock } from "./QRCodeBlock";
 import { QuickAddContactModal } from "./QuickAddContactModal";
 import { FBPhotoGallery } from "./FBPhotoGallery";
+import { AdminAddFbModal } from "./AdminAddFbModal";
 
 // Small lock badge for a NewDispatch form field. Pulled to module scope so
 // it doesn't get re-created on every render (was tripping
@@ -135,8 +136,10 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onToast }) => {
+export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onAdminAddFb, onToast }) => {
   const [showNew, setShowNew] = useState(false);
+  // Admin manual FB entry — { dispatch, assignment } when open, null when closed
+  const [adminAddFb, setAdminAddFb] = useState(null);
   // v18 Batch 2: quick-add contact from assignment picker. Shape: { idx, kind } — `idx` is the assignment row being edited.
   const [quickAddContact, setQuickAddContact] = useState(null);
   // v18 Batch 2 Session D: Photo gallery modal — dispatch id to filter on, or null when hidden
@@ -2040,6 +2043,18 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                   <Mail size={11} style={{ marginRight: 3 }} /> EMAIL
                                 </a>
                               )}
+                              {/* Admin manual FB entry — paper bill came in,
+                                  admin types it in. Auto-approves on save. */}
+                              {onAdminAddFb && (
+                                <button
+                                  className="btn-ghost"
+                                  style={{ padding: "5px 10px", fontSize: 10 }}
+                                  onClick={() => setAdminAddFb({ dispatch: d, assignment: a })}
+                                  title="Manually enter a freight bill on behalf of this driver/sub. Auto-approves on save."
+                                >
+                                  <Plus size={11} style={{ marginRight: 3 }} /> ADD FB
+                                </button>
+                              )}
                               {!contact && (
                                 <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", padding: "6px 4px" }}>
                                   (Add contact to enable TEXT/EMAIL)
@@ -2451,6 +2466,19 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
             </div>
           ))}
         </div>
+      )}
+
+      {/* Admin manual FB entry — auto-approves on save */}
+      {adminAddFb && (
+        <AdminAddFbModal
+          initialDispatch={adminAddFb.dispatch}
+          initialAssignment={adminAddFb.assignment}
+          dispatches={dispatches}
+          contacts={contacts}
+          onSubmit={onAdminAddFb}
+          onClose={() => setAdminAddFb(null)}
+          onToast={onToast}
+        />
       )}
     </div>
   );
