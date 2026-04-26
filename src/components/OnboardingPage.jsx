@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, FileDown, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, FileDown, FileText, Trash2, Upload } from "lucide-react";
 import { fetchContactForOnboarding, updateContactDocsByToken } from "../db";
 import { compressOrReadFile } from "../utils";
 import { extractFromImage } from "../utils/ocr";
 import { GlobalStyles } from "./GlobalStyles";
 import { Logo } from "./Logo";
+import { InlineFormFiller } from "./InlineFormFiller";
+import { FORM_SPECS } from "./formSpecs";
 
 // Public document-upload page reached via /#/onboard/:token. The contact
 // (driver or sub) sees a checklist of required documents the dispatcher
@@ -20,10 +22,10 @@ const DRIVER_DOC_KINDS = [
   { v: "medical_card", label: "Medical card / DOT physical", ocrExpiry: true },
   { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "mvr", label: "Motor vehicle record" },
-  { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf" },
-  { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf" },
+  { v: "i9", label: "I-9 (employment eligibility)", template: "https://www.uscis.gov/sites/default/files/document/forms/i-9.pdf", inlineForm: "i9" },
+  { v: "w4", label: "W-4 (federal tax)", template: "https://www.irs.gov/pub/irs-pdf/fw4.pdf", inlineForm: "w4" },
   { v: "driver_app", label: "Driver application (DOT 391.21)" },
-  { v: "direct_deposit", label: "Direct deposit form" },
+  { v: "direct_deposit", label: "Direct deposit form", inlineForm: "direct_deposit" },
   { v: "drug_test", label: "Drug test result" },
   { v: "other", label: "Other" },
 ];
@@ -51,6 +53,9 @@ export const OnboardingPage = ({ token }) => {
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
+  // When non-null, an inline form modal renders for that kind ("i9" / "w4" /
+  // "direct_deposit"). Submit captures the JSON data + adds to documents.
+  const [activeForm, setActiveForm] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -127,7 +132,11 @@ export const OnboardingPage = ({ token }) => {
       const kindCfg = kinds.find((k) => k.v === effectiveKind);
       let nextDocs = [...docs, newDoc];
       let extras = {};
-      if (kindCfg?.ocrExpiry) {
+      // Only run OCR on images. Tesseract chokes on PDFs (it only handles
+      // raster pixels) and the WASM error escapes the try/catch, breaking
+      // the whole upload flow. Skip cleanly when file isn't an image.
+      const isImage = file.type && file.type.startsWith("image/");
+      if (kindCfg?.ocrExpiry && isImage) {
         try {
           const { fields } = await extractFromImage(dataUrl, { kind: effectiveKind });
           if (fields?.expiryDate) {
@@ -153,6 +162,25 @@ export const OnboardingPage = ({ token }) => {
   const removeDoc = async (id) => {
     if (!confirm("Remove this document?")) return;
     await persistDocs(docs.filter((d) => d.id !== id));
+  };
+
+  // Inline-form submit. Saves the captured values as a regular document
+  // entry with kind="<formKey>_form" + formData={...}. Admin sees this in
+  // the contact view alongside uploaded PDFs.
+  const submitInlineForm = async (formKey, values) => {
+    const labelMap = { i9: "I-9 (filled)", w4: "W-4 (filled)", direct_deposit: "Direct deposit (filled)" };
+    const newDoc = {
+      id: Date.now() + Math.random(),
+      kind: `${formKey}_form`,
+      label: labelMap[formKey] || `${formKey} (filled)`,
+      fileName: `${formKey}-form.json`,
+      formData: values,
+      uploadedAt: new Date().toISOString(),
+      uploadedVia: "onboard-inline-form",
+    };
+    await persistDocs([...docs, newDoc]);
+    setActiveForm(null);
+    setPendingKind("");
   };
 
   if (loading) {
@@ -228,10 +256,26 @@ export const OnboardingPage = ({ token }) => {
                 <option key={k.v} value={k.v}>{k.label}</option>
               ))}
             </select>
+            {/* Inline "Fill in here" — for kinds that have a built-in form
+                renderer (i9, w4, direct_deposit), let the contact fill it
+                in-app instead of having to download/print/scan/upload. */}
+            {(() => {
+              const k = kinds.find((x) => x.v === effectiveKind);
+              if (!k?.inlineForm || !FORM_SPECS[k.inlineForm]) return null;
+              return (
+                <button
+                  type="button"
+                  onClick={() => setActiveForm(k.inlineForm)}
+                  className="btn-primary"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
+                >
+                  <FileText size={14} /> Fill in {k.label} here
+                </button>
+              );
+            })()}
             {/* Blank-form download link — appears whenever the selected kind
-                has an official template (I-9, W-4, W-9). Lets the contact
-                fetch the latest agency PDF, fill it on their phone (most
-                PDF viewers support form fill), then upload it back. */}
+                has an official template (I-9, W-4, W-9). Alternative path:
+                some contacts prefer a printable PDF over the inline form. */}
             {(() => {
               const k = kinds.find((x) => x.v === effectiveKind);
               if (!k?.template) return null;
@@ -242,7 +286,7 @@ export const OnboardingPage = ({ token }) => {
                   rel="noopener noreferrer"
                   style={{ fontSize: 12, color: "var(--steel)", textDecoration: "underline", padding: "6px 0" }}
                 >
-                  ▸ Download blank {k.label} (PDF)
+                  ▸ Or download blank {k.label} (PDF)
                 </a>
               );
             })()}
@@ -315,6 +359,20 @@ export const OnboardingPage = ({ token }) => {
           ▸ 4 BROTHERS TRUCKING · QUESTIONS? CONTACT YOUR DISPATCHER
         </div>
       </div>
+
+      {activeForm && (
+        <InlineFormFiller
+          formKey={activeForm}
+          defaults={{
+            firstName: contact.contactName?.split(" ")[0] || "",
+            lastName: contact.contactName?.split(" ").slice(1).join(" ") || "",
+            email: contact.email || "",
+            phone: contact.phone || "",
+          }}
+          onCancel={() => setActiveForm(null)}
+          onSubmit={(values) => submitInlineForm(activeForm, values)}
+        />
+      )}
     </div>
   );
 };
