@@ -1177,7 +1177,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
           <div className="modal-body" onClick={(e) => e.stopPropagation()}>
             <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>{editingId ? "EDIT ORDER" : "NEW ORDER"}</h3>
-              <button onClick={closeOrderModal} style={{ background: "transparent", border: "none", color: "var(--cream)", cursor: "pointer" }}><X size={20} /></button>
+              <button onClick={closeOrderModal} className="btn-icon-on-dark" title="Close — confirms before discarding unsaved changes"><X size={20} /></button>
             </div>
 
             {/* Lock banner (only shown when editing a locked order) */}
@@ -1600,6 +1600,41 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                               </span>
                             )}
                           </div>
+
+                          {/* Audit #10: rate-source label so the admin sees
+                              whether this row's pay rate came from the
+                              project sub-pay default, the contact's default,
+                              or a manual override. Best-effort inference by
+                              comparing the current value to both defaults
+                              (we don't persist the source). */}
+                          {a.payRate && a.payRate !== "" && selectedContact && (() => {
+                            const projectForRate = draft.projectId ? projects.find((p) => p.id === Number(draft.projectId) || p.id === draft.projectId) : null;
+                            const projectRate = !isDriver && projectForRate?.subPayRate != null && projectForRate.subPayRate !== ""
+                              ? String(projectForRate.subPayRate)
+                              : null;
+                            const contactRate = selectedContact.defaultPayRate != null
+                              ? String(selectedContact.defaultPayRate)
+                              : null;
+                            const value = String(a.payRate);
+                            let source = "manual";
+                            if (projectRate && value === projectRate) source = "project";
+                            else if (contactRate && value === contactRate) source = "contact";
+                            const sourceLabel = source === "project"
+                              ? `from project default ($${projectRate})`
+                              : source === "contact"
+                                ? `from contact default ($${contactRate})`
+                                : "manual override";
+                            const sourceColor = source === "project"
+                              ? "var(--hazard-deep)"
+                              : source === "contact"
+                                ? "var(--good)"
+                                : "var(--concrete)";
+                            return (
+                              <div className="fbt-mono" style={{ fontSize: 9, color: sourceColor, marginTop: 3 }}>
+                                ▸ rate {sourceLabel}
+                              </div>
+                            );
+                          })()}
 
                           {/* Two separate flags — one toggles pay rate in
                               the driver/sub dispatch SMS/email, the other

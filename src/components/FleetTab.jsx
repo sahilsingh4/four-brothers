@@ -83,7 +83,7 @@ const newDraft = () => ({
   notes: "", maintenanceLog: [],
 });
 
-export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], onToast }) => {
+export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], onJumpToContact, onToast }) => {
   const [draft, setDraft] = useState(newDraft());
   const [openUnitId, setOpenUnitId] = useState(null); // for maintenance log modal
   const driverContacts = contacts.filter((c) => c.type === "driver");
@@ -252,7 +252,18 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], on
                   </div>
 
                   <div style={{ marginTop: 10, fontSize: 12, color: "var(--concrete)" }}>
-                    Driver ▸ {f.driver || "unassigned"}
+                    Driver ▸ {f.driverId && onJumpToContact ? (
+                      <button
+                        type="button"
+                        onClick={() => onJumpToContact(f.driverId)}
+                        title="Open this driver in Contacts"
+                        style={{ background: "transparent", border: "none", padding: 0, color: "var(--hazard-deep)", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+                      >
+                        {f.driver}
+                      </button>
+                    ) : (
+                      f.driver || "unassigned"
+                    )}
                   </div>
 
                   {/* Expiry chips — compliance + preventive maintenance */}
