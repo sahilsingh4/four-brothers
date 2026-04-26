@@ -508,11 +508,13 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
         uploadedAt: new Date().toISOString(),
         expiryDate: null,
       };
-      // For CDL / medical card, kick off OCR and offer the detected date
+      // For CDL / medical card, kick off OCR and offer the detected date.
+      // Skip when the file isn't an image (Tesseract only handles raster).
       const kindCfg = kinds.find((k) => k.v === pendingKind);
       let nextDocs = [...docs, newDoc];
       setDraft({ ...draft, documents: nextDocs });
-      if (kindCfg?.ocrExpiry) {
+      const isImage = file.type && file.type.startsWith("image/");
+      if (kindCfg?.ocrExpiry && isImage) {
         try {
           const { fields } = await extractFromImage(dataUrl, { kind: pendingKind });
           if (fields?.expiryDate) {
