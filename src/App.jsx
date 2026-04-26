@@ -5492,7 +5492,7 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("home");
   const { quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
+  const { setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, refreshContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
@@ -5639,7 +5639,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onToast={onToast} generateCapabilityStatementPDF={generateCapabilityStatementPDF} />}
-        {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} generateCustomerStatementPDF={generateCustomerStatementPDF} />}
+        {tab === "contacts" && <ContactsTab contacts={contacts} setContacts={setContacts} refreshContacts={refreshContacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices || []} company={company} onToast={onToast} generateCustomerStatementPDF={generateCustomerStatementPDF} />}
         {tab === "quotes" && <QuotesTab quotes={quotes} setQuotes={setQuotes} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} onJumpTab={(k, orderId) => { setTab(k); if (orderId) setPendingDispatch(orderId); }} onConvertToBid={async (quote) => {
           // Build a bid pre-filled from the quote, persist it, link the quote back, navigate to Bids tab.
           const bidDraft = {
@@ -6624,7 +6624,7 @@ export default function App() {
           <ErrorBoundary>
             <Dashboard
               state={{ quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-              setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+              setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, refreshContacts: async () => { try { const fresh = await fetchContacts(); setContactsState(fresh); return fresh; } catch (e) { console.warn("refreshContacts failed:", e); return null; } }, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
               onToast={showToast}
               onExit={() => setView("public")}
               onLogout={handleLogout}

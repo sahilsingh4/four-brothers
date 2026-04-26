@@ -96,8 +96,10 @@ export const OnboardingPage = ({ token }) => {
     || kinds[0]?.v
     || "";
 
+  const [saveError, setSaveError] = useState(null);
   const persistDocs = async (nextDocs, extraFields = {}) => {
     setSaving(true);
+    setSaveError(null);
     try {
       const updated = await updateContactDocsByToken(token, { documents: nextDocs, ...extraFields });
       if (updated) {
@@ -107,7 +109,16 @@ export const OnboardingPage = ({ token }) => {
           ...extraFields,
         });
         setSavedAt(new Date());
+      } else {
+        // RPC returned null — most likely the link was revoked or the
+        // documents column is missing/RLS blocked. Surface to the user
+        // instead of failing silently (previous bug: upload appeared to
+        // succeed but doc never persisted, dispatcher saw nothing).
+        setSaveError("Upload didn't save. Link may be revoked — ask the dispatcher for a new one.");
       }
+    } catch (e) {
+      console.error("persistDocs failed:", e);
+      setSaveError("Upload failed — check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -307,9 +318,14 @@ export const OnboardingPage = ({ token }) => {
                 onChange={(e) => handleUpload(e.target.files)}
               />
             </label>
-            {savedAt && (
+            {savedAt && !saveError && (
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)" }}>
                 ✓ Saved at {savedAt.toLocaleTimeString()}{saving ? " · saving…" : ""}
+              </div>
+            )}
+            {saveError && (
+              <div className="fbt-mono" style={{ fontSize: 11, color: "var(--safety)", padding: 8, background: "#FEF2F2", border: "1px solid var(--safety)", borderRadius: 4 }}>
+                ⚠ {saveError}
               </div>
             )}
           </div>
