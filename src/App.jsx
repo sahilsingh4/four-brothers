@@ -6452,12 +6452,15 @@ export default function App() {
     else { setView("login"); }
   };
 
-  const submitMatch = route.match(/^#\/submit\/([A-Z0-9]+)(?:\/a\/([A-Za-z0-9]+))?/i);
-  const trackMatch = route.match(/^#\/track\/([A-Z0-9]+)/i);
-  const customerMatch = route.match(/^#\/customer\/([a-f0-9]+)/i);
-  const clientMatch = route.match(/^#\/client\/([A-Z0-9]+)/i);
-  const payMatch = route.match(/^#\/pay\/([a-f0-9]+)/i);  // v23 Session Y
-  const onboardMatch = route.match(/^#\/onboard\/([A-Za-z0-9]+)/i);
+  // Length caps prevent ReDoS / pathological inputs from a crafted hash URL.
+  // Real codes are 4–8 upper-alphanumeric; hex tokens are 32–64 chars;
+  // onboard tokens are ~24–40 chars. Anything outside the range is rejected.
+  const submitMatch = route.match(/^#\/submit\/([A-Z0-9]{4,16})(?:\/a\/([A-Za-z0-9]{1,40}))?/i);
+  const trackMatch = route.match(/^#\/track\/([A-Z0-9]{4,16})/i);
+  const customerMatch = route.match(/^#\/customer\/([a-f0-9]{8,64})/i);
+  const clientMatch = route.match(/^#\/client\/([A-Z0-9]{4,16})/i);
+  const payMatch = route.match(/^#\/pay\/([a-f0-9]{8,64})/i);  // v23 Session Y
+  const onboardMatch = route.match(/^#\/onboard\/([A-Za-z0-9]{8,64})/i);
 
   if (!loaded) {
     return (
