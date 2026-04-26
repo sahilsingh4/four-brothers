@@ -31,12 +31,10 @@ const DRIVER_DOC_KINDS = [
 ];
 const SUB_DOC_KINDS = [
   { v: "w9", label: "W-9 (taxpayer ID)", template: "https://www.irs.gov/pub/irs-pdf/fw9.pdf" },
-  { v: "coi", label: "Certificate of insurance (COI)" },
+  { v: "coi", label: "Additional insured certificate of insurance" },
   { v: "operating_authority", label: "Operating authority / MC certificate" },
   { v: "ic_agreement", label: "Independent contractor agreement" },
-  { v: "1099", label: "1099 (year-end)" },
   { v: "workers_comp", label: "Workers' comp waiver/certificate" },
-  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "other", label: "Other" },
 ];
 
@@ -299,6 +297,18 @@ export const OnboardingPage = ({ token }) => {
                 >
                   ▸ Or download blank {k.label} (PDF)
                 </a>
+              );
+            })()}
+            {/* OCR hint — for CDL / medical card, auto-extracting the
+                expiry date only works on photos (Tesseract is image-only).
+                PDFs upload fine but the date stays blank. */}
+            {(() => {
+              const k = kinds.find((x) => x.v === effectiveKind);
+              if (!k?.ocrExpiry) return null;
+              return (
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", padding: 6, background: "#F0F9FF", border: "1px dashed var(--steel)", borderRadius: 4 }}>
+                  ▸ TIP: Take a PHOTO of your {k.label} (not a PDF scan) for auto-detection of the expiry date.
+                </div>
               );
             })()}
             <label

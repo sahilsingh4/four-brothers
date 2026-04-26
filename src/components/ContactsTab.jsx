@@ -23,12 +23,10 @@ const DRIVER_DOC_KINDS = [
 ];
 const SUB_DOC_KINDS = [
   { v: "w9", label: "W-9 (taxpayer ID)", template: "https://www.irs.gov/pub/irs-pdf/fw9.pdf" },
-  { v: "coi", label: "Certificate of insurance (COI)" },
+  { v: "coi", label: "Additional insured certificate of insurance" },
   { v: "operating_authority", label: "Operating authority / MC certificate" },
   { v: "ic_agreement", label: "Independent contractor agreement" },
-  { v: "1099", label: "1099 (year-end)" },
   { v: "workers_comp", label: "Workers' comp waiver/certificate" },
-  { v: "work_permit", label: "Work permit / EAD (if applicable)" },
   { v: "other", label: "Other" },
 ];
 
@@ -36,7 +34,7 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
   const [draft, setDraft] = useState(contact || {
     type: "sub", companyName: "", contactName: "", phone: "", phone2: "",
     email: "", address: "", typicalTrucks: "", rateNotes: "",
-    usdot: "", insurance: "", notes: "", favorite: false, drivesForId: null,
+    usdot: "", caMcp: "", insurance: "", notes: "", favorite: false, drivesForId: null,
     brokerageApplies: false, brokeragePercent: 8,
     defaultPayRate: "", defaultPayMethod: "hour", defaultTruckNumber: "",
     taxId: "", taxIdType: "", legalName: "", is1099Eligible: false,
@@ -401,16 +399,16 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
           )}
 
           {draft.type === "sub" && (
-            <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
               <div>
-                <label className="fbt-label">USDOT / MC # / CA MCP</label>
-                <input className="fbt-input" value={draft.usdot} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="USDOT 1234567 · MC 000000" />
+                <label className="fbt-label">USDOT #</label>
+                <input className="fbt-input" value={draft.usdot} onChange={(e) => setDraft({ ...draft, usdot: e.target.value })} placeholder="1234567" />
               </div>
               <div>
-                <label className="fbt-label">Insurance Info</label>
-                <input className="fbt-input" value={draft.insurance} onChange={(e) => setDraft({ ...draft, insurance: e.target.value })} placeholder="Carrier · Policy # · Expires" />
+                <label className="fbt-label">CA MCP #</label>
+                <input className="fbt-input" value={draft.caMcp} onChange={(e) => setDraft({ ...draft, caMcp: e.target.value })} placeholder="MCP-000000" />
               </div>
-            </>
+            </div>
           )}
 
           {(draft.type === "driver" || draft.type === "sub") && (
@@ -704,6 +702,20 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
         </label>
       </div>
 
+      {/* OCR hint — when the picked kind would normally auto-extract an
+          expiry date (CDL / medical card), tell the user to upload a PHOTO
+          rather than a PDF. Tesseract is image-only; PDFs upload fine but
+          the expiry date won't be detected automatically. */}
+      {(() => {
+        const k = kinds.find((x) => x.v === pendingKind);
+        if (!k?.ocrExpiry) return null;
+        return (
+          <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 10, padding: 6, background: "#F0F9FF", border: "1px dashed var(--steel)", borderRadius: 4 }}>
+            ▸ TIP: Upload a PHOTO of the {k.label} for auto-detection of the expiry date. PDFs upload fine but expiry won't be auto-filled.
+          </div>
+        );
+      })()}
+
       {/* Blank-form download — for kinds that have an official template
           (I-9 USCIS, W-4 + W-9 IRS), give the admin a one-click way to
           fetch the latest agency PDF so they can email/print it for the
@@ -726,23 +738,38 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
           ▸ NO DOCUMENTS UPLOADED YET. Pick a kind and upload a photo or PDF.
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 6 }}>
-          {docs.map((d) => (
-            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, background: "#FFF", border: "1px solid var(--line)", borderRadius: 4 }}>
-              {d.dataUrl && /\.pdf$/i.test(d.fileName || "") === false ? (
-                <img src={d.dataUrl} alt="" style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid var(--line)" }} />
+        <div style={{ display: "grid", gap: 8 }}>
+          {docs.map((d) => {
+            const isPdf = /\.pdf$/i.test(d.fileName || "") || (d.dataUrl || "").startsWith("data:application/pdf");
+            const isImage = !!d.dataUrl && !isPdf;
+            return (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: 10, background: "#FFF", border: "1px solid var(--line)", borderRadius: 4 }}>
+              {isImage ? (
+                <a href={d.dataUrl} target="_blank" rel="noopener noreferrer" title="Click to view full-size">
+                  <img src={d.dataUrl} alt="" style={{ width: 88, height: 88, objectFit: "cover", border: "1px solid var(--line)", borderRadius: 4, cursor: "pointer", display: "block" }} />
+                </a>
+              ) : isPdf ? (
+                <a href={d.dataUrl} target="_blank" rel="noopener noreferrer" title="Click to open PDF" style={{ width: 88, height: 88, background: "#FEE2E2", border: "1px solid var(--safety)", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textDecoration: "none", color: "var(--safety)" }}>
+                  <FileDown size={24} />
+                  <div className="fbt-mono" style={{ fontSize: 10, fontWeight: 700, marginTop: 4 }}>PDF</div>
+                </a>
               ) : (
-                <div style={{ width: 40, height: 40, background: "#F5F5F4", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <FileDown size={16} style={{ color: "var(--concrete)" }} />
+                <div style={{ width: 88, height: 88, background: "#F5F5F4", border: "1px solid var(--line)", borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <FileDown size={24} style={{ color: "var(--concrete)" }} />
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--steel)" }}>{d.label || labelFor(d.kind)}</div>
-                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--steel)" }}>{d.label || labelFor(d.kind)}</div>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 3 }}>
                   {d.fileName || "—"}
-                  {d.expiryDate && <> · exp {d.expiryDate}</>}
-                  {d.uploadedAt && <> · uploaded {new Date(d.uploadedAt).toLocaleDateString()}</>}
                 </div>
+                {(d.expiryDate || d.uploadedAt) && (
+                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                    {d.expiryDate && <>exp {d.expiryDate}</>}
+                    {d.expiryDate && d.uploadedAt && " · "}
+                    {d.uploadedAt && <>uploaded {new Date(d.uploadedAt).toLocaleDateString()}</>}
+                  </div>
+                )}
               </div>
               <a
                 href={d.dataUrl}
@@ -762,7 +789,8 @@ const ComplianceDocsSection = ({ draft, setDraft, kinds, onSave, onToast }) => {
                 <Trash2 size={14} />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
