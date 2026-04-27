@@ -17,6 +17,26 @@ const daysUntilDate = (dateStr) => {
   return Math.round((t - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
+// Human-readable label for a document kind. Used in the Home doc-alerts
+// SMS message body so a driver/sub sees "CDL" instead of "cdl".
+const DOC_KIND_LABEL = {
+  cdl: "CDL",
+  medical_card: "Medical Card",
+  mvr: "MVR / License",
+  drug_test: "Drug Test",
+  i9: "I-9",
+  w4: "W-4",
+  w9: "W-9",
+  driver_app: "Driver Application",
+  direct_deposit: "Direct Deposit",
+  coi: "Certificate of Insurance",
+  operating_authority: "Operating Authority",
+  ic_agreement: "IC Agreement",
+  workers_comp: "Workers' Comp",
+  additional_insured: "Additional Insured",
+};
+const labelForKind = (k) => DOC_KIND_LABEL[k] || (k || "document").replace(/_/g, " ");
+
 export const HomeTab = ({
   freightBills, dispatches, contacts, setContacts, projects, invoices, quotes, bids = [], fleet = [], company,
   onJumpTab, onToast,
@@ -305,6 +325,70 @@ export const HomeTab = ({
       .sort((a, b) => b.missing.length - a.missing.length);
   }, [contacts]);
 
+  // v24: Per-contact "needs attention" doc list — drivers/subs with EITHER
+  // missing required docs OR docs already expired OR docs expiring within
+  // 30 days. Mirrors complianceMissing's required-kinds source so the panel
+  // and the per-contact modal render off the same memo. Worst severity
+  // (expired > expiringSoon > missing) sorts to the top.
+  const docAlerts = useMemo(() => {
+    const driverKinds = (() => {
+      try {
+        const raw = localStorage.getItem("fbt:requiredDocs:driver");
+        if (raw) return JSON.parse(raw);
+      } catch { /* noop */ }
+      return ["cdl", "medical_card", "mvr", "i9", "w4", "driver_app", "direct_deposit", "drug_test"];
+    })();
+    const subKinds = (() => {
+      try {
+        const raw = localStorage.getItem("fbt:requiredDocs:sub");
+        if (raw) return JSON.parse(raw);
+      } catch { /* noop */ }
+      return ["w9", "coi", "operating_authority", "ic_agreement", "workers_comp"];
+    })();
+    return (contacts || [])
+      .filter((c) => c.type === "driver" || c.type === "sub")
+      .map((c) => {
+        const required = c.type === "driver" ? driverKinds : subKinds;
+        if (required.length === 0) return null;
+        const docs = Array.isArray(c.documents) ? c.documents : [];
+        const have = required.filter((k) => docs.some((d) => d.kind === k || d.kind === `${k}_form`));
+        const missing = required.filter((k) => !have.includes(k));
+
+        // Per-doc expiry (uploaded but expiring/expired)
+        const expired = [];
+        const expiringSoon = [];
+        docs.forEach((d) => {
+          if (!d.expiryDate) return;
+          const days = daysUntilDate(d.expiryDate);
+          if (days === null) return;
+          if (days < 0) expired.push({ kind: d.kind, days });
+          else if (days <= 30) expiringSoon.push({ kind: d.kind, days });
+        });
+        // Top-level expiries (CDL / Medical card live as direct fields too)
+        const cdl = daysUntilDate(c.cdlExpiry);
+        if (cdl !== null) {
+          if (cdl < 0 && !expired.some((e) => e.kind === "cdl")) expired.push({ kind: "cdl", days: cdl });
+          else if (cdl >= 0 && cdl <= 30 && !expiringSoon.some((e) => e.kind === "cdl")) expiringSoon.push({ kind: "cdl", days: cdl });
+        }
+        const med = daysUntilDate(c.medicalCardExpiry);
+        if (med !== null) {
+          if (med < 0 && !expired.some((e) => e.kind === "medical_card")) expired.push({ kind: "medical_card", days: med });
+          else if (med >= 0 && med <= 30 && !expiringSoon.some((e) => e.kind === "medical_card")) expiringSoon.push({ kind: "medical_card", days: med });
+        }
+
+        if (missing.length === 0 && expired.length === 0 && expiringSoon.length === 0) return null;
+        const severity = expired.length ? 3 : missing.length ? 2 : 1; // expired > missing > expiringSoon
+        return { contact: c, missing, expired, expiringSoon, severity };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (b.severity !== a.severity) return b.severity - a.severity;
+        return (b.missing.length + b.expired.length) - (a.missing.length + a.expired.length);
+      });
+  }, [contacts]);
+
+  const [showDocAlertsModal, setShowDocAlertsModal] = useState(false);
+
   // v18 Dashboard rebuild: Money Out = approved + not-yet-paid FBs' pay nets by driver/sub.
   // Uses payingLines when available, falls back to paid snapshot.
   const moneyOut = useMemo(() => {
@@ -511,6 +595,77 @@ export const HomeTab = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* v24: Missing / expired-doc nudge panel — drivers + subs in one list.
+          Per-row SMS prefilled with the contact's specific missing/expired
+          docs so they know exactly what to send. "View all" button opens a
+          modal with the full list when the inline preview is truncated. */}
+      {docAlerts.length > 0 && (() => {
+        const expiredCount = docAlerts.filter((a) => a.expired.length > 0).length;
+        const headerColor = expiredCount > 0 ? "var(--safety)" : "#D97706";
+        const previewLimit = 5;
+        const preview = docAlerts.slice(0, previewLimit);
+        const hasMore = docAlerts.length > previewLimit;
+        return (
+          <div id="dashboard-doc-alerts" className="fbt-card" style={{ padding: 0, overflow: "hidden", border: `2px solid ${headerColor}` }}>
+            <div style={{ padding: "12px 16px", background: headerColor, color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700 }}>
+                📄 {docAlerts.length} CONTACT{docAlerts.length !== 1 ? "S" : ""} NEED DOCS
+                {expiredCount > 0 && <> · {expiredCount} EXPIRED</>}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDocAlertsModal(true)}
+                style={{ background: "rgba(255,255,255,0.2)", border: "1px solid #FFF", color: "#FFF", padding: "4px 10px", cursor: "pointer", fontSize: 10, fontWeight: 700, borderRadius: 4 }}
+              >
+                NOTIFY ALL ▸
+              </button>
+            </div>
+            <div style={{ padding: 8, display: "grid", gap: 6 }}>
+              {preview.map((a) => (
+                <DocAlertRow key={a.contact.id} alert={a} compact />
+              ))}
+              {hasMore && (
+                <button
+                  type="button"
+                  onClick={() => setShowDocAlertsModal(true)}
+                  style={{ background: "var(--surface)", border: "1px solid var(--line)", color: "var(--steel)", padding: "8px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600, borderRadius: 6, marginTop: 2 }}
+                >
+                  VIEW ALL {docAlerts.length} CONTACTS ▸
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Notify-all modal — full list with per-contact SMS/Email actions */}
+      {showDocAlertsModal && (
+        <div className="modal-bg" onClick={() => setShowDocAlertsModal(false)}>
+          <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <div style={{ padding: "14px 18px", background: "var(--steel)", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center", borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+              <div className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>
+                📄 NOTIFY {docAlerts.length} CONTACT{docAlerts.length !== 1 ? "S" : ""} ABOUT DOCS
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDocAlertsModal(false)}
+                style={{ background: "rgba(255,255,255,0.15)", color: "#FFF", border: "1px solid rgba(255,255,255,0.4)", padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600, borderRadius: 4 }}
+              >
+                CLOSE
+              </button>
+            </div>
+            <div style={{ padding: 14, display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--concrete)", marginBottom: 4 }}>
+                Tap a row's SMS / EMAIL button to send a reminder pre-filled with that contact's specific missing or expired docs. iOS / Android opens your messaging app — no message is sent automatically.
+              </div>
+              {docAlerts.map((a) => (
+                <DocAlertRow key={a.contact.id} alert={a} compact={false} />
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1246,6 +1401,118 @@ const ComplianceRow = ({ contact, total, have, missing, setContacts, onJumpTab, 
         </button>
       )}
       <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", whiteSpace: "nowrap" }}>{have} / {total}</div>
+    </div>
+  );
+};
+
+// v24: Single-contact row for the Home doc-alerts panel and the Notify-all
+// modal. Renders the contact's name + role chip, a list of missing/expired
+// chips, and per-row SMS/Email buttons pre-filled with that contact's
+// specific issues so the dispatcher can chase docs without opening Contacts.
+const DocAlertRow = ({ alert, compact }) => {
+  const { contact, missing, expired, expiringSoon } = alert;
+  const phone = contact.phone || contact.phone2;
+  const email = contact.email;
+  const name = contact.contactName || contact.companyName || "Unnamed";
+
+  // Build a one-message-fits-all reminder. Group expired (loud), missing
+  // (next), and expiring-soon (gentle) so the recipient sees what to do.
+  const lines = [];
+  if (expired.length) {
+    lines.push("EXPIRED: " + expired.map((e) => `${labelForKind(e.kind)} (${Math.abs(e.days)}d ago)`).join(", "));
+  }
+  if (missing.length) {
+    lines.push("Missing: " + missing.map(labelForKind).join(", "));
+  }
+  if (expiringSoon.length) {
+    lines.push("Expiring soon: " + expiringSoon.map((e) => `${labelForKind(e.kind)} (in ${e.days}d)`).join(", "));
+  }
+  const greeting = `Hi ${name.split(" ")[0] || name}, this is 4 Brothers Trucking.`;
+  const ask = "Please send the listed documents at your earliest convenience so we can keep you cleared to run.";
+  const reminderText = `${greeting} ${lines.join(" · ")}. ${ask}`;
+  const emailSubject = expired.length
+    ? `URGENT: Expired documents on file`
+    : `Action needed: missing documents`;
+
+  const smsHref = phone ? `sms:${String(phone).replace(/[^\d+]/g, "")}?body=${encodeURIComponent(reminderText)}` : null;
+  const emailHref = email
+    ? `mailto:${email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(reminderText)}`
+    : null;
+
+  const headlineColor = expired.length ? "var(--safety)" : missing.length ? "var(--hazard-deep)" : "#D97706";
+  const bgTint = expired.length ? "#FEE2E2" : missing.length ? "#FEF3C7" : "#FEF9C3";
+
+  return (
+    <div style={{
+      padding: 10,
+      background: bgTint,
+      border: `1.5px solid ${headlineColor}`,
+      borderRadius: 6,
+      display: "grid",
+      gridTemplateColumns: "1fr auto",
+      gap: 10,
+      alignItems: "center",
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span className="fbt-mono" style={{ fontWeight: 700, fontSize: 12 }}>{name}</span>
+          <span className="chip" style={{ background: contact.type === "sub" ? "#9A3412" : "#0369A1", color: "#FFF", fontSize: 9, padding: "1px 6px" }}>
+            {contact.type === "sub" ? "SUB" : "DRV"}
+          </span>
+          {expired.length > 0 && (
+            <span className="chip" style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "1px 6px" }}>
+              {expired.length} EXPIRED
+            </span>
+          )}
+          {missing.length > 0 && (
+            <span className="chip" style={{ background: "var(--hazard-deep)", color: "#FFF", fontSize: 9, padding: "1px 6px" }}>
+              {missing.length} MISSING
+            </span>
+          )}
+          {expiringSoon.length > 0 && (
+            <span className="chip" style={{ background: "#D97706", color: "#FFF", fontSize: 9, padding: "1px 6px" }}>
+              {expiringSoon.length} SOON
+            </span>
+          )}
+        </div>
+        <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 3, lineHeight: 1.45 }}>
+          {expired.length > 0 && (
+            <div>EXPIRED: {expired.map((e) => labelForKind(e.kind)).join(", ")}</div>
+          )}
+          {missing.length > 0 && (
+            <div>MISSING: {(compact ? missing.slice(0, 3) : missing).map(labelForKind).join(", ")}{compact && missing.length > 3 ? `, +${missing.length - 3} more` : ""}</div>
+          )}
+          {!compact && expiringSoon.length > 0 && (
+            <div>SOON: {expiringSoon.map((e) => `${labelForKind(e.kind)} (${e.days}d)`).join(", ")}</div>
+          )}
+          {phone && <div>📞 {phone}</div>}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 5 }}>
+        {smsHref && (
+          <a
+            href={smsHref}
+            className="btn-primary"
+            style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
+            title={`Text ${name}`}
+          >
+            📱 SMS
+          </a>
+        )}
+        {emailHref && (
+          <a
+            href={emailHref}
+            className="btn-ghost"
+            style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
+            title={`Email ${name}`}
+          >
+            ✉️ EMAIL
+          </a>
+        )}
+        {!phone && !email && (
+          <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", fontStyle: "italic" }}>no contact info</span>
+        )}
+      </div>
     </div>
   );
 };

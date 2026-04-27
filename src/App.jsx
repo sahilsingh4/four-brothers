@@ -5802,20 +5802,19 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
                 const to = company?.email || "";
                 window.location.href = `mailto:${to}?subject=${subject}&body=${body}`;
               }}
-              className="btn-ghost"
-              style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }}
+              className="btn-on-dark"
               title="Email yourself today's open orders, pending reviews, A/R, and expiring fleet docs"
             >
               ☀ BRIEFING
             </button>
             <InstallAppButton compact />
-            <button onClick={onChangePassword} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }} title="Change password">
+            <button onClick={onChangePassword} className="btn-on-dark" title="Change password">
               <KeyRound size={12} style={{ marginRight: 4 }} /> PASSWORD
             </button>
-            <button onClick={onExit} className="btn-ghost" style={{ color: "var(--cream)", borderColor: "var(--cream)", padding: "8px 14px", fontSize: 11 }}>
+            <button onClick={onExit} className="btn-on-dark">
               ← PUBLIC SITE
             </button>
-            <button onClick={onLogout} className="btn-ghost" style={{ color: "var(--hazard)", borderColor: "var(--hazard)", padding: "8px 14px", fontSize: 11 }}>
+            <button onClick={onLogout} className="btn-on-dark danger">
               <LogOut size={12} style={{ marginRight: 4 }} /> LOG OUT
             </button>
           </div>

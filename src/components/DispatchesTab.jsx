@@ -1189,7 +1189,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
 
       {showNew && (
         <div className="modal-bg" onClick={closeOrderModal}>
-          <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+          {/* v24: order modal uses a light-blue tint so it visually anchors
+              as "this is the order area" — feedback after the slate redesign
+              made every modal body look identical. Token --accent-soft is the
+              same blue tint chips already use, so the palette stays cohesive. */}
+          <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ background: "var(--accent-soft)" }}>
             <div style={{ padding: "20px 24px", background: "var(--steel)", color: "var(--cream)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <h3 className="fbt-display" style={{ fontSize: 20, margin: 0 }}>{editingId ? "EDIT ORDER" : "NEW ORDER"}</h3>
               <button onClick={closeOrderModal} className="btn-icon-on-dark" title="Close — confirms before discarding unsaved changes"><X size={20} /></button>
