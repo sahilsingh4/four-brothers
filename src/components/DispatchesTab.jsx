@@ -136,7 +136,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onAdminAddFb, onExportFbBundle, onToast }) => {
+export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], truckTypes = [], invoices = [], onAdminAddFb, onExportFbBundle, onToast }) => {
   const [showNew, setShowNew] = useState(false);
   // Admin manual FB entry — { dispatch, assignment } when open, null when closed
   const [adminAddFb, setAdminAddFb] = useState(null);
@@ -1549,6 +1549,44 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                               <Trash2 size={12} />
                             </button>
                           </div>
+
+                          {/* Truck-type picker — selecting a type pre-fills
+                              payRate + pay method ("hour") from the type
+                              catalog (Fleet → Truck types). Optional:
+                              admin can ignore it and type rates manually. */}
+                          {truckTypes.length > 0 && (
+                            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                              <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>TRUCK TYPE</span>
+                              <select
+                                className="fbt-select"
+                                style={{ padding: "5px 8px", fontSize: 11 }}
+                                value={a.truckTypeId || ""}
+                                onChange={(e) => {
+                                  const id = e.target.value ? Number(e.target.value) : null;
+                                  const t = id ? truckTypes.find((x) => x.id === id) : null;
+                                  const next = [...draft.assignments];
+                                  const patch = { truckTypeId: id, truckTypeName: t?.name || "" };
+                                  // Pre-fill pay rate + method from the type when picked.
+                                  // Only overwrite when the field is empty so admin manual
+                                  // edits aren't trampled.
+                                  if (t && t.subPayRate != null && (next[idx].payRate === "" || next[idx].payRate == null)) {
+                                    patch.payRate = String(t.subPayRate);
+                                    patch.payMethod = "hour";
+                                  }
+                                  next[idx] = { ...next[idx], ...patch };
+                                  setDraft({ ...draft, assignments: next });
+                                }}
+                                title="Pre-fills pay rate from the truck-type catalog"
+                              >
+                                <option value="">— optional —</option>
+                                {truckTypes.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name}{t.subPayRate != null ? ` · sub $${t.subPayRate}/hr` : ""}{t.subMinimumHours ? ` · ${t.subMinimumHours}hr min` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
 
                           {/* Row 2: pay method + pay rate + brokerage indicator */}
                           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center" }}>
