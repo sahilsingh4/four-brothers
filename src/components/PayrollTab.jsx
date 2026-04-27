@@ -420,6 +420,26 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
         await editFreightBill(entry.fb.id, updatedFb);
         paidFbs.push(updatedFb);
       }
+
+      // v24: Settle prior short-pay debts that were folded into this run.
+      // The deduction is already baked into target.net (and admin entered
+      // form.amount accordingly), so the debt is recovered. Stamping
+      // subPayDebtSettledAt removes it from future "prior debt" lookups.
+      const priorDebts = Array.isArray(target.priorDebts) ? target.priorDebts : [];
+      for (const d of priorDebts) {
+        try {
+          await editFreightBill(d.fb.id, {
+            ...d.fb,
+            subPayDebtSettledAt: lockStamp,
+          });
+        } catch (e) {
+          // Don't abort the pay run for a settle stamp — log + continue.
+          // Worst case the debt re-appears on the next pay-statement open
+          // and admin clears it manually.
+          console.error("Failed to stamp subPayDebtSettledAt on FB", d.fb.id, e);
+        }
+      }
+
       // v20 Session O: audit log — one entry per pay run (not per FB).
       // entityId stays null because pay statements use a human-readable
       // "PS-2026-0001" format, not a UUID — and the audit_log.entity_id
@@ -442,6 +462,11 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
           method: form.method,
           checkNumber: form.checkNumber || "",
           paidAt: stamp.paidAt,
+          priorDebtSettled: priorDebts.length > 0 ? {
+            count: priorDebts.length,
+            totalAmount: priorDebts.reduce((s, d) => s + (Number(d.amount) || 0), 0),
+            fbIds: priorDebts.map((d) => d.fb.id),
+          } : undefined,
         },
       });
       onToast(`✓ PAID ${target.subName} — ${fbs.length} FB${fbs.length !== 1 ? "S" : ""} · ${payStatementNumber}`);
@@ -481,13 +506,73 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
             </div>
           )}
 
-          {/* Short-pay notice */}
+          {/* Short-pay notice — loud with concrete delta so admin sees
+              exactly how much sub pay was reduced before signing the check */}
           {(() => {
             const shortFbs = fbs.filter((x) => x.custStatus === "short");
             if (shortFbs.length === 0) return null;
+            const fullGross = shortFbs.reduce((s, x) => s + (Number(x.gross) || 0), 0);
+            const adjGross = shortFbs.reduce((s, x) => s + (Number(x.adjustedGross) || 0), 0);
+            const reduction = fullGross - adjGross;
             return (
-              <div style={{ padding: 10, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11 }}>
-                ⚠ <strong>{shortFbs.length} SHORT-PAID FB{shortFbs.length !== 1 ? "S" : ""}:</strong> Sub will be paid proportionally to what customer paid.
+              <div style={{ padding: 12, background: "#FEF3C7", border: "2px solid var(--hazard)", fontSize: 11, borderRadius: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  ⚠ {shortFbs.length} CUSTOMER SHORT-PAID FB{shortFbs.length !== 1 ? "S" : ""} — sub pay reduced by {fmt$(reduction)}
+                </div>
+                <div style={{ fontSize: 10, color: "#92400E" }}>
+                  Gross at agreed rate: {fmt$(fullGross)} · Sub will be paid: {fmt$(adjGross)} (proportional to what customer paid).
+                </div>
+                <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
+                  {shortFbs.slice(0, 5).map((x) => (
+                    <div key={x.fb.id} style={{ fontSize: 10, fontFamily: "inherit", color: "#92400E" }}>
+                      · FB#{x.fb.freightBillNumber || "—"} — billed {fmt$(x.customerBilled)} · customer paid {fmt$(x.customerPaid)} ({Math.round((x.customerRatio || 0) * 100)}%)
+                    </div>
+                  ))}
+                  {shortFbs.length > 5 && (
+                    <div style={{ fontSize: 10, color: "#92400E", fontStyle: "italic" }}>
+                      · +{shortFbs.length - 5} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Prior short-pay debt — FBs the sub was previously OVERPAID
+              because the customer short-paid AFTER the sub got their check.
+              We deduct that overpayment here so the company recoups. Admin
+              can WAIVE individual debts to absorb the loss instead. */}
+          {(() => {
+            const debts = (target.priorDebts || []);
+            if (debts.length === 0) return null;
+            const totalDebt = debts.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+            return (
+              <div style={{ padding: 12, background: "#FEF2F2", border: "2px solid var(--safety)", fontSize: 11, borderRadius: 6 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--safety)" }}>
+                  ⚠ PRIOR SHORT-PAY DEBT — deducting {fmt$(totalDebt)} from this statement
+                </div>
+                <div style={{ fontSize: 10, color: "#991B1B", marginBottom: 6 }}>
+                  These FBs were paid out before the customer short-paid the invoice. Sub was overpaid by the listed amounts; the deduction here recoups it.
+                </div>
+                <div style={{ display: "grid", gap: 3 }}>
+                  {debts.map((d) => (
+                    <div key={d.fb.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#991B1B" }}>
+                      <span>· FB#{d.fb.freightBillNumber || "—"} — overpaid {fmt$(d.amount)}</span>
+                      <button
+                        type="button"
+                        onClick={() => target.onWaiveDebt && target.onWaiveDebt(d.fb)}
+                        style={{
+                          background: "#FFF", color: "var(--safety)",
+                          border: "1px solid var(--safety)", borderRadius: 4,
+                          padding: "1px 6px", fontSize: 9, cursor: "pointer",
+                        }}
+                        title="Forgive this debt without deducting from the sub"
+                      >
+                        WAIVE
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })()}
@@ -500,6 +585,11 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
             {target.brokerageAmt > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "var(--hazard-deep)" }}>
                 <span>BROKERAGE ({target.brokeragePct}%):</span><strong>−{fmt$(target.brokerageAmt)}</strong>
+              </div>
+            )}
+            {Number(target.priorDebtSum) > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: "var(--safety)" }}>
+                <span>PRIOR SHORT-PAY DEBT:</span><strong>−{fmt$(target.priorDebtSum)}</strong>
               </div>
             )}
             <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6, borderTop: "1px solid var(--steel)", fontWeight: 700 }}>
@@ -1088,6 +1178,53 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
   const toggleProject = (key) => setExpanded((e) => ({ ...e, [`p_${key}`]: !e[`p_${key}`] }));
   const toggleSub = (pkey, skey) => setExpanded((e) => ({ ...e, [`s_${pkey}_${skey}`]: !e[`s_${pkey}_${skey}`] }));
 
+  // Find unsettled prior-debt FBs for a sub. These are FBs the sub was
+  // already paid for, but the customer subsequently short-paid the
+  // invoice — leaving an overpayment to recover. Stamped on the FB by
+  // RecordPaymentModal at the moment the customer payment is recorded
+  // (see computePostLockDebt). Filter out anything currently being paid
+  // in this same statement so we don't double-count.
+  const findPriorDebts = (subId, currentFbIds) => {
+    if (!subId) return [];
+    return (freightBills || [])
+      .filter((fb) => {
+        if (currentFbIds.has(fb.id)) return false;
+        if (!fb.subPayDebtAmount || Number(fb.subPayDebtAmount) <= 0) return false;
+        if (fb.subPayDebtSettledAt) return false;
+        const d = dispatches.find((x) => x.id === fb.dispatchId);
+        if (!d) return false;
+        const a = (d.assignments || []).find((a) => a.aid === fb.assignmentId);
+        if (!a || a.contactId !== subId) return false;
+        return true;
+      })
+      .map((fb) => ({ fb, amount: Number(fb.subPayDebtAmount) }));
+  };
+
+  // Waive a single debt — sub is forgiven the overpayment. Stamps
+  // settled_at without taking it out of the sub's next pay statement.
+  // Audit-logged so the company can reconcile losses later.
+  const waivePriorDebt = async (fb) => {
+    if (!confirm(`Waive prior short-pay debt of ${fmt$(Number(fb.subPayDebtAmount) || 0)} on FB#${fb.freightBillNumber || "—"}?\n\nThe sub keeps the overpayment. The company eats the loss.`)) return;
+    try {
+      await editFreightBill(fb.id, {
+        ...fb,
+        subPayDebtSettledAt: new Date().toISOString(),
+      });
+      logAudit({
+        actionType: "fb.sub_pay_debt_waived",
+        entityType: "freight_bill", entityId: fb.id,
+        entityLabel: fb.freightBillNumber || "—",
+        metadata: { waivedAmount: Number(fb.subPayDebtAmount) || 0 },
+      });
+      onToast(`✓ DEBT WAIVED — ${fmt$(Number(fb.subPayDebtAmount) || 0)}`);
+      // Close the modal so the user re-opens with refreshed numbers.
+      setPayTarget(null);
+    } catch (e) {
+      console.error("Waive debt failed:", e);
+      onToast("WAIVE FAILED");
+    }
+  };
+
   // Bulk pay all subs on a project
   const openPaySub = (pd, sub, includeAdvance = false) => {
     const unpaidFbs = sub.fbs.filter((x) => !x.fb.paidAt);
@@ -1102,13 +1239,25 @@ export const PayrollTab = ({ freightBills, dispatches, setDispatches, contacts, 
     }
     const gross = fbsToPay.reduce((s, x) => s + x.adjustedGross, 0);
     const brokerageAmt = sub.brokerageApplies ? gross * (sub.brokeragePct / 100) : 0;
+    const grossNet = gross - brokerageAmt;
+    // Aggregate any unsettled prior-debt FBs for this sub and net them out
+    const currentIds = new Set(fbsToPay.map((x) => x.fb.id));
+    const priorDebts = findPriorDebts(sub.subId, currentIds);
+    const debtSum = priorDebts.reduce((s, d) => s + d.amount, 0);
     setPayTarget({
       projectName: pd.projectName,
       subName: sub.subName,
       subId: sub.subId,
       subKind: sub.kind,
       brokerageApplies: sub.brokerageApplies,
-      gross, brokeragePct: sub.brokeragePct, brokerageAmt, net: gross - brokerageAmt,
+      gross, brokeragePct: sub.brokeragePct, brokerageAmt,
+      // Net subtracts the carried-forward overpayment so the check is
+      // for what we ACTUALLY owe the sub after recouping prior debts.
+      net: grossNet - debtSum,
+      grossNet,                  // pre-debt net (for display)
+      priorDebts,
+      priorDebtSum: debtSum,
+      onWaiveDebt: waivePriorDebt,
       fbs: fbsToPay,
       includeAdvance,
       hasAdvance: unpaidFbs.some((x) => x.custStatus !== "paid" && x.custStatus !== "short"),

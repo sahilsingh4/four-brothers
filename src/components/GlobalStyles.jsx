@@ -92,25 +92,48 @@ export const GlobalStyles = () => (
     .btn-danger:hover { background: var(--safety); color: #FFF; }
 
     /* Icon button intended to live on a dark (var(--steel)) header bar.
-       Off-white tile with a dark icon for high contrast — replaces the
-       low-contrast cream-on-steel ghost buttons that were hard to tap on
-       phones (and read as dull on the blue-tinted slate). 40x40 hits the
-       Apple HIG 44-pt touch target with the inner icon centered. */
+       v24: grey-tinted tile with off-white icon — softer than the previous
+       white-on-dark which "popped" too hard against the slate header and
+       read as a sticker rather than a button. 40x40 hits Apple HIG 44pt. */
     .btn-icon-on-dark {
       display: inline-flex; align-items: center; justify-content: center;
       width: 40px; height: 40px;
-      background: #FFF; color: var(--steel);
-      border: 1px solid rgba(255,255,255,0.85);
+      background: rgba(255,255,255,0.10);
+      color: #F8FAFC;
+      border: 1px solid rgba(255,255,255,0.20);
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.12s, transform 0.08s;
       padding: 0;
     }
-    .btn-icon-on-dark:hover { background: #F1F5F9; }
+    .btn-icon-on-dark:hover { background: rgba(255,255,255,0.18); }
     .btn-icon-on-dark:active { transform: translateY(1px); }
-    .btn-icon-on-dark.danger { color: var(--safety); }
-    .btn-icon-on-dark.danger:hover { background: #FEE2E2; }
+    .btn-icon-on-dark.danger { color: #FCA5A5; }
+    .btn-icon-on-dark.danger:hover { background: rgba(252,165,165,0.18); }
     .btn-icon-on-dark:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Action button intended to live on a dark header bar (top nav, modal
+       headers). Slate-tinted bg + off-white text reads as a real, tappable
+       button instead of "white-on-dark text floating in space". Used in
+       the top bar on Briefing / Password / Public Site / Log Out so they
+       feel cohesive with the dark chrome. */
+    .btn-on-dark {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.10);
+      color: #F8FAFC;
+      border: 1px solid rgba(255,255,255,0.20);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-family: inherit; font-weight: 500; font-size: 12px;
+      letter-spacing: 0; text-transform: none;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn-on-dark:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.32); }
+    .btn-on-dark:active { transform: translateY(1px); }
+    .btn-on-dark.danger { color: #FCA5A5; border-color: rgba(252,165,165,0.40); }
+    .btn-on-dark.danger:hover { background: rgba(252,165,165,0.14); border-color: rgba(252,165,165,0.60); }
+    .btn-on-dark:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* === Inputs === */
     .fbt-input, .fbt-select, .fbt-textarea {
