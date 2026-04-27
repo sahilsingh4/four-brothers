@@ -58,7 +58,10 @@ export const QuickAddContactModal = ({ kind, onSave, onCancel, onToast }) => {
   }, [saving, draft]);
 
   return (
-    <div className="modal-bg" onClick={onCancel}>
+    // Stacks above the NewOrder modal that opened it (NewOrder's modal-bg
+    // renders LATER in the DOM, so equal z-index would put NewOrder on top
+    // and bury this picker behind it). Bumped to 200 (base modal-bg is 100).
+    <div className="modal-bg" onClick={onCancel} style={{ zIndex: 200 }}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
         <div style={{ padding: "16px 20px", background: kind === "sub" ? "#9A3412" : "#0369A1", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>

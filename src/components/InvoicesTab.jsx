@@ -709,15 +709,17 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
   const builderAddLine = (fbId, seed = {}) => {
     const fb = freightBills.find((f) => f.id === fbId);
     if (!fb) return;
-    // Default brokerage ON for sub FBs (use the sub contact's %).
-    // OFF for drivers + for pass-through codes (TOLL/DUMP/FUEL/OTHER are reimbursements, not revenue).
+    // Brokerage on a BILLING line is the cut the bill recipient takes
+    // before paying us. Customers pay straight rate — defaults OFF.
+    // Brokers default ON only when their contact record has
+    // brokerageApplies set. Pass-through codes (TOLL/DUMP/FUEL/OTHER)
+    // are reimbursements, not revenue, so they never carry brokerage.
     const disp = dispatches.find((d) => d.id === fb.dispatchId);
-    const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
-    const isSub = assignment?.kind === "sub";
-    const subContact = isSub && assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+    const billingTo = disp?.clientId ? contacts.find((c) => c.id === disp.clientId) : null;
+    const billingToIsBroker = billingTo?.type === "broker";
     const isPassThrough = ["TOLL", "DUMP", "FUEL"].includes(seed.code);
-    const brokerableDefault = isSub && !!subContact?.brokerageApplies && !isPassThrough;
-    const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
+    const brokerableDefault = billingToIsBroker && !!billingTo?.brokerageApplies && !isPassThrough;
+    const brokeragePctDefault = brokerableDefault ? Number(billingTo?.brokeragePercent || 10) : 0;
 
     const newLine = recomputeBuilderLine({
       id: nextLineId(),

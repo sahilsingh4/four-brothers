@@ -171,10 +171,14 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           // Seed one primary line based on dispatch method.
           const hasPrimary = lines.some((ln) => ["H", "T", "L"].includes(ln.code));
           if (!hasPrimary) {
-            const isSub = assignment?.kind === "sub";
-            const contactForBilling = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
-            const brokerableDefault = isSub && !!contactForBilling?.brokerageApplies;
-            const brokeragePctDefault = brokerableDefault ? Number(contactForBilling?.brokeragePercent || 10) : 0;
+            // Brokerage on a BILLING line means the bill recipient (customer
+            // or broker) takes a cut before paying us. Customers pay straight
+            // rate — brokerable defaults OFF for them. Brokers default ON
+            // only when their contact record has brokerageApplies set.
+            const billingTo = dispatch?.clientId ? contacts.find((c) => c.id === dispatch.clientId) : null;
+            const billingToIsBroker = billingTo?.type === "broker";
+            const brokerableDefault = billingToIsBroker && !!billingTo?.brokerageApplies;
+            const brokeragePctDefault = brokerableDefault ? Number(billingTo?.brokeragePercent || 10) : 0;
 
             const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
             const code = method === "hour" ? "H" : method === "ton" ? "T" : "L";
@@ -241,12 +245,14 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
           return lines;
         })()
       : (() => {
-          // v18: brokerage default for subs — if assignment is to a sub AND contact has brokerage on,
-          // seed the new line with brokerable: true and the contact's pct. For drivers, brokerage stays off.
-          const isSub = assignment?.kind === "sub";
-          const contactForBilling = assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
-          const brokerableDefault = isSub && !!contactForBilling?.brokerageApplies;
-          const brokeragePctDefault = brokerableDefault ? Number(contactForBilling?.brokeragePercent || 10) : 0;
+          // Brokerage on a BILLING line means the bill recipient (customer
+          // or broker) takes a cut before paying us. Customers pay straight
+          // rate — brokerable defaults OFF for them. Brokers default ON
+          // only when their contact record has brokerageApplies set.
+          const billingTo = dispatch?.clientId ? contacts.find((c) => c.id === dispatch.clientId) : null;
+          const billingToIsBroker = billingTo?.type === "broker";
+          const brokerableDefault = billingToIsBroker && !!billingTo?.brokerageApplies;
+          const brokeragePctDefault = brokerableDefault ? Number(billingTo?.brokeragePercent || 10) : 0;
 
           // Seed one billing line from dispatch rate
           const method = dispatch?.ratePerHour ? "hour" : dispatch?.ratePerTon ? "ton" : dispatch?.ratePerLoad ? "load" : "hour";
