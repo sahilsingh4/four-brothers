@@ -157,6 +157,8 @@ const fbFromDB = (row) => ({
   loadCount: row.load_count,
   pickupTime: row.pickup_time,
   dropoffTime: row.dropoff_time,
+  signedOutStatus: row.signed_out_status,
+  signedOutAt: row.signed_out_at,
   notes: row.notes,
   photos: row.photos || [],
   submittedAt: row.submitted_at,
@@ -219,6 +221,8 @@ const fbToDB = (fb) => ({
   load_count: Number(fb.loadCount) || 1,
   pickup_time: fb.pickupTime || null,
   dropoff_time: fb.dropoffTime || null,
+  signed_out_status: fb.signedOutStatus || null,
+  signed_out_at: fb.signedOutAt || null,
   notes: fb.notes || null,
   photos: fb.photos || [],
   status: fb.status || "pending",
@@ -285,6 +289,8 @@ const fbPatchToDB = (patch) => {
   if (has("loadCount"))             out.load_count = Number(patch.loadCount) || 1;
   if (has("pickupTime"))            out.pickup_time = strOrNull(patch.pickupTime);
   if (has("dropoffTime"))           out.dropoff_time = strOrNull(patch.dropoffTime);
+  if (has("signedOutStatus"))       out.signed_out_status = strOrNull(patch.signedOutStatus);
+  if (has("signedOutAt"))           out.signed_out_at = strOrNull(patch.signedOutAt);
   if (has("notes"))                 out.notes = strOrNull(patch.notes);
   if (has("photos"))                out.photos = patch.photos || [];
   if (has("status"))                out.status = patch.status;

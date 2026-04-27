@@ -420,11 +420,15 @@ const PaidModal = ({ target, fbs, editFreightBill, allFreightBills = [], onClose
         await editFreightBill(entry.fb.id, updatedFb);
         paidFbs.push(updatedFb);
       }
-      // v20 Session O: audit log — one entry per pay run (not per FB)
+      // v20 Session O: audit log — one entry per pay run (not per FB).
+      // entityId stays null because pay statements use a human-readable
+      // "PS-2026-0001" format, not a UUID — and the audit_log.entity_id
+      // column is typed UUID. The PS number lives in entityLabel for
+      // search; metadata.payStatementNumber preserves it too.
       logAudit({
         actionType: "fb.paid",
         entityType: "pay_run",
-        entityId: payStatementNumber,  // use PS number as the "pay run" identifier
+        entityId: null,
         entityLabel: payStatementNumber,
         actor: currentUser || "admin",
         metadata: {
