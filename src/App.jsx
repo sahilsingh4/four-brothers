@@ -2592,7 +2592,7 @@ const PhotoGalleryModal = ({ title, onClose, ...galleryProps }) => {
 //   - freightBills, dispatches, contacts, projects, invoices  (data)
 //   - initialDispatchId / initialInvoiceId  (optional: lock filter to a specific context)
 //   - onClose  (optional: present as a modal if provided)
-const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
+const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast, truckTypes = [] }) => {
   const [editingBid, setEditingBid] = useState(null);  // null | bid object | {} for new
   const [showNew, setShowNew] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2847,6 +2847,7 @@ const BidsTab = ({ bids = [], setBids, onConvertToProject, onToast }) => {
           onDelete={handleDeleteBid}
           onConvertToProject={onConvertToProject}
           onToast={onToast}
+          truckTypes={truckTypes}
         />
       )}
 
@@ -5875,7 +5876,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
             onToast("⚠ CONVERT FAILED");
           }
         }} onToast={onToast} />}
-        {tab === "bids" && <BidsTab bids={bids || []} setBids={setBids} onConvertToProject={async (bid) => {
+        {tab === "bids" && <BidsTab bids={bids || []} setBids={setBids} truckTypes={truckTypes} onConvertToProject={async (bid) => {
           // Create a project from an awarded bid, link the bid back, navigate to Projects.
           const projectDraft = {
             customerId: null, // user can pick after — we don't have a customer link from the bid alone
@@ -5898,6 +5899,10 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
             minimumHours: "",
             bidId: bid.id,
             quoteId: bid.quoteId || null,
+            // Stage 3 truck-types: carry the bid's truck-type scope into
+            // the project so the order-form picker is pre-filtered. Falls
+            // back to empty (no restriction) if the bid never declared.
+            truckTypeIds: Array.isArray(bid.truckTypeIds) ? bid.truckTypeIds : [],
           };
           try {
             const savedProject = await insertProject(projectDraft);

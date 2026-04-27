@@ -4,9 +4,9 @@ import { fmt$, BID_STATUSES, BID_STATUS_MAP, BID_PORTALS } from "../utils";
 import { BidDeadlineChip } from "./BidDeadlineChip";
 import { useFormDraft } from "../hooks/useFormDraft";
 
-export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, onToast }) => {
+export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, onToast, truckTypes = [] }) => {
   const isNew = !bid?.id;
-  const initialDraft = bid ? { ...bid } : {
+  const initialDraft = bid ? { ...bid, truckTypeIds: Array.isArray(bid.truckTypeIds) ? bid.truckTypeIds : [] } : {
     rfbNumber: "",
     title: "",
     agency: "",
@@ -36,6 +36,10 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
     notes: "",
     tags: [],
     checklistItems: [],  // v19a: document checklist [{id, label, done, notes}]
+    // Stage 3: truck-types the bid is scoped to. Carries through to the
+    // resulting project on conversion so the project's order-form
+    // assignment picker can filter accordingly. Empty = no preference.
+    truckTypeIds: [],
   };
   // Only persist drafts for NEW bids — editing an existing one already has
   // the server as source of truth, so draft-restore would be confusing.
@@ -496,6 +500,42 @@ export const BidModal = ({ bid, onSave, onDelete, onConvertToProject, onClose, o
           <div>
             <label className="fbt-label">Notes</label>
             <textarea className="fbt-input" rows={4} value={draft.notes || ""} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Free-form notes, competitor intel, meeting recap..." />
+          </div>
+
+          {/* Stage 3: Truck-type scope. Same multi-select pattern ProjectsTab
+              uses — picks carry through to the project on conversion. */}
+          <div>
+            <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--steel)", marginBottom: 8 }}>
+              ▸ TRUCK TYPES THIS BID IS SCOPED TO
+            </div>
+            {truckTypes.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+                No truck types defined yet. Add them in Fleet → Truck types.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {truckTypes.map((t) => {
+                  const checked = (draft.truckTypeIds || []).includes(t.id);
+                  return (
+                    <label key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: `1.5px solid ${checked ? "var(--hazard-deep)" : "var(--concrete)"}`, background: checked ? "#EFF6FF" : "#FFF", cursor: "pointer", fontSize: 12, borderRadius: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const cur = Array.isArray(draft.truckTypeIds) ? draft.truckTypeIds : [];
+                          const next = e.target.checked ? [...cur, t.id] : cur.filter((x) => x !== t.id);
+                          setDraft({ ...draft, truckTypeIds: next });
+                        }}
+                      />
+                      <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.4 }}>
+              ▸ Carries through to the project when the bid is awarded and converted. Leave empty to defer the choice until conversion.
+            </div>
           </div>
 
           {/* Actions */}

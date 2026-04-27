@@ -1247,6 +1247,10 @@ const bidFromDB = (row) => ({
   notes: row.notes || "",
   tags: row.tags || [],
   checklistItems: row.checklist_items || [],  // v19a: document checklist
+  // Stage 3 truck-types: bids declare which truck types the prospective
+  // job needs. Carries through to the project on conversion. Empty array
+  // = no preference set yet.
+  truckTypeIds: Array.isArray(row.truck_type_ids) ? row.truck_type_ids : [],
   deletedAt: row.deleted_at || null,
   deletedBy: row.deleted_by || null,
   deleteReason: row.delete_reason || null,
@@ -1284,6 +1288,7 @@ const bidToDB = (bid) => ({
   notes: bid.notes || null,
   tags: bid.tags || [],
   checklist_items: bid.checklistItems || [],  // v19a: document checklist
+  truck_type_ids: Array.isArray(bid.truckTypeIds) ? bid.truckTypeIds : [],
 });
 
 export const fetchBids = async () => {
