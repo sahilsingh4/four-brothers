@@ -213,8 +213,6 @@ export const GlobalStyles = () => (
     }
 
     /* === Animations === */
-    @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    .anim-up { animation: slideUp 0.3s ease-out both; }
     @keyframes truckRoll { 0%,100% { transform: translateX(-6px); } 50% { transform: translateX(6px); } }
     .anim-roll { animation: truckRoll 3s ease-in-out infinite; }
 
@@ -237,9 +235,6 @@ export const GlobalStyles = () => (
     }
 
     .scroll-x { overflow-x: auto; }
-
-    /* Decorative corner crosshairs — disabled in v23 (busy / no info). */
-    .corner-mark { display: none; }
 
     /* === Modals === */
     .modal-bg {

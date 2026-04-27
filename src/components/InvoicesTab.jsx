@@ -10,7 +10,7 @@ import {
   Briefcase, Building2, Calendar, ChevronDown, ClipboardList, DollarSign,
   Eye, FileDown, FileText, Lock, Plus, Receipt, Settings, ShieldCheck, Trash2, X,
 } from "lucide-react";
-import { fmt$, todayISO, nextLineId } from "../utils";
+import { fmt$, fmtQty, todayISO, nextLineId } from "../utils";
 import { logAudit, deleteInvoice, recoverInvoice } from "../db";
 import { supabase } from "../supabase";
 import { InvoiceViewModal } from "./InvoiceViewModal";
@@ -18,6 +18,11 @@ import { RecordPaymentModal } from "./RecordPaymentModal";
 import { CompanyProfileModal } from "./CompanyProfileModal";
 
 
+// Module-scoped date formatters used by both PDF generators below.
+// Defined once here instead of being re-declared inside each function
+// (was duplicated in generateInvoicePDF + generateCustomerStatementPDF).
+const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
+const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
 
 const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
   // v18 Task B: clean invoice layout matching the actual 4 Brothers printed invoice.
@@ -25,11 +30,7 @@ const generateInvoicePDF = async (invoice, company, freightBills, pricing) => {
   // centered circular logo · boxed total · customizable terms footer.
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
-  const fmtQty = (n) => Number(n || 0).toFixed(2);
   const rate = Number(pricing.rate) || 0;
-
-  const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
-  const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
 
   // Inline SVG logo — circular mark with "4 BROTHERS" banner, "4B" in center.
   // Monochrome to print cleanly on any black-and-white printer.
@@ -330,8 +331,6 @@ ${photosHtml}
 export const generateCustomerStatementPDF = ({ customer, invoices, company, fromDate, toDate, openOnly = false }) => {
   const esc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[c]));
   const money = (n) => `$${(Number(n) || 0).toFixed(2)}`;
-  const fmtFullDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit" }) : "";
-  const fmtLongDate = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }) : "";
 
   const logoSvg = `<svg viewBox="0 0 120 120" width="88" height="88" xmlns="http://www.w3.org/2000/svg">
     <circle cx="60" cy="60" r="56" fill="#FFF" stroke="#1C1917" stroke-width="3"/>
@@ -710,15 +709,17 @@ export const InvoicesTab = ({ freightBills, dispatches, invoices, setInvoices, c
   const builderAddLine = (fbId, seed = {}) => {
     const fb = freightBills.find((f) => f.id === fbId);
     if (!fb) return;
-    // Default brokerage ON for sub FBs (use the sub contact's %).
-    // OFF for drivers + for pass-through codes (TOLL/DUMP/FUEL/OTHER are reimbursements, not revenue).
+    // Brokerage on a BILLING line is the cut the bill recipient takes
+    // before paying us. Customers pay straight rate — defaults OFF.
+    // Brokers default ON only when their contact record has
+    // brokerageApplies set. Pass-through codes (TOLL/DUMP/FUEL/OTHER)
+    // are reimbursements, not revenue, so they never carry brokerage.
     const disp = dispatches.find((d) => d.id === fb.dispatchId);
-    const assignment = disp ? (disp.assignments || []).find((a) => a.aid === fb.assignmentId) : null;
-    const isSub = assignment?.kind === "sub";
-    const subContact = isSub && assignment?.contactId ? contacts.find((c) => c.id === assignment.contactId) : null;
+    const billingTo = disp?.clientId ? contacts.find((c) => c.id === disp.clientId) : null;
+    const billingToIsBroker = billingTo?.type === "broker";
     const isPassThrough = ["TOLL", "DUMP", "FUEL"].includes(seed.code);
-    const brokerableDefault = isSub && !!subContact?.brokerageApplies && !isPassThrough;
-    const brokeragePctDefault = brokerableDefault ? Number(subContact?.brokeragePercent || 10) : 0;
+    const brokerableDefault = billingToIsBroker && !!billingTo?.brokerageApplies && !isPassThrough;
+    const brokeragePctDefault = brokerableDefault ? Number(billingTo?.brokeragePercent || 10) : 0;
 
     const newLine = recomputeBuilderLine({
       id: nextLineId(),

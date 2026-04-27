@@ -17,6 +17,7 @@ export const QuickAddContactModal = ({ kind, onSave, onCancel, onToast }) => {
     defaultPayMethod: "hour",
     brokerageApplies: kind === "sub",
     brokeragePercent: kind === "sub" ? 10 : 0,
+    actsAsBroker: false,
     favorite: false,
     notes: "",
   });
@@ -58,7 +59,10 @@ export const QuickAddContactModal = ({ kind, onSave, onCancel, onToast }) => {
   }, [saving, draft]);
 
   return (
-    <div className="modal-bg" onClick={onCancel}>
+    // Stacks above the NewOrder modal that opened it (NewOrder's modal-bg
+    // renders LATER in the DOM, so equal z-index would put NewOrder on top
+    // and bury this picker behind it). Bumped to 200 (base modal-bg is 100).
+    <div className="modal-bg" onClick={onCancel} style={{ zIndex: 200 }}>
       <div className="modal-body" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
         <div style={{ padding: "16px 20px", background: kind === "sub" ? "#9A3412" : "#0369A1", color: "#FFF", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -108,18 +112,29 @@ export const QuickAddContactModal = ({ kind, onSave, onCancel, onToast }) => {
           </div>
 
           {kind === "sub" && (
-            <div style={{ padding: 10, background: "#FEF3C7", border: "1.5px solid var(--hazard-deep)" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}>
-                <input type="checkbox" checked={draft.brokerageApplies} onChange={(e) => setDraft({ ...draft, brokerageApplies: e.target.checked })} />
-                <span style={{ fontWeight: 700 }}>Apply brokerage</span>
-              </label>
-              {draft.brokerageApplies && (
-                <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                  <label className="fbt-mono" style={{ fontSize: 10 }}>Brokerage %:</label>
-                  <input className="fbt-input" type="number" step="0.5" value={draft.brokeragePercent} onChange={(e) => setDraft({ ...draft, brokeragePercent: e.target.value })} style={{ width: 80 }} />
+            <>
+              <div style={{ padding: 10, background: "#FEF3C7", border: "1.5px solid var(--hazard-deep)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}>
+                  <input type="checkbox" checked={draft.brokerageApplies} onChange={(e) => setDraft({ ...draft, brokerageApplies: e.target.checked })} />
+                  <span style={{ fontWeight: 700 }}>Apply brokerage</span>
+                </label>
+                {draft.brokerageApplies && (
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <label className="fbt-mono" style={{ fontSize: 10 }}>Brokerage %:</label>
+                    <input className="fbt-input" type="number" step="0.5" value={draft.brokeragePercent} onChange={(e) => setDraft({ ...draft, brokeragePercent: e.target.value })} style={{ width: 80 }} />
+                  </div>
+                )}
+              </div>
+              <div style={{ padding: 10, background: draft.actsAsBroker ? "#EFF6FF" : "#F5F5F4", border: "1.5px solid " + (draft.actsAsBroker ? "var(--hazard-deep)" : "var(--concrete)") }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12 }}>
+                  <input type="checkbox" checked={!!draft.actsAsBroker} onChange={(e) => setDraft({ ...draft, actsAsBroker: e.target.checked })} />
+                  <span style={{ fontWeight: 700 }}>Also brokers work back to us</span>
+                </label>
+                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 6, lineHeight: 1.4 }}>
+                  ▸ Check when this same company also gives us work — they'll show up in the order-form customer picker.
                 </div>
-              )}
-            </div>
+              </div>
+            </>
           )}
 
           <div style={{ display: "flex", gap: 10, marginTop: 6 }}>

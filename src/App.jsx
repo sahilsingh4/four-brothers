@@ -144,6 +144,7 @@ const DriverPayPortalPage = lazy(() => import("./components/DriverPayPortalPage"
 const DriverUploadPage = lazy(() => import("./components/DriverUploadPage").then((m) => ({ default: m.DriverUploadPage })));
 const CustomerPortal = lazy(() => import("./components/CustomerPortal").then((m) => ({ default: m.CustomerPortal })));
 const OnboardingPage = lazy(() => import("./components/OnboardingPage").then((m) => ({ default: m.OnboardingPage })));
+const TruckPortalPage = lazy(() => import("./components/TruckPortalPage").then((m) => ({ default: m.TruckPortalPage })));
 const PublicSite = lazy(() => import("./components/PublicSite").then((m) => ({ default: m.PublicSite })));
 
 // Suspense fallback shown while a lazy chunk is in flight.
@@ -5654,8 +5655,8 @@ const NotificationBell = ({ unreadIds, freightBills, dispatches, onJumpToDispatc
 
 const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword }) => {
   const [tab, setTab] = useState("home");
-  const { quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
-  const { setQuotes, setBids, setFleet, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, refreshContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
+  const { quotes, bids, fleet, truckTypes = [], dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects } = state;
+  const { setQuotes, setBids, setFleet, setTruckTypes, setDispatches, setFreightBills, setInvoices, createInvoice, setCompany, setContacts, refreshContacts, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill } = setters;
   const [pendingDispatch, setPendingDispatch] = useState(null);
   const [pendingFB, setPendingFB] = useState(null); // FB id for Review tab to open
   const [pendingInvoice, setPendingInvoice] = useState(null); // Invoice id for Invoices tab
@@ -5832,8 +5833,8 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
           else if (k === "invoices") setPendingInvoice(payload);
           else if (k === "payroll") setPendingPaySubId(payload);
         }} onToast={onToast} />}
-        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} invoices={invoices || []} onAdminAddFb={handleAdminAddFb} onExportFbBundle={(dispatchId) => setFbArchiveOpen({ dispatchId })} onToast={onToast} />}
-        {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} />}
+        {tab === "dispatches" && <DispatchesTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} setFreightBills={setFreightBills} contacts={contacts} setContacts={setContacts} company={company} unreadIds={unreadIds || []} markDispatchRead={markDispatchRead} pendingDispatch={pendingDispatch} clearPendingDispatch={() => setPendingDispatch(null)} quarries={quarries || []} projects={projects || []} fleet={fleet || []} truckTypes={truckTypes || []} invoices={invoices || []} onAdminAddFb={handleAdminAddFb} onExportFbBundle={(dispatchId) => setFbArchiveOpen({ dispatchId })} onToast={onToast} />}
+        {tab === "projects" && <ProjectsTab projects={projects || []} setProjects={setProjects} contacts={contacts} dispatches={dispatches} freightBills={freightBills} invoices={invoices} truckTypes={truckTypes} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} />}
         {tab === "review" && <ReviewTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} editFreightBill={editFreightBill} invoices={invoices || []} pendingFB={pendingFB} clearPendingFB={() => setPendingFB(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onAdminAddFb={handleAdminAddFb} onToast={onToast} />}
         {tab === "payroll" && <PayrollTab freightBills={freightBills} dispatches={dispatches} setDispatches={setDispatches} contacts={contacts} projects={projects || []} invoices={invoices || []} editFreightBill={editFreightBill} company={company} pendingPaySubId={pendingPaySubId} clearPendingPaySubId={() => setPendingPaySubId(null)} onJumpToInvoice={(invId) => { setTab("invoices"); setPendingInvoice(invId); }} onToast={onToast} />}
         {tab === "invoices" && <InvoicesTab freightBills={freightBills} dispatches={dispatches} invoices={invoices} setInvoices={setInvoices} createInvoice={createInvoice} company={company} setCompany={setCompany} contacts={contacts || []} projects={projects || []} editFreightBill={editFreightBill} pendingInvoice={pendingInvoice} clearPendingInvoice={() => setPendingInvoice(null)} onJumpToPayroll={(subId) => { setTab("payroll"); setPendingPaySubId(subId); }} onJumpToDispatch={(did) => { setTab("dispatches"); setPendingDispatch(did); }} onToast={onToast} generateCapabilityStatementPDF={generateCapabilityStatementPDF} />}
@@ -5918,7 +5919,7 @@ const Dashboard = ({ state, setters, onToast, onExit, onLogout, onChangePassword
             onToast("⚠ CONVERT FAILED");
           }
         }} onToast={onToast} />}
-        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} contacts={contacts} freightBills={freightBills} onJumpToContact={() => setTab("contacts")} onToast={onToast} />}
+        {tab === "fleet" && <FleetTab fleet={fleet} setFleet={setFleet} truckTypes={truckTypes} setTruckTypes={setTruckTypes} contacts={contacts} freightBills={freightBills} onJumpToContact={() => setTab("contacts")} onToast={onToast} />}
         {tab === "materials" && <MaterialsTab quarries={quarries || []} setQuarries={setQuarries} dispatches={dispatches} onToast={onToast} />}
         {tab === "reports" && <ReportsTab dispatches={dispatches} setDispatches={setDispatches} freightBills={freightBills} invoices={invoices} quotes={quotes} quarries={quarries || []} contacts={contacts || []} projects={projects || []} company={company} editFreightBill={editFreightBill} onToast={onToast} lastViewedMondayReport={lastViewedMondayReport} setLastViewedMondayReport={setLastViewedMondayReport} />}
         {tab === "recovery" && <RecoveryTab onToast={onToast} />}
@@ -5951,6 +5952,11 @@ export default function App() {
   // v19 Batch 3 Session F: bids/RFP tracker
   const [bids, setBids] = useState([]);
   const [fleet, setFleet] = useState([]);
+  // Truck-type catalog: free-form admin-defined types (e.g. "Super 10",
+  // "End Dump") with default rate + minimum hours. Used to pre-fill
+  // assignment rates when admin picks a type on an order. Stored in
+  // localStorage like fleet — local prefs, not Supabase.
+  const [truckTypes, setTruckTypes] = useState([]);
   const [dispatches, setDispatches] = useState([]);
   const [freightBills, setFreightBills] = useState([]);
   const [invoices, setInvoicesState] = useState([]);
@@ -6087,11 +6093,13 @@ export default function App() {
 
       // Fleet + company still use local storage (not critical to sync across devices)
       // v18: quotes moved to Supabase — no longer loaded from localStorage
-      const [f, co] = await Promise.all([
+      const [f, co, tt] = await Promise.all([
         storageGet("fbt:fleet"),
         storageGet("fbt:company"),
+        storageGet("fbt:truckTypes"),
       ]);
       if (f) setFleet(f);
+      if (tt) setTruckTypes(tt);
       if (co) setCompanyState((prev) => ({ ...prev, ...co }));
 
       setLoaded(true);
@@ -6673,6 +6681,7 @@ export default function App() {
   const clientMatch = route.match(/^#\/client\/([A-Z0-9]{4,16})/i);
   const payMatch = route.match(/^#\/pay\/([a-f0-9]{8,64})/i);  // v23 Session Y
   const onboardMatch = route.match(/^#\/onboard\/([A-Za-z0-9]{8,64})/i);
+  const truckMatch = route.match(/^#\/truck\/([A-Za-z0-9]{8,64})/i);
 
   if (!loaded) {
     return (
@@ -6799,6 +6808,17 @@ export default function App() {
     );
   }
 
+  // Public truck-roadside portal — driver shows a cop registration / insurance / DOT inspection.
+  // Requires fleet_portals SQL migration + truck-doc-signed-url Edge Function deployed.
+  if (truckMatch) {
+    const token = truckMatch[1];
+    return (
+      <Suspense fallback={<RouteLoading />}>
+        <TruckPortalPage token={token} onBack={() => { window.location.hash = ""; }} />
+      </Suspense>
+    );
+  }
+
   // Client-wide tracking page — public (lazy-loaded chunk)
   if (clientMatch) {
     const token = clientMatch[1].toUpperCase();
@@ -6838,8 +6858,8 @@ export default function App() {
         <>
           <ErrorBoundary>
             <Dashboard
-              state={{ quotes, bids, fleet, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
-              setters={{ setQuotes, setBids, setFleet, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, refreshContacts: async () => { try { const fresh = await fetchContacts(); setContactsState(fresh); return fresh; } catch (e) { console.warn("refreshContacts failed:", e); return null; } }, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
+              state={{ quotes, bids, fleet, truckTypes, dispatches, freightBills, invoices, company, contacts, unreadIds, soundEnabled, browserNotifsEnabled, quarries, lastViewedMondayReport, projects }}
+              setters={{ setQuotes, setBids, setFleet, setTruckTypes, setDispatches: setDispatchesShared, setFreightBills: setFreightBillsShared, setInvoices, createInvoice, setCompany, setContacts, refreshContacts: async () => { try { const fresh = await fetchContacts(); setContactsState(fresh); return fresh; } catch (e) { console.warn("refreshContacts failed:", e); return null; } }, markAllRead, markDispatchRead, toggleSound, toggleBrowserNotifs, setQuarries, setLastViewedMondayReport, setProjects, editFreightBill }}
               onToast={showToast}
               onExit={() => setView("public")}
               onLogout={handleLogout}

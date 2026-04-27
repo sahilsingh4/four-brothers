@@ -157,6 +157,8 @@ const fbFromDB = (row) => ({
   loadCount: row.load_count,
   pickupTime: row.pickup_time,
   dropoffTime: row.dropoff_time,
+  signedOutStatus: row.signed_out_status,
+  signedOutAt: row.signed_out_at,
   notes: row.notes,
   photos: row.photos || [],
   submittedAt: row.submitted_at,
@@ -219,6 +221,8 @@ const fbToDB = (fb) => ({
   load_count: Number(fb.loadCount) || 1,
   pickup_time: fb.pickupTime || null,
   dropoff_time: fb.dropoffTime || null,
+  signed_out_status: fb.signedOutStatus || null,
+  signed_out_at: fb.signedOutAt || null,
   notes: fb.notes || null,
   photos: fb.photos || [],
   status: fb.status || "pending",
@@ -285,6 +289,8 @@ const fbPatchToDB = (patch) => {
   if (has("loadCount"))             out.load_count = Number(patch.loadCount) || 1;
   if (has("pickupTime"))            out.pickup_time = strOrNull(patch.pickupTime);
   if (has("dropoffTime"))           out.dropoff_time = strOrNull(patch.dropoffTime);
+  if (has("signedOutStatus"))       out.signed_out_status = strOrNull(patch.signedOutStatus);
+  if (has("signedOutAt"))           out.signed_out_at = strOrNull(patch.signedOutAt);
   if (has("notes"))                 out.notes = strOrNull(patch.notes);
   if (has("photos"))                out.photos = patch.photos || [];
   if (has("status"))                out.status = patch.status;
@@ -446,6 +452,10 @@ const contactFromDB = (row) => ({
   portalEnabled: !!row.portal_enabled,
   brokerageApplies: !!row.brokerage_applies,
   brokeragePercent: row.brokerage_percent !== null && row.brokerage_percent !== undefined ? Number(row.brokerage_percent) : 8,
+  // Dual-role flag: set on a sub-type contact when the same company also
+  // brokers work back to us. Lets the order-form customer picker include
+  // this contact, and surfaces a "+ BROKER" badge in lists.
+  actsAsBroker: !!row.acts_as_broker,
   defaultPayRate: row.default_pay_rate !== null && row.default_pay_rate !== undefined ? Number(row.default_pay_rate) : null,
   defaultPayMethod: row.default_pay_method || "hour",
   defaultTruckNumber: row.default_truck_number || "",
@@ -482,6 +492,7 @@ const contactToDB = (c) => ({
   portal_enabled: !!c.portalEnabled,
   brokerage_applies: !!c.brokerageApplies,
   brokerage_percent: c.brokeragePercent !== null && c.brokeragePercent !== undefined && c.brokeragePercent !== "" ? Number(c.brokeragePercent) : 8,
+  acts_as_broker: !!c.actsAsBroker,
   default_pay_rate: c.defaultPayRate !== null && c.defaultPayRate !== undefined && c.defaultPayRate !== "" ? Number(c.defaultPayRate) : null,
   default_pay_method: c.defaultPayMethod || null,
   default_truck_number: c.defaultTruckNumber || null,
@@ -908,6 +919,11 @@ const projectFromDB = (row) => ({
   minimumHours: row.minimum_hours !== null && row.minimum_hours !== undefined ? Number(row.minimum_hours) : null,
   subPayRate: row.sub_pay_rate !== null && row.sub_pay_rate !== undefined ? Number(row.sub_pay_rate) : null,
   subMinimumHours: row.sub_minimum_hours !== null && row.sub_minimum_hours !== undefined ? Number(row.sub_minimum_hours) : null,
+  // Truck-types Stage 2: list of truck-type IDs (from the Fleet truck-type
+  // catalog) this project uses. When set, the order-form assignment
+  // picker filters to only these types so admin doesn't accidentally
+  // mix in trucks that don't apply to this job.
+  truckTypeIds: Array.isArray(row.truck_type_ids) ? row.truck_type_ids : [],
   // v21 Session S: Public portfolio fields
   showOnWebsite: !!row.show_on_website,
   publicDescription: row.public_description || "",
@@ -940,6 +956,7 @@ const projectToDB = (p) => ({
   minimum_hours: p.minimumHours !== null && p.minimumHours !== undefined && p.minimumHours !== "" ? Number(p.minimumHours) : null,
   sub_pay_rate: p.subPayRate !== null && p.subPayRate !== undefined && p.subPayRate !== "" ? Number(p.subPayRate) : null,
   sub_minimum_hours: p.subMinimumHours !== null && p.subMinimumHours !== undefined && p.subMinimumHours !== "" ? Number(p.subMinimumHours) : null,
+  truck_type_ids: Array.isArray(p.truckTypeIds) ? p.truckTypeIds : [],
   // v21 Session S: Public portfolio fields
   show_on_website: !!p.showOnWebsite,
   public_description: p.publicDescription || null,
@@ -1270,16 +1287,6 @@ export const fetchBids = async () => {
   return (data || []).map(bidFromDB);
 };
 
-export const fetchDeletedBids = async () => {
-  const { data, error } = await supabase
-    .from("bids")
-    .select("*")
-    .not("deleted_at", "is", null)
-    .order("deleted_at", { ascending: false });
-  if (error) { console.error("fetchDeletedBids:", error); return []; }
-  return (data || []).map(bidFromDB);
-};
-
 export const insertBid = async (bid) => {
   const { data, error } = await supabase
     .from("bids")
@@ -1319,19 +1326,6 @@ export const deleteBid = async (id, { deletedBy = "admin", reason = "" } = {}) =
     })
     .eq("id", id);
   if (error) { console.error("deleteBid (soft):", error); throw error; }
-};
-
-export const recoverBid = async (id) => {
-  const { error } = await supabase
-    .from("bids")
-    .update({ deleted_at: null, deleted_by: null, delete_reason: null })
-    .eq("id", id);
-  if (error) { console.error("recoverBid:", error); throw error; }
-};
-
-export const hardDeleteBid = async (id) => {
-  const { error } = await supabase.from("bids").delete().eq("id", id);
-  if (error) { console.error("hardDeleteBid:", error); throw error; }
 };
 
 export const subscribeToBids = (callback) => {
@@ -1410,15 +1404,6 @@ export const fetchAuditLog = async ({ entityId = null, actionType = null, limit 
   const { data, error } = await q;
   if (error) { console.error("fetchAuditLog:", error); return []; }
   return (data || []).map(auditFromDB);
-};
-
-// Optionally call on app boot to purge logs older than 90 days
-export const purgeOldAuditLogs = async () => {
-  try {
-    const { error } = await supabase.rpc("purge_old_audit_logs");
-    if (error) { console.warn("purgeOldAuditLogs:", error.message); return 0; }
-    return 1;
-  } catch (e) { console.warn("purgeOldAuditLogs threw:", e?.message); return 0; }
 };
 
 // ========== TESTIMONIALS (v22 Session T) ==========
@@ -1679,4 +1664,108 @@ export const deleteComplianceFile = async (filePath) => {
     .from("compliance-docs")
     .remove([filePath]);
   if (error) console.error("deleteComplianceFile:", error);
+};
+
+// ========== FLEET PORTAL (truck roadside-share) ==========
+// Maps a truck's unit number to a public-share token so a driver can show
+// a cop their truck's registration / insurance / DOT inspection without
+// logging in. Backed by `fleet_portals` table + `fetch_truck_for_public`
+// RPC (run supabase/fleet_portals.sql once before this works) plus the
+// `truck-doc-signed-url` Edge Function for fetching individual files.
+
+// Read this truck's portal config (token + enabled flag). Returns null when
+// no row exists yet (truck has never been opened up to roadside sharing).
+export const fetchTruckPortal = async (truckUnit) => {
+  if (!truckUnit) return null;
+  const { data, error } = await supabase
+    .from("fleet_portals")
+    .select("truck_unit, portal_token, portal_enabled, created_at, updated_at")
+    .eq("truck_unit", truckUnit)
+    .maybeSingle();
+  if (error) { console.error("fetchTruckPortal:", error); return null; }
+  if (!data) return null;
+  return {
+    truckUnit: data.truck_unit,
+    portalToken: data.portal_token,
+    portalEnabled: !!data.portal_enabled,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+};
+
+// Create or refresh this truck's portal token. `token` is generated client-
+// side (see ContactDetailModal-style generator). Sets portal_enabled=true so
+// the link works the moment it's saved.
+export const upsertTruckPortal = async (truckUnit, token) => {
+  if (!truckUnit || !token) throw new Error("truckUnit + token required");
+  const row = {
+    truck_unit: truckUnit,
+    portal_token: token,
+    portal_enabled: true,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("fleet_portals")
+    .upsert(row, { onConflict: "truck_unit" })
+    .select()
+    .single();
+  if (error) { console.error("upsertTruckPortal:", error); throw error; }
+  return data;
+};
+
+// Disable (revoke) the link without deleting the row. Re-enabling later
+// keeps the same token, so admin can pause-and-resume sharing.
+export const setTruckPortalEnabled = async (truckUnit, enabled) => {
+  if (!truckUnit) throw new Error("truckUnit required");
+  const { error } = await supabase
+    .from("fleet_portals")
+    .update({ portal_enabled: !!enabled, updated_at: new Date().toISOString() })
+    .eq("truck_unit", truckUnit);
+  if (error) { console.error("setTruckPortalEnabled:", error); throw error; }
+};
+
+// Public read path used by the /#/truck/<token> portal page. Returns the
+// truck's unit number + array of compliance_documents rows. Driver PII docs
+// (CDL, medical) never appear here because they have null truck_unit.
+export const fetchTruckForPublic = async (token) => {
+  if (!token) return null;
+  const { data, error } = await supabase.rpc("fetch_truck_for_public", { p_token: token });
+  if (error) {
+    console.warn("fetch_truck_for_public RPC failed (run the SQL migration?):", error);
+    const e = new Error(error.message || "RPC failed");
+    e.code = "RPC_ERROR";
+    throw e;
+  }
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length === 0) return null;  // unknown / disabled token
+  const truckUnit = rows[0].truck_unit;
+  // Filter out the LEFT JOIN's all-null row that appears when a truck has
+  // no docs yet (RPC returns 1 row with truck_unit + null doc fields).
+  const docs = rows
+    .filter((r) => r.doc_id != null)
+    .map((r) => ({
+      docId: r.doc_id,
+      docType: r.doc_type,
+      customTypeLabel: r.custom_type_label,
+      fileName: r.file_name,
+      filePath: r.file_path,
+      fileMime: r.file_mime,
+      expiryDate: r.expiry_date,
+      issuedDate: r.issued_date,
+    }));
+  return { truckUnit, docs };
+};
+
+// Calls the truck-doc-signed-url Edge Function to mint a fresh 60-second
+// signed URL for ONE doc. Public — only needs a valid portal token.
+export const fetchTruckDocSignedUrl = async (token, docId) => {
+  if (!token || !docId) return null;
+  const { data, error } = await supabase.functions.invoke("truck-doc-signed-url", {
+    body: { token, doc_id: docId },
+  });
+  if (error) {
+    console.error("fetchTruckDocSignedUrl:", error);
+    return null;
+  }
+  return data?.url || null;
 };

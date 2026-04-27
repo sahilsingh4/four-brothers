@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { AlertTriangle, Download, FileText, Plus, Trash2, Truck, Upload, Wrench, X } from "lucide-react";
+import { AlertTriangle, Copy, Download, FileText, Link2, Lock, Plus, RefreshCw, Trash2, Truck, Upload, Wrench, X } from "lucide-react";
 import { storageSet, fmtDate } from "../utils";
 import {
   COMPLIANCE_DOC_TYPES,
@@ -11,6 +11,9 @@ import {
   getComplianceFileUrl,
   deleteComplianceFile,
   getComplianceStatus,
+  fetchTruckPortal,
+  upsertTruckPortal,
+  setTruckPortalEnabled,
 } from "../db";
 
 // Helper: days from today (negative = expired)
@@ -83,7 +86,7 @@ const newDraft = () => ({
   notes: "", maintenanceLog: [],
 });
 
-export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], onJumpToContact, onToast }) => {
+export const FleetTab = ({ fleet, setFleet, truckTypes = [], setTruckTypes, contacts = [], freightBills = [], onJumpToContact, onToast }) => {
   const [draft, setDraft] = useState(newDraft());
   const [openUnitId, setOpenUnitId] = useState(null); // for maintenance log modal
   const driverContacts = contacts.filter((c) => c.type === "driver");
@@ -182,6 +185,15 @@ export const FleetTab = ({ fleet, setFleet, contacts = [], freightBills = [], on
           </div>
         </div>
       )}
+
+      {/* Truck-type catalog — admin-defined types (Super 10, End Dump,
+          Transfer, etc.) with default rate + minimum hours. Used to pre-fill
+          assignment payRate when admin picks a type on an order. */}
+      <TruckTypesSection
+        truckTypes={truckTypes}
+        setTruckTypes={setTruckTypes}
+        onToast={onToast}
+      />
 
       {/* Add unit form */}
       <div className="fbt-card" style={{ padding: 24 }}>
@@ -426,6 +438,7 @@ const UnitDetailModal = ({ unit, onClose, onUpdate, onAddMaintenance, onRemoveMa
         </div>
         <div style={{ padding: 22, display: "grid", gap: 16 }}>
           <TruckDocumentsSection truckUnit={unit.unit} />
+          <RoadsidePortalSection truckUnit={unit.unit} />
 
           {/* Mileage + service config */}
           <div className="fbt-card" style={{ padding: 14 }}>
@@ -685,6 +698,259 @@ const TruckDocumentsSection = ({ truckUnit }) => {
           })}
         </div>
       )}
+    </div>
+  );
+};
+
+// Roadside-share link section — admin enables a public /#/truck/<token>
+// portal for one truck so a driver can show registration / insurance /
+// DOT inspection to a cop without logging in. Requires the
+// fleet_portals SQL migration + truck-doc-signed-url Edge Function.
+const RoadsidePortalSection = ({ truckUnit }) => {
+  const [loading, setLoading] = useState(true);
+  const [portal, setPortal] = useState(null);  // { portalToken, portalEnabled } | null
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!truckUnit) return;
+    (async () => {
+      setLoading(true);
+      try { setPortal(await fetchTruckPortal(truckUnit)); }
+      finally { setLoading(false); }
+    })();
+  }, [truckUnit]);
+
+  const generateToken = () => {
+    // 24-char URL-safe hex token (longer than the doc spec's 8-min so it's
+    // unguessable). Matches the regex cap on /#/truck/<...{8,64}>.
+    const arr = new Uint8Array(12);
+    (crypto && crypto.getRandomValues) ? crypto.getRandomValues(arr) : arr.forEach((_, i) => arr[i] = Math.floor(Math.random() * 256));
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const portalUrl = portal?.portalToken
+    ? `${window.location.origin}${window.location.pathname}#/truck/${portal.portalToken}`
+    : null;
+
+  const enable = async () => {
+    if (!truckUnit) { alert("Set the unit number first."); return; }
+    setBusy(true);
+    try {
+      const token = portal?.portalToken || generateToken();
+      await upsertTruckPortal(truckUnit, token);
+      setPortal({ portalToken: token, portalEnabled: true });
+    } catch (e) {
+      console.error("enable truck portal:", e);
+      alert("Couldn't enable: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const regenerate = async () => {
+    if (!confirm("Regenerate the link? The CURRENT link will stop working immediately.")) return;
+    setBusy(true);
+    try {
+      const token = generateToken();
+      await upsertTruckPortal(truckUnit, token);
+      setPortal({ portalToken: token, portalEnabled: true });
+    } catch (e) {
+      console.error("regenerate truck portal:", e);
+      alert("Couldn't regenerate: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disable = async () => {
+    if (!confirm("Disable the roadside link? The driver's CURRENT link will stop working.")) return;
+    setBusy(true);
+    try {
+      await setTruckPortalEnabled(truckUnit, false);
+      setPortal((p) => p ? { ...p, portalEnabled: false } : null);
+    } catch (e) {
+      console.error("disable truck portal:", e);
+      alert("Couldn't disable: " + (e?.message || "unknown"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!portalUrl) return;
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+    } catch {
+      window.prompt("Copy this link:", portalUrl);
+    }
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 14 }}>
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 8 }}>
+        ▸ Roadside link · for showing a cop registration + insurance
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 12, color: "var(--concrete)" }}>Loading…</div>
+      ) : portal && portal.portalEnabled ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", background: "var(--good-soft)", border: "1.5px solid var(--good)", fontSize: 11 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--good)" }}></span>
+            <strong>ACTIVE</strong>
+            <span style={{ color: "var(--concrete)" }}>· anyone with the link can view this truck's docs</span>
+          </div>
+          <code style={{ display: "block", padding: "8px 10px", background: "#FFF", border: "1px solid var(--line)", borderRadius: 4, fontSize: 11, wordBreak: "break-all", fontFamily: "Inter, monospace" }}>
+            {portalUrl}
+          </code>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" className="btn-ghost" onClick={copy} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <Copy size={12} /> COPY LINK
+            </button>
+            <button type="button" className="btn-ghost" onClick={regenerate} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <RefreshCw size={12} /> NEW LINK
+            </button>
+            <button type="button" className="btn-danger" onClick={disable} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <Lock size={12} /> DISABLE
+            </button>
+          </div>
+        </div>
+      ) : portal && !portal.portalEnabled ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ padding: "8px 10px", background: "var(--surface)", border: "1px solid var(--line)", fontSize: 12, color: "var(--concrete)" }}>
+            Roadside link disabled. Re-enable to use the same token, or generate a new one.
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" className="btn-primary" onClick={enable} disabled={busy} style={{ fontSize: 11, padding: "6px 12px" }}>
+              <Link2 size={12} /> RE-ENABLE
+            </button>
+            <button type="button" className="btn-ghost" onClick={regenerate} disabled={busy} style={{ fontSize: 11, padding: "6px 10px" }}>
+              <RefreshCw size={12} /> NEW LINK
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--concrete)", lineHeight: 1.5 }}>
+            Generate a public link the driver can open if a cop pulls them over. The link shows this truck's registration, insurance, DOT inspection — nothing else. Driver CDLs and medical cards are kept private.
+          </div>
+          <button type="button" className="btn-primary" onClick={enable} disabled={busy || !truckUnit} style={{ fontSize: 12, padding: "8px 14px", justifySelf: "start" }}>
+            <Link2 size={14} /> {busy ? "Generating…" : "GENERATE ROADSIDE LINK"}
+          </button>
+          {!truckUnit && (
+            <div style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+              Set a unit number on this truck first.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Truck-type catalog. Admin types names ("Super 10", "End Dump", "Transfer")
+// plus default rates + minimum hours. The list is small (5-15 entries)
+// and rarely changes, so it lives in localStorage like fleet itself.
+// Truck types feed assignment-row pickers in the order form so admin
+// only types each rate once per type, not once per assignment.
+const TruckTypesSection = ({ truckTypes, setTruckTypes, onToast }) => {
+  const [draft, setDraft] = useState({ name: "", billRate: "", billMinimumHours: "", subPayRate: "", subMinimumHours: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+
+  const persist = async (next) => {
+    setTruckTypes(next);
+    await storageSet("fbt:truckTypes", next);
+  };
+
+  const add = async () => {
+    if (!draft.name.trim()) { onToast?.("TYPE NAME REQUIRED"); return; }
+    const newType = {
+      id: Date.now(),
+      name: draft.name.trim(),
+      billRate: draft.billRate ? Number(draft.billRate) : null,
+      billMinimumHours: draft.billMinimumHours ? Number(draft.billMinimumHours) : null,
+      subPayRate: draft.subPayRate ? Number(draft.subPayRate) : null,
+      subMinimumHours: draft.subMinimumHours ? Number(draft.subMinimumHours) : null,
+    };
+    await persist([...truckTypes, newType]);
+    setDraft({ name: "", billRate: "", billMinimumHours: "", subPayRate: "", subMinimumHours: "" });
+    onToast?.("TYPE ADDED");
+  };
+
+  const startEdit = (t) => { setEditingId(t.id); setEditDraft({ ...t, billRate: t.billRate ?? "", billMinimumHours: t.billMinimumHours ?? "", subPayRate: t.subPayRate ?? "", subMinimumHours: t.subMinimumHours ?? "" }); };
+  const cancelEdit = () => { setEditingId(null); setEditDraft(null); };
+  const saveEdit = async () => {
+    if (!editDraft?.name?.trim()) { onToast?.("TYPE NAME REQUIRED"); return; }
+    const next = truckTypes.map((t) => t.id === editingId ? {
+      ...t,
+      name: editDraft.name.trim(),
+      billRate: editDraft.billRate !== "" ? Number(editDraft.billRate) : null,
+      billMinimumHours: editDraft.billMinimumHours !== "" ? Number(editDraft.billMinimumHours) : null,
+      subPayRate: editDraft.subPayRate !== "" ? Number(editDraft.subPayRate) : null,
+      subMinimumHours: editDraft.subMinimumHours !== "" ? Number(editDraft.subMinimumHours) : null,
+    } : t);
+    await persist(next);
+    cancelEdit();
+    onToast?.("TYPE UPDATED");
+  };
+
+  const remove = async (id) => {
+    if (!confirm("Delete this truck type? Existing dispatches that reference it stay as-is, but you can't pick this type on new orders.")) return;
+    await persist(truckTypes.filter((t) => t.id !== id));
+    onToast?.("TYPE DELETED");
+  };
+
+  return (
+    <div className="fbt-card" style={{ padding: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <Truck size={18} style={{ color: "var(--hazard-deep)" }} />
+        <h3 className="fbt-display" style={{ margin: 0, fontSize: 16 }}>Truck types</h3>
+      </div>
+      <p style={{ fontSize: 12, color: "var(--concrete)", margin: "0 0 14px", lineHeight: 1.5 }}>
+        Free-form catalog of the types of trucks you dispatch (Super 10, End Dump, Transfer, etc.).
+        Each type has default bill + sub-pay rates + minimum hours that pre-fill on order assignments.
+      </p>
+      {truckTypes.length > 0 && (
+        <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+          {truckTypes.map((t) => editingId === t.id ? (
+            <div key={t.id} style={{ padding: 10, border: "2px solid var(--hazard)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, alignItems: "end" }}>
+              <div><label className="fbt-label">Name</label><input className="fbt-input" value={editDraft.name} onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })} /></div>
+              <div><label className="fbt-label">Bill $/hr</label><input className="fbt-input" type="number" step="0.01" value={editDraft.billRate} onChange={(e) => setEditDraft({ ...editDraft, billRate: e.target.value })} /></div>
+              <div><label className="fbt-label">Bill min hrs</label><input className="fbt-input" type="number" step="0.5" value={editDraft.billMinimumHours} onChange={(e) => setEditDraft({ ...editDraft, billMinimumHours: e.target.value })} /></div>
+              <div><label className="fbt-label">Sub pay $/hr</label><input className="fbt-input" type="number" step="0.01" value={editDraft.subPayRate} onChange={(e) => setEditDraft({ ...editDraft, subPayRate: e.target.value })} /></div>
+              <div><label className="fbt-label">Sub min hrs</label><input className="fbt-input" type="number" step="0.5" value={editDraft.subMinimumHours} onChange={(e) => setEditDraft({ ...editDraft, subMinimumHours: e.target.value })} /></div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button type="button" className="btn-primary" onClick={saveEdit} style={{ flex: 1, fontSize: 11, padding: "6px 8px" }}>Save</button>
+                <button type="button" className="btn-ghost" onClick={cancelEdit} style={{ fontSize: 11, padding: "6px 8px" }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div key={t.id} style={{ padding: 10, border: "1px solid var(--line)", borderRadius: 8, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</div>
+                <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginTop: 2 }}>
+                  {t.billRate != null ? `Bill $${t.billRate}/hr` : "no bill rate"}
+                  {t.billMinimumHours ? ` · ${t.billMinimumHours}hr min` : ""}
+                  {t.subPayRate != null ? ` · Sub $${t.subPayRate}/hr` : ""}
+                  {t.subMinimumHours ? ` · ${t.subMinimumHours}hr sub min` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button type="button" className="btn-ghost" onClick={() => startEdit(t)} style={{ fontSize: 11, padding: "5px 10px" }}>Edit</button>
+                <button type="button" className="btn-danger" onClick={() => remove(t.id)} style={{ padding: "5px 10px" }}><Trash2 size={11} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ padding: 12, border: "1.5px dashed var(--line)", borderRadius: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, alignItems: "end" }}>
+        <div><label className="fbt-label">Name *</label><input className="fbt-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Super 10" /></div>
+        <div><label className="fbt-label">Bill $/hr</label><input className="fbt-input" type="number" step="0.01" value={draft.billRate} onChange={(e) => setDraft({ ...draft, billRate: e.target.value })} placeholder="142" /></div>
+        <div><label className="fbt-label">Bill min hrs</label><input className="fbt-input" type="number" step="0.5" value={draft.billMinimumHours} onChange={(e) => setDraft({ ...draft, billMinimumHours: e.target.value })} placeholder="4" /></div>
+        <div><label className="fbt-label">Sub pay $/hr</label><input className="fbt-input" type="number" step="0.01" value={draft.subPayRate} onChange={(e) => setDraft({ ...draft, subPayRate: e.target.value })} placeholder="120" /></div>
+        <div><label className="fbt-label">Sub min hrs</label><input className="fbt-input" type="number" step="0.5" value={draft.subMinimumHours} onChange={(e) => setDraft({ ...draft, subMinimumHours: e.target.value })} placeholder="4" /></div>
+        <button type="button" className="btn-primary" onClick={add} style={{ fontSize: 12, padding: "8px 14px" }}><Plus size={14} /> Add type</button>
+      </div>
     </div>
   );
 };

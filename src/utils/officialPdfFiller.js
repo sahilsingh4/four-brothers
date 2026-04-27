@@ -85,11 +85,19 @@ const fieldMaps = {
       step4a_otherIncome:      ["topmostSubform[0].Page1[0].f1_09[0]"],
       step4b_deductions:       ["topmostSubform[0].Page1[0].f1_10[0]"],
       step4c_extraWithholding: ["topmostSubform[0].Page1[0].f1_11[0]"],
-      signatureDate:           ["topmostSubform[0].Page1[0].f1_12[0]"],
-      // Employer-only fields (skipped during employee onboarding)
-      employerNameAddress:     ["topmostSubform[0].Page1[0].f1_13[0]"],
-      firstDayEmployment:      ["topmostSubform[0].Page1[0].f1_14[0]"],
-      employerEin:             ["topmostSubform[0].Page1[0].f1_15[0]"],
+      // signatureDate intentionally NOT mapped — Step 5 has no fillable
+      // date field on W-4 page 1 (the signature line is hand-written ink).
+      // Earlier mapping pointed at f1_12 which is actually the bottom-row
+      // employer's-name-and-address field, so the date was overwriting it.
+      // Verified by inspecting field rectangles: f1_12 (x=95, w=293) is
+      // the wide left field; f1_13 (x=390, w=77) is "First date of
+      // employment"; f1_14 (x=469, w=107, max=10) is "Employer EIN".
+      // Employer-only fields below are mapped for completeness but the
+      // employee-onboarding flow doesn't supply these keys, so nothing
+      // gets written there in practice.
+      employerNameAddress: ["topmostSubform[0].Page1[0].f1_12[0]"],
+      firstDayEmployment:  ["topmostSubform[0].Page1[0].f1_13[0]"],
+      employerEin:         ["topmostSubform[0].Page1[0].f1_14[0]"],
     },
     // W-4 filing status checkboxes — c1_1[0..2] is the Step 1c group;
     // the PDF puts them at Page1 root, not under Step1c subform.
@@ -129,6 +137,125 @@ const fieldMaps = {
         "topmostSubform[0].Page1[0].f1_14[0]",
         "topmostSubform[0].Page1[0].f1_15[0]",
       ],
+    },
+  },
+  // 4 Brothers Trucking Independent Contractor Agreement — admin-side fill,
+  // not an inline form. Admin clicks "Download IC Agreement (pre-filled)"
+  // on a sub contact and the matching company / contact / signature fields
+  // get pre-stamped from the contact record + today's date. Sub takes the
+  // PDF, fills the rest by hand, signs every section, returns to admin.
+  //
+  // Multiple sig_name_NN / sig_date_NN slots all get the same value (one
+  // call to trySetText sets every matching candidate at once), so a single
+  // contactName input populates 7-8 signature blocks throughout the form.
+  ic_agreement: {
+    pdfFile: "/forms/ic-agreement.pdf",
+    text: {
+      // Cover sheet
+      coverName:        ["cover_name"],
+      coverTruck:       ["cover_truck"],
+      coverDateSigned:  ["cover_date_signed"],
+      coverInitials:    ["cover_initials"],
+
+      // General info — identifies the sub-haulier company. Same fields
+      // are also referenced on the Workers' Comp Waiver page (ww_*).
+      companyName:      ["gi_name", "ww_name"],
+      dba:              ["gi_dba", "ww_dba"],
+      address:          ["gi_address", "ww_addr", "gi_emerg_addr"],
+      homePhone:        ["gi_home"],
+      mobilePhone:      ["gi_mobile"],
+      email:            ["gi_email"],
+      caNumber:         ["gi_canum"],
+      ein:              ["gi_ein"],
+      ssn:              ["gi_ssn", "wc_ssn"],
+      dlNumber:         ["gi_dl", "chp_dl"],
+      dlExpiry:         ["gi_dl_exp"],
+      medicalCard:      ["gi_med"],
+      medicalCardExpiry:["gi_med_exp"],
+
+      // Vehicle / equipment
+      vehicleYear:      ["gi_year"],
+      vehicleMake:      ["gi_make"],
+      vehicleModel:     ["gi_model"],
+      vehicleLicense:   ["gi_truck_lic", "gi_veh_lic"],
+      lossPayee:        ["gi_loss_payee"],
+      lossPayeeExpiry:  ["gi_loss_exp"],
+      insuranceAgent:   ["gi_agent"],
+      insuranceAgentPhone:["gi_agent_phone"],
+
+      // Certifications + emergency contact
+      hrcNumber:        ["gi_hrc"],
+      bartNumber:       ["gi_bart"],
+      dirNumber:        ["gi_dir"],
+      caltransNumber:   ["gi_caltrans"],
+      unionNumber:      ["gi_union"],
+      certOther:        ["gi_cert_other"],
+      hazNumber:        ["gi_haz"],
+      emergencyName:    ["gi_emerg_name"],
+      emergencyPhone:   ["gi_emerg_phone"],
+
+      // CHP carrier section
+      chpCarrier:       ["chp_carrier"],
+      chpMcp:           ["chp_mcp"],
+      chpValid:         ["chp_valid"],
+      chpServices:      ["chp_services"],
+      chpTitle:         ["chp_title"],
+
+      // Insurance carrier (separate from gi_agent above)
+      insCompany:       ["ins_company"],
+      insCarrier:       ["ins_carrier"],
+      insPolicy:        ["ins_policy"],
+      insEffective:     ["ins_eff"],
+      insExpiry:        ["ins_exp"],
+      insLimit:         ["ins_limit"],
+
+      // Release / POA / AB5 — title slots
+      relCompany:       ["rel_company"],
+      relTitle:         ["rel_title"],
+      poaPhone:         ["poa_phone"],
+      ab5Title:         ["ab5_title"],
+
+      // Repeat-signature plumbing — the contact's name lands in EVERY
+      // sig_name_NN slot, and the agreement-signing date lands in EVERY
+      // sig_date_NN slot. trySetText writes to every existing candidate
+      // in one pass, so a single key handles many fields.
+      contactName: [
+        "chp_name", "wc_name", "conf_name", "rel_name", "poa_name", "ab5_name",
+        "sig_name_13", "sig_name_17", "sig_name_21",
+        "sig_name_24", "sig_name_28", "sig_name_32", "sig_name_36",
+      ],
+      title: [
+        "wc_title",
+        "sig_title_14", "sig_title_18",
+        "sig_title_25", "sig_title_29", "sig_title_33", "sig_title_37",
+      ],
+      dateSigned: [
+        "chp_date", "wc_date", "ww_date", "conf_date",
+        "rel_date", "poa_date", "ab5_date",
+        "sig_date_16", "sig_date_20", "sig_date_23",
+        "sig_date_27", "sig_date_31", "sig_date_35", "sig_date_39",
+      ],
+    },
+    // Document checklist on page 1 — 12 boxes the admin can pre-tick to
+    // signal which docs the sub has on file. Caller passes
+    // `docsChecked: { drugTest: true, medCard: true, ... }` keyed by
+    // doc name; we map each to one of the 12 PDF checkboxes.
+    // (Currently unused — admin checks them on the printed copy. Wired
+    // for completeness so a future "Pre-tick docs already on file" feature
+    // works without re-touching this map.)
+    docsChecked: {
+      drugTest:         ["doc_check_1"],
+      medCard:          ["doc_check_2"],
+      mvr:              ["doc_check_3"],
+      cdl:              ["doc_check_4"],
+      coi:              ["doc_check_5"],
+      additionalInsured:["doc_check_6"],
+      truckInspection:  ["doc_check_7"],
+      registration:     ["doc_check_8"],
+      truckInsurance:   ["doc_check_9"],
+      ifta:             ["doc_check_10"],
+      smogCert:         ["doc_check_11"],
+      otherDoc:         ["doc_check_12"],
     },
   },
 };
@@ -236,7 +363,23 @@ export const fillOfficialPdf = async (formKey, formData) => {
   if (!cfg) throw new Error(`No field map for ${formKey}`);
 
   const bytes = await fetchPdfBytes(cfg.pdfFile);
-  const doc = await PDFDocument.load(bytes);
+  // pdf-lib unconditionally console.warns "Removing XFA form data..." when
+  // it loads any IRS / USCIS PDF (they all carry XFA wrappers around the
+  // AcroForm we actually use). It's harmless — pdf-lib falls back to the
+  // AcroForm just fine — but it pollutes the console every time the admin
+  // opens a filled-form modal. Silence it during load only; keep all
+  // other warnings visible.
+  const origWarn = console.warn;
+  console.warn = (...args) => {
+    if (typeof args[0] === "string" && args[0].includes("XFA")) return;
+    return origWarn.apply(console, args);
+  };
+  let doc;
+  try {
+    doc = await PDFDocument.load(bytes);
+  } finally {
+    console.warn = origWarn;
+  }
   const form = doc.getForm();
 
   // Track misses so we can guide the user when names don't match.
@@ -277,6 +420,17 @@ export const fillOfficialPdf = async (formKey, formData) => {
     if (!candidates) continue;
     const ok = tryCheck(form, candidates);
     if (!ok) missed.push({ dataKey, choice, candidates });
+  }
+
+  // Multi-checkbox group — caller passes `docsChecked: { drugTest: true,... }`,
+  // each truthy key ticks its corresponding PDF checkbox. Used by IC Agreement
+  // for the 12-box "documents on file" checklist.
+  if (cfg.docsChecked && formData?.docsChecked && typeof formData.docsChecked === "object") {
+    for (const [dataKey, candidates] of Object.entries(cfg.docsChecked)) {
+      if (!formData.docsChecked[dataKey]) continue;
+      const ok = tryCheck(form, candidates);
+      if (!ok) missed.push({ dataKey, candidates, kind: "docsChecked" });
+    }
   }
 
   // If everything missed, dump every field name to the console so user

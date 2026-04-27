@@ -1,20 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" role="img">
+  <title>4 Brothers Trucking</title>
   <!-- 4 Brothers Trucking app icon. Designed to read clearly at 16px
        (browser favicon) all the way up to 512px (PWA home-screen).
-       Palette matches the app: --hazard (blue 500) tile + white truck
-       glyph + "4 BROTHERS" wordmark. Square corners; iOS rounds them. -->
+       Explicit width/height attrs are required for Chrome's manifest
+       icon parser to accept the SVG (viewBox alone gets rejected with
+       "Download error or resource isn't a valid image"). Content is
+       padded ~15% inside the canvas so a maskable round/square crop
+       doesn't clip the truck or wordmark. -->
   <rect width="512" height="512" rx="96" fill="#3B82F6"/>
   <rect x="8" y="8" width="496" height="496" rx="92" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
-  <!-- Truck silhouette, lucide-style and beefed up for icon scale -->
-  <g transform="translate(96, 168)" fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M0 0 L168 0 L168 56 L210 56 L260 96 L260 132 L240 132"/>
-    <path d="M0 132 L0 0"/>
-    <path d="M0 132 L78 132"/>
-    <path d="M138 132 L240 132"/>
-    <circle cx="108" cy="132" r="22" fill="#3B82F6"/>
-    <circle cx="210" cy="132" r="22" fill="#3B82F6"/>
+  <g transform="translate(126, 188)" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 0 L150 0 L150 50 L188 50 L232 86 L232 118 L214 118"/>
+    <path d="M0 118 L0 0"/>
+    <path d="M0 118 L70 118"/>
+    <path d="M124 118 L214 118"/>
+    <circle cx="96" cy="118" r="20" fill="#3B82F6"/>
+    <circle cx="188" cy="118" r="20" fill="#3B82F6"/>
   </g>
-  <text x="256" y="412" text-anchor="middle" fill="#FFFFFF"
-        font-family="Inter, system-ui, -apple-system, sans-serif"
-        font-weight="800" font-size="64" letter-spacing="-2">4 BROTHERS</text>
+  <text x="256" y="402" text-anchor="middle" fill="#FFFFFF" font-family="Inter, system-ui, -apple-system, sans-serif" font-weight="800" font-size="56" letter-spacing="-2">4 BROTHERS</text>
 </svg>

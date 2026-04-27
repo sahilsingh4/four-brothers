@@ -318,6 +318,28 @@ export const ContactModal = ({ contact, contacts = [], onSave, onClose, onToast 
             </div>
           )}
 
+          {/* Dual-role flag — sub-haulier who also brokers work back to us.
+              When checked, this contact appears in the order-form customer
+              picker too, so admin doesn't need a duplicate broker record. */}
+          {draft.type === "sub" && (
+            <div style={{ padding: 12, background: draft.actsAsBroker ? "#EFF6FF" : "#F5F5F4", border: "2px solid " + (draft.actsAsBroker ? "var(--hazard-deep)" : "var(--concrete)") }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={!!draft.actsAsBroker}
+                  onChange={(e) => setDraft({ ...draft, actsAsBroker: e.target.checked })}
+                  style={{ width: 16, height: 16, cursor: "pointer" }}
+                />
+                <span className="fbt-mono" style={{ fontSize: 12, fontWeight: 700 }}>
+                  ALSO BROKERS WORK BACK TO US
+                </span>
+              </label>
+              <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.5 }}>
+                ▸ CHECK THIS WHEN THE SAME COMPANY ALSO GIVES US WORK (THEY ACT AS A BROKER FOR US ON SOME LOADS). THEY'LL SHOW UP IN THE ORDER-FORM CUSTOMER PICKER AND THE BROKERAGE % ABOVE WILL BE THE CUT THEY TAKE FROM US ON BROKERED LOADS.
+              </div>
+            </div>
+          )}
+
           {/* 1099 / Tax section — for subs and drivers */}
           {(draft.type === "sub" || draft.type === "driver") && (
             <div style={{ padding: 12, background: draft.is1099Eligible ? "#F0FDF4" : "#F5F5F4", border: "2px solid " + (draft.is1099Eligible ? "var(--good)" : "var(--concrete)") }}>
@@ -909,7 +931,15 @@ export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
     return contacts
-      .filter((c) => typeFilter === "all" || c.type === typeFilter)
+      .filter((c) => {
+        if (typeFilter === "all") return true;
+        // "sub-or-broker" merges the old separate Sub + Broker tabs into
+        // one view, plus any sub flagged actsAsBroker (dual-role contact).
+        if (typeFilter === "sub-or-broker") {
+          return c.type === "sub" || c.type === "broker" || c.actsAsBroker;
+        }
+        return c.type === typeFilter;
+      })
       .filter((c) => {
         if (!s) return true;
         return `${c.companyName || ""} ${c.contactName || ""} ${c.phone || ""} ${c.email || ""} ${c.notes || ""}`.toLowerCase().includes(s);
@@ -1015,9 +1045,13 @@ export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches
         {[
           { v: "all", label: "All", count: contacts.length },
           { v: "driver", label: "Drivers", count: driversCount },
-          { v: "sub", label: "Sub Haulers", count: subsCount },
+          // "Subs / Brokers" — merged tab. Includes type=sub plus any
+          // contact (sub or otherwise) that has actsAsBroker=true and
+          // type=broker for legacy single-role brokers. The dedicated
+          // "Brokers" tab was dropped because the same company often
+          // plays both roles for us.
+          { v: "sub-or-broker", label: "Subs / Brokers", count: contacts.filter((c) => c.type === "sub" || c.type === "broker" || c.actsAsBroker).length },
           { v: "customer", label: "Customers", count: customersCount },
-          { v: "broker", label: "Brokers", count: brokersCount },
           { v: "other", label: "Other companies", count: contacts.filter((c) => c.type === "other").length },
         ].map((t) => (
           <button
@@ -1103,6 +1137,11 @@ export const ContactsTab = ({ contacts, setContacts, refreshContacts, dispatches
                             : c.type === "other" ? "OTHER"
                             : "DRIVER"}
                         </span>
+                        {c.type === "sub" && c.actsAsBroker && (
+                          <span className="chip" title="Also brokers work back to us — appears in the order-form customer picker too." style={{ background: "var(--hazard-deep)", color: "#FFF", fontSize: 9, padding: "2px 8px" }}>
+                            + BROKER
+                          </span>
+                        )}
                         {duplicateIds.has(c.id) && (
                           <span className="chip" title="Another contact shares the same company name, person, phone, or email. Open both and merge or delete one." style={{ background: "var(--safety)", color: "#FFF", fontSize: 9, padding: "2px 8px", borderColor: "var(--safety)" }}>
                             ⚠ POSSIBLE DUP

@@ -136,7 +136,7 @@ const printDriverSheet = async (dispatch, url, onToast) => {
   }
 };
 
-export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], invoices = [], onAdminAddFb, onExportFbBundle, onToast }) => {
+export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFreightBills, contacts = [], setContacts, company = {}, unreadIds = [], markDispatchRead, pendingDispatch, clearPendingDispatch, quarries = [], projects = [], fleet = [], truckTypes = [], invoices = [], onAdminAddFb, onExportFbBundle, onToast }) => {
   const [showNew, setShowNew] = useState(false);
   // Admin manual FB entry — { dispatch, assignment } when open, null when closed
   const [adminAddFb, setAdminAddFb] = useState(null);
@@ -793,9 +793,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
   const smsDispatch = (dispatch, assignment, phone) => {
     if (!phone) { onToast("NO PHONE NUMBER"); return; }
     const text = buildDispatchText(dispatch, assignment);
-    const cleanPhone = phone.replace(/[^0-9+]/g, "");
-    const url = `sms:${cleanPhone}?&body=${encodeURIComponent(text)}`;
-    window.location.href = url;
+    window.location.href = buildSMSLink(phone, text);
   };
 
   // Index freight bills by dispatchId once so inline lookups are O(1)
@@ -1014,10 +1012,9 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                       const text = buildDispatchText(dispatch, a);
                       const phone = contact?.phone || "";
                       const email = contact?.email || "";
-                      const cleanPhone = phone.replace(/[^0-9+]/g, "");
-                      const smsHref = cleanPhone ? `sms:${cleanPhone}?&body=${encodeURIComponent(text)}` : null;
                       const subject = `Dispatch — Order #${dispatch.code} · ${dispatch.date || ""}`;
-                      const mailHref = email ? `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` : null;
+                      const smsHref = phone ? buildSMSLink(phone, text) : null;
+                      const mailHref = email ? buildEmailLink(email, subject, text) : null;
 
                       return (
                         <div key={a.aid} style={{ border: "1.5px solid var(--steel)", background: "#FFF", padding: 12 }}>
@@ -1036,11 +1033,29 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                   {email && `✉ ${email}`}
                                 </div>
                               )}
-                              {a.kind === "sub" && a.payRate && (
-                                <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 2 }}>
-                                  Rate in text: ${a.payRate}/{a.payMethod || "hour"}
-                                </div>
-                              )}
+                              {a.kind === "sub" && a.payRate && (() => {
+                                // Reflect actual SMS-body behavior: rate only
+                                // shows when sendRate is on. sendMinHours
+                                // controls the "Xhr min" tail. Reads same
+                                // legacy fallback as buildDispatchText so
+                                // existing dispatches without explicit flags
+                                // keep their old behavior.
+                                const showRate = a.sendRate !== undefined ? !!a.sendRate : a.sendRates !== false;
+                                const showMin = a.sendMinHours !== undefined ? !!a.sendMinHours : a.sendRates !== false;
+                                if (!showRate && !showMin) {
+                                  return (
+                                    <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                                      Rate hidden in text (toggles off)
+                                    </div>
+                                  );
+                                }
+                                if (!showRate) return null;
+                                return (
+                                  <div className="fbt-mono" style={{ fontSize: 10, color: "var(--good)", marginTop: 2 }}>
+                                    Rate in text: ${a.payRate}/{a.payMethod || "hour"}
+                                  </div>
+                                );
+                              })()}
                               {a.kind === "driver" && (
                                 <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
                                   (rate NOT sent to drivers)
@@ -1082,11 +1097,11 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                                 <FileText size={12} style={{ marginRight: 4 }} /> COPY
                               </button>
                               {/* v23 Session W: Dedicated Upload Link button — sends just the /submit URL */}
-                              {cleanPhone && (() => {
+                              {phone && (() => {
                                 const origin = `${window.location.origin}${window.location.pathname}`;
                                 const uploadUrl = `${origin}#/submit/${dispatch.code}/a/${a.aid}`;
                                 const uploadMsg = `${company?.name || "4 Brothers Trucking"} — Order #${dispatch.code}\n\nWhen your loads are done, upload your freight bill here:\n\n${uploadUrl}\n\nThanks!`;
-                                const uploadSmsHref = `sms:${cleanPhone}?&body=${encodeURIComponent(uploadMsg)}`;
+                                const uploadSmsHref = buildSMSLink(phone, uploadMsg);
                                 return (
                                   <a
                                     href={uploadSmsHref}
@@ -1254,8 +1269,8 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 </div>
               </div>
               <div>
-                <label className="fbt-label">Customer (for tracking link & billing)</label>
-                {contacts.filter((c) => c.type === "customer").length > 0 ? (
+                <label className="fbt-label">Customer / Broker (for tracking link & billing)</label>
+                {contacts.filter((c) => c.type === "customer" || c.type === "broker" || c.actsAsBroker).length > 0 ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select
                       className="fbt-select"
@@ -1268,15 +1283,22 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         if (c) setDraft({ ...draft, clientId: c.id, clientName: c.companyName || c.contactName });
                       }}
                     >
-                      <option value="">— Choose customer —</option>
+                      <option value="">— Choose customer / broker —</option>
                       {contacts
-                        .filter((c) => c.type === "customer")
+                        // Bill recipient = customer OR broker OR dual-role
+                        // sub flagged actsAsBroker (the same contact also
+                        // brokers work back to us). Customers paying-direct
+                        // sit alongside brokers who take a cut.
+                        .filter((c) => c.type === "customer" || c.type === "broker" || c.actsAsBroker)
                         .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
-                          </option>
-                        ))}
+                        .map((c) => {
+                          const isBrokerLike = c.type === "broker" || c.actsAsBroker;
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {c.favorite ? "★ " : ""}{c.companyName || c.contactName}{isBrokerLike ? " · BROKER" : ""}
+                            </option>
+                          );
+                        })}
                     </select>
                     <button
                       type="button"
@@ -1371,7 +1393,7 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                           setDraft({ ...draft, ...patch });
                         }}
                       >
-                        <option value="">— No project / One-off job —</option>
+                        <option value="">— Directed work / one-off (use rate below) —</option>
                         {availableProjects.map((p) => (
                           <option key={p.id} value={p.id}>
                             {p.name}{p.contractNumber ? ` (${p.contractNumber})` : ""}{p.defaultRate ? ` · $${p.defaultRate}/hr` : ""}{p.minimumHours ? ` · ${p.minimumHours}hr min` : ""}
@@ -1379,8 +1401,26 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         ))}
                       </select>
                     ) : (
-                      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", padding: "8px 10px", border: "1px dashed var(--concrete)", background: "#F5F5F4" }}>
-                        {draft.clientId ? "NO PROJECTS FOR THIS CUSTOMER YET — ADD ONE IN PROJECTS TAB" : "NO PROJECTS YET"}
+                      // Render a static fallback select when this customer
+                      // has no projects yet — admin can still proceed with
+                      // "Directed work" + the dispatch's direct rate. Avoids
+                      // the dead-end "NO PROJECTS YET" message that left
+                      // admin stuck on customers without project setups.
+                      <select
+                        className="fbt-select"
+                        value=""
+                        disabled
+                        style={{ background: "#F5F5F4" }}
+                      >
+                        <option>Directed work / one-off (use rate below)</option>
+                      </select>
+                    )}
+                    {/* Helper hint when no project is selected — clarifies
+                        which rate the order will bill at so admin doesn't
+                        leave the rate blank and submit. */}
+                    {!draft.projectId && (
+                      <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 4, lineHeight: 1.4 }}>
+                        ▸ Directed work bills at the rate you type below — no project default applies.
                       </div>
                     )}
                   </div>
@@ -1552,6 +1592,57 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                               <Trash2 size={12} />
                             </button>
                           </div>
+
+                          {/* Truck-type picker — selecting a type pre-fills
+                              payRate + pay method ("hour") from the type
+                              catalog (Fleet → Truck types). Optional:
+                              admin can ignore it and type rates manually. */}
+                          {truckTypes.length > 0 && (() => {
+                            // Stage 2: when this dispatch's project lists the
+                            // truck types it uses, narrow the picker to just
+                            // those. Empty list / no project → show all.
+                            const projectForTypes = draft.projectId ? projects.find((p) => p.id === Number(draft.projectId) || p.id === draft.projectId) : null;
+                            const projectAllowedIds = Array.isArray(projectForTypes?.truckTypeIds) ? projectForTypes.truckTypeIds : [];
+                            const visibleTypes = projectAllowedIds.length > 0
+                              ? truckTypes.filter((t) => projectAllowedIds.includes(t.id))
+                              : truckTypes;
+                            if (visibleTypes.length === 0) return null;
+                            return (
+                              <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                                <span className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)" }}>
+                                  TRUCK TYPE{projectAllowedIds.length > 0 ? " (project-filtered)" : ""}
+                                </span>
+                                <select
+                                  className="fbt-select"
+                                  style={{ padding: "5px 8px", fontSize: 11 }}
+                                  value={a.truckTypeId || ""}
+                                  onChange={(e) => {
+                                    const id = e.target.value ? Number(e.target.value) : null;
+                                    const t = id ? truckTypes.find((x) => x.id === id) : null;
+                                    const next = [...draft.assignments];
+                                    const patch = { truckTypeId: id, truckTypeName: t?.name || "" };
+                                    // Pre-fill pay rate + method from the type when picked.
+                                    // Only overwrite when the field is empty so admin manual
+                                    // edits aren't trampled.
+                                    if (t && t.subPayRate != null && (next[idx].payRate === "" || next[idx].payRate == null)) {
+                                      patch.payRate = String(t.subPayRate);
+                                      patch.payMethod = "hour";
+                                    }
+                                    next[idx] = { ...next[idx], ...patch };
+                                    setDraft({ ...draft, assignments: next });
+                                  }}
+                                  title="Pre-fills pay rate from the truck-type catalog"
+                                >
+                                  <option value="">— optional —</option>
+                                  {visibleTypes.map((t) => (
+                                    <option key={t.id} value={t.id}>
+                                      {t.name}{t.subPayRate != null ? ` · sub $${t.subPayRate}/hr` : ""}{t.subMinimumHours ? ` · ${t.subMinimumHours}hr min` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })()}
 
                           {/* Row 2: pay method + pay rate + brokerage indicator */}
                           <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center" }}>

@@ -1,6 +1,7 @@
-import { useMemo } from "react";
-import { Edit2, Link2, Lock, Mail, MessageSquare, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Edit2, FileDown, Link2, Lock, Mail, MessageSquare, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import { fmtDate, buildSMSLink, buildEmailLink } from "../utils";
+import { fillOfficialPdf } from "../utils/officialPdfFiller";
 
 export const ContactDetailModal = ({ contact, dispatches, freightBills, invoices = [], onEdit, onDelete, onClose, onToast, onSaveContact }) => {
   const history = useMemo(() => {
@@ -287,6 +288,14 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, invoices
             </div>
           )}
 
+          {/* IC Agreement download — pre-fills the 4 Brothers Independent
+              Contractor Agreement PDF with this sub's company / contact /
+              ID info so admin can hand it to the sub for signature. Only
+              shown for sub-type contacts since the form is sub-only. */}
+          {(contact.type === "sub" || contact.type === "subcontractor") && (
+            <ICAgreementSection contact={contact} onToast={onToast} />
+          )}
+
           {/* Job history */}
           <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>
             ▸ JOB HISTORY ({history.length} DISPATCH{history.length !== 1 ? "ES" : ""} · {totalFBs} FREIGHT BILL{totalFBs !== 1 ? "S" : ""} · {totalTons.toFixed(1)} TONS)
@@ -320,5 +329,78 @@ export const ContactDetailModal = ({ contact, dispatches, freightBills, invoices
         </div>
       </div>
     </div>
+  );
+};
+
+// 4 Brothers Independent Contractor Agreement — admin-side pre-fill.
+// Maps the sub's contact record into the IC Agreement PDF (general info,
+// emergency contact, repeat-signature blocks) and downloads. The sub
+// fills the rest by hand and signs. Date defaults to today. Admin can
+// regenerate any time.
+const ICAgreementSection = ({ contact, onToast }) => {
+  const [busy, setBusy] = useState(false);
+  const handleDownload = async () => {
+    setBusy(true);
+    try {
+      const today = new Date().toLocaleDateString("en-US");  // MM/DD/YYYY
+      const formData = {
+        // Cover sheet
+        coverName: contact.contactName || contact.companyName || "",
+        coverDateSigned: today,
+        // General info
+        companyName: contact.companyName || "",
+        dba: contact.dba || "",
+        address: contact.address || [contact.city, contact.state, contact.zip].filter(Boolean).join(", "),
+        mobilePhone: contact.phone || "",
+        email: contact.email || "",
+        ein: contact.taxId || contact.ein || "",
+        ssn: contact.ssn || "",
+        dlNumber: contact.driverLicenseNumber || contact.cdlNumber || "",
+        dlExpiry: contact.cdlExpiry || "",
+        medicalCardExpiry: contact.medicalCardExpiry || "",
+        caNumber: contact.caNumber || "",
+        emergencyName: contact.emergencyContactName || "",
+        emergencyPhone: contact.emergencyContactPhone || "",
+        // Repeat-signature plumbing — these single inputs fan out to
+        // every sig_name_NN / sig_date_NN slot via the field map.
+        contactName: contact.contactName || contact.companyName || "",
+        dateSigned: today,
+      };
+      const bytes = await fillOfficialPdf("ic_agreement", formData);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const name = (contact.companyName || contact.contactName || "sub").replace(/\s+/g, "_");
+      a.href = url;
+      a.download = `IC-Agreement-${name}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      onToast?.("✓ IC AGREEMENT DOWNLOADED");
+    } catch (e) {
+      console.error("IC Agreement fill failed:", e);
+      onToast?.("⚠ IC AGREEMENT FAILED — " + (e?.message || "unknown error"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="fbt-mono" style={{ fontSize: 11, color: "var(--concrete)", marginBottom: 10 }}>▸ INDEPENDENT CONTRACTOR AGREEMENT</div>
+      <div style={{ padding: 14, background: "#F5F5F4", border: "2px solid var(--steel)", marginBottom: 20 }}>
+        <p style={{ fontSize: 12, color: "var(--concrete)", margin: "0 0 12px", lineHeight: 1.5 }}>
+          Download a pre-filled 4 Brothers IC Agreement PDF for this sub. Their company name, address, license #, EIN/SSN, and emergency contact are auto-filled. Signature lines are blank — sub signs every section by hand and returns the completed file.
+        </p>
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={busy}
+          className="btn-primary"
+          style={{ fontSize: 12 }}
+        >
+          <FileDown size={14} /> {busy ? "GENERATING…" : "DOWNLOAD IC AGREEMENT (PRE-FILLED)"}
+        </button>
+      </div>
+    </>
   );
 };

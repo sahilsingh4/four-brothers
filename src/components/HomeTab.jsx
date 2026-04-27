@@ -3,7 +3,7 @@ import {
   Activity, AlertTriangle, ClipboardList, Clock, DollarSign,
   Mail, Receipt, Search, ShieldCheck, Truck,
 } from "lucide-react";
-import { fmt$, bidDaysUntil, daysSince, hoursSince, minutesSince, computeProjectProfitability } from "../utils";
+import { fmt$, bidDaysUntil, daysSince, hoursSince, minutesSince, computeProjectProfitability, buildSMSLink, buildEmailLink } from "../utils";
 import { BidDeadlineChip } from "./BidDeadlineChip";
 import { SectionCard, Row } from "./SectionCard";
 
@@ -461,9 +461,9 @@ export const HomeTab = ({
                 `We're missing your freight bill for order ${m.dispatch.code || ""} ` +
                 `on ${new Date(m.dispatch.date).toLocaleDateString()}. ` +
                 `Upload here: ${uploadUrl}`;
-              const smsMsg = encodeURIComponent(reminderText);
-              const emailSubj = encodeURIComponent(`Missing freight bill — order ${m.dispatch.code || ""}`);
-              const emailBody = encodeURIComponent(reminderText);
+              const emailSubject = `Missing freight bill — order ${m.dispatch.code || ""}`;
+              const smsHref = phone ? buildSMSLink(phone, reminderText) : null;
+              const emailHref = email ? buildEmailLink(email, emailSubject, reminderText) : null;
               return (
                 <div key={`${m.dispatch.id}-${m.assignment.aid}-${idx}`} style={{ padding: 10, background: m.daysLate >= 2 ? "#FEE2E2" : "#FEF3C7", border: `1.5px solid ${m.daysLate >= 2 ? "var(--safety)" : "var(--hazard-deep)"}`, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
                   <div>
@@ -484,9 +484,9 @@ export const HomeTab = ({
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 5 }}>
-                    {phone && (
+                    {smsHref && (
                       <a
-                        href={`sms:${phone}?body=${smsMsg}`}
+                        href={smsHref}
                         className="btn-primary"
                         style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
                         title="Text reminder"
@@ -494,9 +494,9 @@ export const HomeTab = ({
                         📱 SMS
                       </a>
                     )}
-                    {email && (
+                    {emailHref && (
                       <a
-                        href={`mailto:${email}?subject=${emailSubj}&body=${emailBody}`}
+                        href={emailHref}
                         className="btn-ghost"
                         style={{ padding: "5px 10px", fontSize: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
                         title="Email reminder"
@@ -1213,12 +1213,11 @@ const ComplianceRow = ({ contact, total, have, missing, setContacts, onJumpTab, 
       }
     }
     const url = `${window.location.origin}${window.location.pathname}#/onboard/${token}`;
-    const body = encodeURIComponent(
+    const body =
       `Hi ${contact.contactName || contact.companyName || "there"}, this is ${companyName || "4 Brothers Trucking"}. ` +
       `We still need: ${missing.join(", ")}. ` +
-      `Upload here: ${url}`
-    );
-    window.location.href = `sms:${phone}?body=${body}`;
+      `Upload here: ${url}`;
+    window.location.href = buildSMSLink(phone, body);
   };
 
   return (
