@@ -658,9 +658,21 @@ export const FBEditModal = ({ fb, dispatches, contacts, projects = [], editFreig
         patch.approvedAt = new Date().toISOString();
         patch.approvedBy = currentUser || "admin";
       }
-      // v19c Session L: Pass fb.updatedAt so the DB update is guarded by optimistic lock.
-      // If another tab/session has modified this FB since we loaded it, the save will reject.
-      await editFreightBill(fb.id, patch, fb.updatedAt);
+      // v19c Session L: Pass fb.updatedAt so the DB update is guarded by
+      // optimistic lock. If another tab/session has modified this FB
+      // since we loaded it, the save will reject.
+      //
+      // Exception: when the FB is already lock-snapshotted (billing or
+      // pay statement), the modal can only ADD adjustment lines — every
+      // protected field is re-written to its original `fb` value via the
+      // patch builder above. The act of running pay-statement / invoice
+      // locks the FB and bumps its updated_at, so any subsequent attempt
+      // to add an adjustment from a modal opened BEFORE the lock would
+      // fail CONCURRENT_EDIT despite being safe. Skip the lock check in
+      // that case so the adjustment goes through.
+      const lockProtected = billingSnapshotLocked || paySnapshotLocked;
+      const expectedUpdatedAt = lockProtected ? null : fb.updatedAt;
+      await editFreightBill(fb.id, patch, expectedUpdatedAt);
       // v20 Session O: Audit log — fire-and-forget
       if (andApprove && fb.status !== "approved") {
         logAudit({

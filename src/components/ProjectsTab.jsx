@@ -3,7 +3,7 @@ import { Briefcase, CheckCircle2, MapPin, Plus, Search, X } from "lucide-react";
 import { fmt$ } from "../utils";
 import { ProjectDetailModal } from "./ProjectDetailModal";
 
-const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
+const ProjectModal = ({ project, contacts, truckTypes = [], onSave, onClose, onToast }) => {
   const [draft, setDraft] = useState(project || {
     customerId: null, name: "", description: "", contractNumber: "", poNumber: "",
     location: "", status: "active", startDate: "", endDate: "",
@@ -11,6 +11,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
     primeContractor: "", fundingSource: "", certifiedPayroll: false, notes: "",
     defaultRate: "", minimumHours: "",
     subPayRate: "", subMinimumHours: "",
+    truckTypeIds: [],
   });
 
   const customers = contacts.filter((c) => c.type === "customer");
@@ -170,6 +171,45 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
             </div>
           </div>
 
+          {/* Truck types — pick which truck types from the Fleet catalog
+              this project uses. The order-form assignment picker filters
+              to only these types when the project is selected. Empty
+              selection = no restriction (any type from the global catalog
+              is pickable). */}
+          <div style={{ padding: 14, background: "#F5F5F4", border: "1.5px solid var(--line)" }}>
+            <div className="fbt-mono" style={{ fontSize: 11, fontWeight: 700, color: "var(--steel)", marginBottom: 8 }}>
+              ▸ TRUCK TYPES USED ON THIS PROJECT
+            </div>
+            {truckTypes.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--concrete)", fontStyle: "italic" }}>
+                No truck types defined yet. Add them in Fleet → Truck types.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {truckTypes.map((t) => {
+                  const checked = (draft.truckTypeIds || []).includes(t.id);
+                  return (
+                    <label key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", border: `1.5px solid ${checked ? "var(--hazard-deep)" : "var(--concrete)"}`, background: checked ? "#EFF6FF" : "#FFF", cursor: "pointer", fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const cur = Array.isArray(draft.truckTypeIds) ? draft.truckTypeIds : [];
+                          const next = e.target.checked ? [...cur, t.id] : cur.filter((x) => x !== t.id);
+                          setDraft({ ...draft, truckTypeIds: next });
+                        }}
+                      />
+                      <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginTop: 8, lineHeight: 1.4 }}>
+              ▸ When set, only these types appear in the Order form's truck-type picker for this project. Leave empty to allow any type.
+            </div>
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 14 }}>
             <div>
               <label className="fbt-label">Tonnage Goal</label>
@@ -286,7 +326,7 @@ const ProjectModal = ({ project, contacts, onSave, onClose, onToast }) => {
 
 
 // ========== PROJECTS TAB ==========
-export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freightBills, invoices, onJumpToDispatch, onToast }) => {
+export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freightBills, invoices, truckTypes = [], onJumpToDispatch, onToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -331,6 +371,7 @@ export const ProjectsTab = ({ projects, setProjects, contacts, dispatches, freig
         <ProjectModal
           project={editing}
           contacts={contacts}
+          truckTypes={truckTypes}
           onSave={save}
           onClose={() => { setShowModal(false); setEditing(null); }}
           onToast={onToast}

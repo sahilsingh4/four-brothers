@@ -919,6 +919,11 @@ const projectFromDB = (row) => ({
   minimumHours: row.minimum_hours !== null && row.minimum_hours !== undefined ? Number(row.minimum_hours) : null,
   subPayRate: row.sub_pay_rate !== null && row.sub_pay_rate !== undefined ? Number(row.sub_pay_rate) : null,
   subMinimumHours: row.sub_minimum_hours !== null && row.sub_minimum_hours !== undefined ? Number(row.sub_minimum_hours) : null,
+  // Truck-types Stage 2: list of truck-type IDs (from the Fleet truck-type
+  // catalog) this project uses. When set, the order-form assignment
+  // picker filters to only these types so admin doesn't accidentally
+  // mix in trucks that don't apply to this job.
+  truckTypeIds: Array.isArray(row.truck_type_ids) ? row.truck_type_ids : [],
   // v21 Session S: Public portfolio fields
   showOnWebsite: !!row.show_on_website,
   publicDescription: row.public_description || "",
@@ -951,6 +956,7 @@ const projectToDB = (p) => ({
   minimum_hours: p.minimumHours !== null && p.minimumHours !== undefined && p.minimumHours !== "" ? Number(p.minimumHours) : null,
   sub_pay_rate: p.subPayRate !== null && p.subPayRate !== undefined && p.subPayRate !== "" ? Number(p.subPayRate) : null,
   sub_minimum_hours: p.subMinimumHours !== null && p.subMinimumHours !== undefined && p.subMinimumHours !== "" ? Number(p.subMinimumHours) : null,
+  truck_type_ids: Array.isArray(p.truckTypeIds) ? p.truckTypeIds : [],
   // v21 Session S: Public portfolio fields
   show_on_website: !!p.showOnWebsite,
   public_description: p.publicDescription || null,
