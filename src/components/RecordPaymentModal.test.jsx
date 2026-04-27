@@ -104,4 +104,73 @@ describe("<RecordPaymentModal />", () => {
     expect(editFreightBill).toHaveBeenCalledTimes(2);
     expect(editFreightBill.mock.calls[0][1]).toHaveProperty("customerPaidAt");
   });
+
+  // v24: Post-lock customer short-pay stamps subPayDebtAmount so the
+  // overpayment to the sub gets recouped on their next pay statement.
+  // Sub-paid scenario: FB has paidAt set + paidAmount $400 (non-brokerable
+  // pass-throughs zero). Customer was billed $500, pays only $400 (80%).
+  // Expected debt = $400 * (1 - 0.8) = $80 stamped on the FB.
+  it("stamps subPayDebtAmount when customer short-pays an FB the sub was already paid for", async () => {
+    const user = userEvent.setup();
+    const editFreightBill = vi.fn().mockResolvedValue({});
+    const postLockFb = {
+      id: "fb-1",
+      freightBillNumber: "F100",
+      tonnage: 5,
+      paidAt: "2026-04-01T12:00:00Z",
+      paidAmount: 400,
+      payingLines: [], // no pass-throughs — full $400 is brokerable
+    };
+    const inv = { ...baseInvoice, freightBillIds: ["fb-1"], total: 500, rate: 100 };
+    render(<RecordPaymentModal
+      invoice={inv}
+      freightBills={[postLockFb]}
+      editFreightBill={editFreightBill}
+      onClose={() => {}}
+      onToast={() => {}}
+    />);
+    // Switch to per-FB mode + check the FB + type $400 (short-pay)
+    await user.click(screen.getByRole("button", { name: /PARTIAL/i }));
+    await user.click(screen.getByRole("checkbox"));
+    // Default-fills with billed estimate $500 — clear and re-type as $400
+    const inputs = screen.getAllByRole("spinbutton");
+    const perRow = inputs.find((i) => i.value === "500.00");
+    await user.clear(perRow);
+    await user.type(perRow, "400");
+    await user.click(screen.getByRole("button", { name: /RECORD PAYMENT/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(editFreightBill).toHaveBeenCalledTimes(1);
+    const patch = editFreightBill.mock.calls[0][1];
+    expect(patch.customerPaidAmount).toBe(400);
+    expect(patch.subPayDebtAmount).toBeCloseTo(80, 2);
+    expect(patch.subPayDebtSettledAt).toBe(null);
+  });
+
+  // Inverse: when the customer pays in full, no debt should be stamped
+  // even though the sub was already paid (postLock + paidInFull).
+  it("does NOT stamp subPayDebtAmount when post-lock customer pays in full", async () => {
+    const user = userEvent.setup();
+    const editFreightBill = vi.fn().mockResolvedValue({});
+    const fb = {
+      id: "fb-1", freightBillNumber: "F100", tonnage: 5,
+      paidAt: "2026-04-01T12:00:00Z", paidAmount: 400, payingLines: [],
+    };
+    const inv = { ...baseInvoice, freightBillIds: ["fb-1"], total: 500, rate: 100 };
+    render(<RecordPaymentModal
+      invoice={inv}
+      freightBills={[fb]}
+      editFreightBill={editFreightBill}
+      onClose={() => {}}
+      onToast={() => {}}
+    />);
+    await user.click(screen.getByRole("button", { name: /PARTIAL/i }));
+    await user.click(screen.getByRole("checkbox"));
+    // default-filled with $500 — leave alone (full pay)
+    await user.click(screen.getByRole("button", { name: /RECORD PAYMENT/i }));
+    await new Promise((r) => setTimeout(r, 60));
+    expect(editFreightBill).toHaveBeenCalledTimes(1);
+    const patch = editFreightBill.mock.calls[0][1];
+    expect(patch.customerPaidAmount).toBe(500);
+    expect(patch.subPayDebtAmount).toBeUndefined(); // not stamped
+  });
 });

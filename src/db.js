@@ -178,6 +178,11 @@ const fbFromDB = (row) => ({
   invoiceId: row.invoice_id || null,
   customerPaidAt: row.customer_paid_at || null,
   customerPaidAmount: row.customer_paid_amount !== null && row.customer_paid_amount !== undefined ? Number(row.customer_paid_amount) : null,
+  // Sub overpayment carried forward when customer short-pays AFTER the
+  // sub has been paid full. Settles on next pay statement lock or via
+  // explicit WAIVE. See supabase/freight_bills_sub_pay_debt.sql.
+  subPayDebtAmount: row.sub_pay_debt_amount !== null && row.sub_pay_debt_amount !== undefined ? Number(row.sub_pay_debt_amount) : null,
+  subPayDebtSettledAt: row.sub_pay_debt_settled_at || null,
   extras: row.extras || [],
   minHoursApplied: !!row.min_hours_applied,
   minHoursApprovedBy: row.min_hours_approved_by || "",
@@ -241,6 +246,8 @@ const fbToDB = (fb) => ({
   invoice_id: fb.invoiceId || null,
   customer_paid_at: fb.customerPaidAt || null,
   customer_paid_amount: fb.customerPaidAmount !== null && fb.customerPaidAmount !== undefined && fb.customerPaidAmount !== "" ? Number(fb.customerPaidAmount) : null,
+  sub_pay_debt_amount: fb.subPayDebtAmount !== null && fb.subPayDebtAmount !== undefined && fb.subPayDebtAmount !== "" ? Number(fb.subPayDebtAmount) : null,
+  sub_pay_debt_settled_at: fb.subPayDebtSettledAt || null,
   extras: fb.extras || [],
   min_hours_applied: !!fb.minHoursApplied,
   min_hours_approved_by: fb.minHoursApprovedBy || null,
@@ -309,6 +316,8 @@ const fbPatchToDB = (patch) => {
   if (has("invoiceId"))             out.invoice_id = patch.invoiceId || null;
   if (has("customerPaidAt"))        out.customer_paid_at = patch.customerPaidAt || null;
   if (has("customerPaidAmount"))    out.customer_paid_amount = numOrNull(patch.customerPaidAmount);
+  if (has("subPayDebtAmount"))      out.sub_pay_debt_amount = numOrNull(patch.subPayDebtAmount);
+  if (has("subPayDebtSettledAt"))   out.sub_pay_debt_settled_at = patch.subPayDebtSettledAt || null;
   if (has("extras"))                out.extras = patch.extras || [];
   if (has("minHoursApplied"))       out.min_hours_applied = !!patch.minHoursApplied;
   if (has("minHoursApprovedBy"))    out.min_hours_approved_by = patch.minHoursApprovedBy || null;

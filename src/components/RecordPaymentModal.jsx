@@ -20,6 +20,11 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
     invFbs.forEach((fb) => { m[fb.id] = false; });
     return m;
   });
+  // v24: Per-FB amount in per-FB mode. Replaces silent pro-rata so admin
+  // can record an exact split when a customer pays uneven amounts across
+  // FBs (e.g. one FB short-paid for damage dispute, the others paid in
+  // full). Keys are FB ids; values are strings to keep the input controlled.
+  const [perFbAmounts, setPerFbAmounts] = useState({});
   const [saving, setSaving] = useState(false);
 
   // For per-FB mode, estimate the per-FB gross within this invoice
@@ -44,24 +49,79 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
     return qty * rate;
   };
 
-  // Auto-calc amount from checked FBs in per-FB mode + autofill amount on
-  // mode toggle. fbEstimate is stable for the modal's lifetime; balance comes
-  // from a parent and would re-fire the autofill on every parent render. Both
-  // setStates are bounded write-once on a real toggle.
+  // Per-FB sum drives the global "Amount Received" field in per-FB mode so
+  // admin can see the total grow as they type per-row amounts. In full mode
+  // the global field is just editable balance.
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  const perFbTotal = useMemo(() => {
+  const perFbSum = useMemo(() => {
     if (mode !== "perfb") return 0;
-    return invFbs.filter((fb) => checkedFbs[fb.id]).reduce((s, fb) => s + fbEstimate(fb), 0);
-  }, [checkedFbs, mode, invFbs]);
+    return invFbs
+      .filter((fb) => checkedFbs[fb.id])
+      .reduce((s, fb) => s + (Number(perFbAmounts[fb.id]) || 0), 0);
+  }, [checkedFbs, mode, perFbAmounts, invFbs]);
 
   useEffect(() => {
     if (mode === "perfb") {
-      setForm((f) => ({ ...f, amount: perFbTotal.toFixed(2) }));
+      setForm((f) => ({ ...f, amount: perFbSum.toFixed(2) }));
     } else {
       setForm((f) => ({ ...f, amount: balance.toFixed(2) }));
     }
-  }, [mode, perFbTotal]);
+  }, [mode, perFbSum]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  // When admin checks an FB row, default-fill the per-FB amount with the
+  // FB's billed estimate (full payment). Admin types a lower number to mark
+  // it short-paid. Unchecking clears the row's amount.
+  const toggleFbChecked = (fb, checked) => {
+    setCheckedFbs((m) => ({ ...m, [fb.id]: checked }));
+    setPerFbAmounts((m) => {
+      const next = { ...m };
+      if (checked && !next[fb.id]) next[fb.id] = fbEstimate(fb).toFixed(2);
+      if (!checked) delete next[fb.id];
+      return next;
+    });
+  };
+
+  // "Pro-rate from total" helper — distribute a typed total across the
+  // currently-checked rows proportional to their billed estimate. Useful
+  // when admin gets a single check covering N FBs and wants the modal to
+  // do the math.
+  const proRateFromTotal = () => {
+    const target = Number(form.amount);
+    if (!target || target <= 0) { onToast("ENTER TOTAL AMOUNT FIRST"); return; }
+    const checked = invFbs.filter((fb) => checkedFbs[fb.id]);
+    if (checked.length === 0) { onToast("CHECK AT LEAST ONE FB"); return; }
+    const baseSum = checked.reduce((s, fb) => s + fbEstimate(fb), 0);
+    const next = { ...perFbAmounts };
+    checked.forEach((fb) => {
+      const share = baseSum > 0 ? (fbEstimate(fb) / baseSum) * target : target / checked.length;
+      next[fb.id] = share.toFixed(2);
+    });
+    setPerFbAmounts(next);
+  };
+
+  // v24: Compute the sub-pay debt to stamp on a post-lock short-pay. If
+  // sub was already paid (paidAt set) and the customer pays less than what
+  // was billed, the company has overpaid the sub by the brokerable share
+  // of the shortfall. Pass-through extras (tolls, dump) ride at full
+  // value — those are the sub's out-of-pocket reimbursement and don't
+  // scale with the customer ratio. Returns 0 if the FB shouldn't be
+  // debt-stamped (sub not paid yet, or paid in full, or no prior amount).
+  const computePostLockDebt = (fb, customerPaidShare, billedEstimate) => {
+    if (!fb.paidAt) return 0; // sub not paid yet — handled live by PayrollTab
+    if (!fb.paidAmount) return 0; // legacy FB with no paid snapshot
+    if (billedEstimate <= 0) return 0;
+    const ratio = customerPaidShare / billedEstimate;
+    if (ratio >= 0.999) return 0; // paid in full — no debt
+    // Pass-through portion (tolls/dumps) doesn't scale with customer ratio
+    const passThroughSum = (fb.payingLines || [])
+      .filter((l) => l.passThrough || l.code === "TOLL" || l.code === "DUMP" || l.code === "FUEL")
+      .reduce((s, l) => s + (Number(l.gross) || Number(l.net) || 0), 0);
+    const subBrokerable = Number(fb.paidAmount) - passThroughSum;
+    if (subBrokerable <= 0) return 0;
+    const debt = subBrokerable * (1 - ratio);
+    return Number(debt.toFixed(2));
+  };
 
   const proceed = async () => {
     const amt = Number(form.amount);
@@ -72,7 +132,10 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
 
     setSaving(true);
     try {
-      // 1. Stamp each selected FB (or all if full) with customer_paid_at + amount (prorated)
+      // 1. Stamp each selected FB (or all if full) with customer_paid_at + amount.
+      //    In per-FB mode the share is the admin-typed amount; in full mode
+      //    we still pro-rate by billed estimate (it's the "customer paid the
+      //    whole invoice" path so per-FB editing isn't needed).
       const fbsToStamp = mode === "full"
         ? invFbs.filter((fb) => !fb.customerPaidAt) // skip already paid
         : invFbs.filter((fb) => checkedFbs[fb.id]);
@@ -87,14 +150,31 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
         // retry is safe: editFreightBill is idempotent for the same
         // amount, and any FBs already stamped just get the same value.
         const stampFailures = [];
+        const debtsStamped = []; // for the post-record toast / log
         for (const fb of fbsToStamp) {
-          const share = baseSum > 0 ? (fbEstimate(fb) / baseSum) * amt : amt / fbsToStamp.length;
+          const share = mode === "perfb"
+            ? Number(perFbAmounts[fb.id]) || 0
+            : (baseSum > 0 ? (fbEstimate(fb) / baseSum) * amt : amt / fbsToStamp.length);
+          const billed = fbEstimate(fb);
+          const debt = computePostLockDebt(fb, share, billed);
           try {
-            await editFreightBill(fb.id, {
+            const patch = {
               ...fb,
               customerPaidAt: new Date(form.date).toISOString(),
               customerPaidAmount: Number(share.toFixed(2)),
-            });
+            };
+            if (debt > 0) {
+              // Post-lock customer short-pay: stamp the per-FB sub
+              // overpayment so PayrollTab can recoup on the sub's next
+              // pay statement (or the admin can WAIVE).
+              patch.subPayDebtAmount = debt;
+              // Reset settled — if a prior debt was settled and the
+              // customer short-pays AGAIN (e.g. dispute follow-up), the
+              // new shortfall reopens the debt.
+              patch.subPayDebtSettledAt = null;
+              debtsStamped.push({ fbNum: fb.freightBillNumber || fb.id, debt });
+            }
+            await editFreightBill(fb.id, patch);
           } catch (e) {
             console.error("Stamp FB customerPaidAt failed:", fb.id, e);
             stampFailures.push({ fbNum: fb.freightBillNumber || fb.id, err: e?.message || String(e) });
@@ -108,6 +188,21 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
           );
           setSaving(false);
           return;
+        }
+        if (debtsStamped.length > 0) {
+          const totalDebt = debtsStamped.reduce((s, d) => s + d.debt, 0);
+          // Audit trail — also helps when reconciling with the sub later.
+          logAudit({
+            actionType: "fb.sub_pay_debt_created",
+            entityType: "invoice", entityId: invoice.id,
+            entityLabel: invoice.invoiceNumber || "—",
+            metadata: {
+              totalDebt,
+              fbCount: debtsStamped.length,
+              perFb: debtsStamped,
+              reason: "customer short-pay after sub already paid",
+            },
+          });
         }
       }
 
@@ -217,57 +312,138 @@ export const RecordPaymentModal = ({ invoice, freightBills, editFreightBill, onC
             </button>
           </div>
 
-          {/* Per-FB checklist */}
+          {/* Per-FB checklist + per-FB editable amount */}
           {mode === "perfb" && (
-            <div style={{ padding: 10, border: "1.5px solid var(--steel)", background: "#F5F5F4", maxHeight: 280, overflowY: "auto" }}>
+            <div style={{ padding: 10, border: "1px solid var(--line)", background: "var(--surface)", maxHeight: 320, overflowY: "auto", borderRadius: 6 }}>
               <div className="fbt-mono" style={{ fontSize: 10, color: "var(--concrete)", marginBottom: 8 }}>
-                ▸ CHECK WHICH FBs THE CUSTOMER PAID FOR
+                ▸ CHECK FBs · TYPE WHAT THE CUSTOMER ACTUALLY PAID FOR EACH
               </div>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 <button
                   className="btn-ghost"
                   style={{ fontSize: 10, padding: "4px 8px" }}
-                  onClick={() => { const m = {}; invFbs.forEach((fb) => { m[fb.id] = !fb.customerPaidAt; }); setCheckedFbs(m); }}
+                  onClick={() => {
+                    const m = {};
+                    const amounts = { ...perFbAmounts };
+                    invFbs.forEach((fb) => {
+                      const check = !fb.customerPaidAt;
+                      m[fb.id] = check;
+                      if (check && !amounts[fb.id]) amounts[fb.id] = fbEstimate(fb).toFixed(2);
+                      if (!check) delete amounts[fb.id];
+                    });
+                    setCheckedFbs(m);
+                    setPerFbAmounts(amounts);
+                  }}
                 >
                   CHECK ALL UNPAID
                 </button>
                 <button
                   className="btn-ghost"
                   style={{ fontSize: 10, padding: "4px 8px" }}
-                  onClick={() => { const m = {}; invFbs.forEach((fb) => { m[fb.id] = false; }); setCheckedFbs(m); }}
+                  onClick={() => {
+                    const m = {};
+                    invFbs.forEach((fb) => { m[fb.id] = false; });
+                    setCheckedFbs(m);
+                    setPerFbAmounts({});
+                  }}
                 >
                   CLEAR
+                </button>
+                <button
+                  className="btn-ghost"
+                  style={{ fontSize: 10, padding: "4px 8px" }}
+                  onClick={proRateFromTotal}
+                  title="Distribute the Amount Received total across checked FBs proportional to billed estimate"
+                >
+                  ⇆ PRO-RATE FROM TOTAL
                 </button>
               </div>
               <div style={{ display: "grid", gap: 4 }}>
                 {invFbs.map((fb) => {
                   const alreadyPaid = !!fb.customerPaidAt;
+                  const checked = !!checkedFbs[fb.id];
                   const est = fbEstimate(fb);
+                  const enteredStr = perFbAmounts[fb.id] ?? "";
+                  const entered = Number(enteredStr) || 0;
+                  const isShort = checked && entered > 0 && entered < est - 0.01;
+                  const isOver = checked && entered > est + 0.01;
+                  // Post-lock indicator: sub already paid → if we short, debt
+                  // gets stamped for next pay statement. Surface so admin
+                  // knows the consequence before clicking RECORD PAYMENT.
+                  const postLock = !!fb.paidAt;
                   return (
-                    <label
+                    <div
                       key={fb.id}
                       style={{
-                        display: "flex", alignItems: "center", gap: 8, padding: "6px 8px",
-                        background: alreadyPaid ? "#E5E7EB" : "#FFF", border: "1px solid var(--steel)",
-                        opacity: alreadyPaid ? 0.6 : 1, cursor: alreadyPaid ? "not-allowed" : "pointer",
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr auto auto",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 10px",
+                        background: alreadyPaid ? "#F1F5F9" : "#FFF",
+                        border: `1px solid ${isShort ? "var(--safety)" : "var(--line)"}`,
+                        borderRadius: 4,
+                        opacity: alreadyPaid ? 0.7 : 1,
                         fontSize: 11,
                       }}
                     >
                       <input
                         type="checkbox"
-                        checked={!!checkedFbs[fb.id]}
+                        checked={checked}
                         disabled={alreadyPaid}
-                        onChange={(e) => setCheckedFbs({ ...checkedFbs, [fb.id]: e.target.checked })}
+                        onChange={(e) => toggleFbChecked(fb, e.target.checked)}
+                        style={{ cursor: alreadyPaid ? "not-allowed" : "pointer" }}
                       />
-                      <span style={{ flex: 1 }}>
-                        <strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}
-                        {alreadyPaid && <span style={{ color: "var(--good)", marginLeft: 6 }}>✓ ALREADY PAID</span>}
-                      </span>
-                      <span style={{ fontWeight: 700 }}>{fmt$(est)}</span>
-                    </label>
+                      <div style={{ minWidth: 0 }}>
+                        <div>
+                          <strong>FB#{fb.freightBillNumber || "—"}</strong> · {fb.driverName || "—"}
+                          {alreadyPaid && <span className="chip" style={{ marginLeft: 6, fontSize: 9, background: "var(--good-soft)", color: "var(--good)", borderColor: "var(--good-border)" }}>✓ STAMPED</span>}
+                          {postLock && !alreadyPaid && <span className="chip" style={{ marginLeft: 6, fontSize: 9, background: "#FEF3C7", color: "#92400E", borderColor: "var(--warn-border)" }}>SUB ALREADY PAID</span>}
+                          {isShort && <span className="chip" style={{ marginLeft: 6, fontSize: 9, background: "var(--danger-soft)", color: "var(--safety)", borderColor: "var(--danger-border)" }}>SHORT {fmt$(est - entered)}</span>}
+                          {isOver && <span className="chip" style={{ marginLeft: 6, fontSize: 9, background: "var(--accent-soft)", color: "var(--hazard-deep)", borderColor: "var(--accent-border)" }}>OVER {fmt$(entered - est)}</span>}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--concrete)", marginTop: 2 }}>
+                          Billed {fmt$(est)}
+                          {isShort && postLock && (
+                            <span style={{ color: "var(--safety)", fontWeight: 600 }}>
+                              {" · "}sub overpaid → debt carries to next pay statement
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <input
+                        className="fbt-input"
+                        type="number"
+                        step="0.01"
+                        value={enteredStr}
+                        disabled={!checked || alreadyPaid}
+                        onChange={(e) => setPerFbAmounts({ ...perFbAmounts, [fb.id]: e.target.value })}
+                        placeholder={est.toFixed(2)}
+                        style={{ width: 100, padding: "5px 8px", fontSize: 12, textAlign: "right" }}
+                        title="What the customer actually paid for this FB"
+                      />
+                      <span className="fbt-mono" style={{ fontSize: 9, color: "var(--concrete)", width: 14, textAlign: "right" }}>$</span>
+                    </div>
                   );
                 })}
               </div>
+              {/* Per-FB sum vs typed-total guard */}
+              {(() => {
+                const sum = perFbSum;
+                const typed = Number(form.amount);
+                if (!checkedFbs || Object.values(checkedFbs).every((v) => !v)) return null;
+                if (Math.abs(sum - typed) <= 0.01) return null;
+                return (
+                  <div className="fbt-mono" style={{
+                    marginTop: 8, padding: "6px 8px", fontSize: 10,
+                    background: "#FEF3C7", color: "#92400E",
+                    border: "1px solid var(--warn-border)", borderRadius: 4,
+                  }}>
+                    Per-FB sum {fmt$(sum)} doesn't match Amount Received {fmt$(typed)}.
+                    {" "}The amount written to the invoice will be the sum.
+                  </div>
+                );
+              })()}
             </div>
           )}
 
