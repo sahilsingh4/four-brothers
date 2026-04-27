@@ -1251,8 +1251,8 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                 </div>
               </div>
               <div>
-                <label className="fbt-label">Customer (for tracking link & billing)</label>
-                {contacts.filter((c) => c.type === "customer").length > 0 ? (
+                <label className="fbt-label">Customer / Broker (for tracking link & billing)</label>
+                {contacts.filter((c) => c.type === "customer" || c.type === "broker" || c.actsAsBroker).length > 0 ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <select
                       className="fbt-select"
@@ -1265,15 +1265,22 @@ export const DispatchesTab = ({ dispatches, setDispatches, freightBills, setFrei
                         if (c) setDraft({ ...draft, clientId: c.id, clientName: c.companyName || c.contactName });
                       }}
                     >
-                      <option value="">— Choose customer —</option>
+                      <option value="">— Choose customer / broker —</option>
                       {contacts
-                        .filter((c) => c.type === "customer")
+                        // Bill recipient = customer OR broker OR dual-role
+                        // sub flagged actsAsBroker (the same contact also
+                        // brokers work back to us). Customers paying-direct
+                        // sit alongside brokers who take a cut.
+                        .filter((c) => c.type === "customer" || c.type === "broker" || c.actsAsBroker)
                         .sort((a, b) => (a.favorite !== b.favorite ? (a.favorite ? -1 : 1) : 0))
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.favorite ? "★ " : ""}{c.companyName || c.contactName}
-                          </option>
-                        ))}
+                        .map((c) => {
+                          const isBrokerLike = c.type === "broker" || c.actsAsBroker;
+                          return (
+                            <option key={c.id} value={c.id}>
+                              {c.favorite ? "★ " : ""}{c.companyName || c.contactName}{isBrokerLike ? " · BROKER" : ""}
+                            </option>
+                          );
+                        })}
                     </select>
                     <button
                       type="button"

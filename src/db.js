@@ -452,6 +452,10 @@ const contactFromDB = (row) => ({
   portalEnabled: !!row.portal_enabled,
   brokerageApplies: !!row.brokerage_applies,
   brokeragePercent: row.brokerage_percent !== null && row.brokerage_percent !== undefined ? Number(row.brokerage_percent) : 8,
+  // Dual-role flag: set on a sub-type contact when the same company also
+  // brokers work back to us. Lets the order-form customer picker include
+  // this contact, and surfaces a "+ BROKER" badge in lists.
+  actsAsBroker: !!row.acts_as_broker,
   defaultPayRate: row.default_pay_rate !== null && row.default_pay_rate !== undefined ? Number(row.default_pay_rate) : null,
   defaultPayMethod: row.default_pay_method || "hour",
   defaultTruckNumber: row.default_truck_number || "",
@@ -488,6 +492,7 @@ const contactToDB = (c) => ({
   portal_enabled: !!c.portalEnabled,
   brokerage_applies: !!c.brokerageApplies,
   brokerage_percent: c.brokeragePercent !== null && c.brokeragePercent !== undefined && c.brokeragePercent !== "" ? Number(c.brokeragePercent) : 8,
+  acts_as_broker: !!c.actsAsBroker,
   default_pay_rate: c.defaultPayRate !== null && c.defaultPayRate !== undefined && c.defaultPayRate !== "" ? Number(c.defaultPayRate) : null,
   default_pay_method: c.defaultPayMethod || null,
   default_truck_number: c.defaultTruckNumber || null,
