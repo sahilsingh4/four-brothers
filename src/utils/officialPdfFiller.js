@@ -85,11 +85,19 @@ const fieldMaps = {
       step4a_otherIncome:      ["topmostSubform[0].Page1[0].f1_09[0]"],
       step4b_deductions:       ["topmostSubform[0].Page1[0].f1_10[0]"],
       step4c_extraWithholding: ["topmostSubform[0].Page1[0].f1_11[0]"],
-      signatureDate:           ["topmostSubform[0].Page1[0].f1_12[0]"],
-      // Employer-only fields (skipped during employee onboarding)
-      employerNameAddress:     ["topmostSubform[0].Page1[0].f1_13[0]"],
-      firstDayEmployment:      ["topmostSubform[0].Page1[0].f1_14[0]"],
-      employerEin:             ["topmostSubform[0].Page1[0].f1_15[0]"],
+      // signatureDate intentionally NOT mapped — Step 5 has no fillable
+      // date field on W-4 page 1 (the signature line is hand-written ink).
+      // Earlier mapping pointed at f1_12 which is actually the bottom-row
+      // employer's-name-and-address field, so the date was overwriting it.
+      // Verified by inspecting field rectangles: f1_12 (x=95, w=293) is
+      // the wide left field; f1_13 (x=390, w=77) is "First date of
+      // employment"; f1_14 (x=469, w=107, max=10) is "Employer EIN".
+      // Employer-only fields below are mapped for completeness but the
+      // employee-onboarding flow doesn't supply these keys, so nothing
+      // gets written there in practice.
+      employerNameAddress: ["topmostSubform[0].Page1[0].f1_12[0]"],
+      firstDayEmployment:  ["topmostSubform[0].Page1[0].f1_13[0]"],
+      employerEin:         ["topmostSubform[0].Page1[0].f1_14[0]"],
     },
     // W-4 filing status checkboxes — c1_1[0..2] is the Step 1c group;
     // the PDF puts them at Page1 root, not under Step1c subform.
@@ -236,7 +244,23 @@ export const fillOfficialPdf = async (formKey, formData) => {
   if (!cfg) throw new Error(`No field map for ${formKey}`);
 
   const bytes = await fetchPdfBytes(cfg.pdfFile);
-  const doc = await PDFDocument.load(bytes);
+  // pdf-lib unconditionally console.warns "Removing XFA form data..." when
+  // it loads any IRS / USCIS PDF (they all carry XFA wrappers around the
+  // AcroForm we actually use). It's harmless — pdf-lib falls back to the
+  // AcroForm just fine — but it pollutes the console every time the admin
+  // opens a filled-form modal. Silence it during load only; keep all
+  // other warnings visible.
+  const origWarn = console.warn;
+  console.warn = (...args) => {
+    if (typeof args[0] === "string" && args[0].includes("XFA")) return;
+    return origWarn.apply(console, args);
+  };
+  let doc;
+  try {
+    doc = await PDFDocument.load(bytes);
+  } finally {
+    console.warn = origWarn;
+  }
   const form = doc.getForm();
 
   // Track misses so we can guide the user when names don't match.
